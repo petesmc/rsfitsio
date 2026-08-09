@@ -708,7 +708,7 @@ pub extern "C" fn iterdata(
                     l = 1;
                     while l <= repeat[iu] {
                         let v = unsafe { *data.offset((k * repeat[iu] + l) as isize) } as c_uchar;
-                        spf!(comm; "0x", SW(&format!("{v:02x}"), 0, None), " ");
+                        spf!(comm; "0x", format!("{v:02x}"), " ");
                         scat!(errmes; CS(&comm));
                         l += 1;
                     }

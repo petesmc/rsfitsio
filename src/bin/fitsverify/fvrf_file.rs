@@ -162,7 +162,7 @@ fn hdus_summary(out: Out) {
         (h[0].wrnno, h[0].errnum)
     });
     spf!(comm;
-        " 1                          Primary Array    ", DW(w0, -4), "      ", DW(e0, -4), "  ");
+        " 1                          Primary Array    ", format!("{:<4}", w0), "      ", format!("{:<4}", e0), "  ");
     wrtout(out, &comm);
     for i in 2..=totalhdu() {
         let (extname, extver, wrnno, errnum, hdutype) = HDUNAME.with(|h| {
@@ -177,23 +177,23 @@ fn hdus_summary(out: Out) {
         }
         match hdutype {
             IMAGE_HDU => {
-                spf!(comm; " ", DW(i, -5), " ", CSW(&temp, -20, None), " Image Array      ",
-                    DW(wrnno, -4), "      ", DW(errnum, -4), "  ");
+                spf!(comm; " ", format!("{:<5}", i), " ", CSW(&temp, -20, None), " Image Array      ",
+                    format!("{:<4}", wrnno), "      ", format!("{:<4}", errnum), "  ");
                 wrtout(out, &comm);
             }
             ASCII_TBL => {
-                spf!(comm; " ", DW(i, -5), " ", CSW(&temp, -20, None), " ASCII Table      ",
-                    DW(wrnno, -4), "      ", DW(errnum, -4), "  ");
+                spf!(comm; " ", format!("{:<5}", i), " ", CSW(&temp, -20, None), " ASCII Table      ",
+                    format!("{:<4}", wrnno), "      ", format!("{:<4}", errnum), "  ");
                 wrtout(out, &comm);
             }
             BINARY_TBL => {
-                spf!(comm; " ", DW(i, -5), " ", CSW(&temp, -20, None), " Binary Table     ",
-                    DW(wrnno, -4), "      ", DW(errnum, -4), "  ");
+                spf!(comm; " ", format!("{:<5}", i), " ", CSW(&temp, -20, None), " Binary Table     ",
+                    format!("{:<4}", wrnno), "      ", format!("{:<4}", errnum), "  ");
                 wrtout(out, &comm);
             }
             _ => {
-                spf!(comm; " ", DW(i, -5), " ", CSW(&temp, -20, None), " Unknown HDU      ",
-                    DW(wrnno, -4), "      ", DW(errnum, -4), "  ");
+                spf!(comm; " ", format!("{:<5}", i), " ", CSW(&temp, -20, None), " Unknown HDU      ",
+                    format!("{:<4}", wrnno), "      ", format!("{:<4}", errnum), "  ");
                 wrtout(out, &comm);
             }
         }
@@ -201,8 +201,8 @@ fn hdus_summary(out: Out) {
     /* check the end of file */
     num_err_wrn(&mut ierr, &mut iwrn);
     if iwrn != 0 || ierr != 0 {
-        spf!(comm; " End-of-file ", SW("", -30, None), "  ", DW(iwrn, -4), "      ",
-            DW(ierr, -4), "  ");
+        spf!(comm; " End-of-file ", format!("{:<30}", ""), "  ", format!("{:<4}", iwrn), "      ",
+            format!("{:<4}", ierr), "  ");
         wrtout(out, &comm);
     }
     wrtout_str(out, " ");

@@ -9,7 +9,6 @@
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
-use std::fmt::Display;
 use std::io::Write;
 
 use rsfitsio::c_types::{c_char, c_int, c_long, c_ulong};
@@ -326,6 +325,14 @@ impl Put for &str {
     }
 }
 
+/* so a format!() can be handed straight to spf!/pf! for the conversions that
+   std already does: widths, precisions, zero padding, hex */
+impl Put for String {
+    fn put(&self, v: &mut Vec<u8>) {
+        v.extend_from_slice(self.as_bytes());
+    }
+}
+
 macro_rules! put_via_display {
     ($($t:ty),*) => { $(
         impl Put for $t {
@@ -333,7 +340,9 @@ macro_rules! put_via_display {
         }
     )* };
 }
-put_via_display!(i8, u8, i16, u16, i32, u32, i64, u64, isize, usize);
+/* the integer widths actually passed to spf!/pf!; c_int and c_long are
+   covered by i32/i64 on every target this builds for */
+put_via_display!(i32, i64, usize);
 
 /* %s of a NUL-terminated c_char buffer */
 pub(crate) struct CS<'a>(pub &'a [c_char]);
@@ -382,28 +391,9 @@ impl Put for CSW<'_> {
     }
 }
 
-/* %[-]<width>[.<prec>]s of a Rust &str */
-pub(crate) struct SW<'a>(pub &'a str, pub i32, pub Option<usize>);
-
-impl Put for SW<'_> {
-    fn put(&self, v: &mut Vec<u8>) {
-        let mut b: Vec<u8> = self.0.as_bytes().to_vec();
-        if let Some(p) = self.2 {
-            b.truncate(p);
-        }
-        pad(v, &b, self.1);
-    }
-}
-
-/* %[-]<width>d */
-pub(crate) struct DW<T: Display>(pub T, pub i32);
-
-impl<T: Display> Put for DW<T> {
-    fn put(&self, v: &mut Vec<u8>) {
-        pad(v, self.0.to_string().as_bytes(), self.1);
-    }
-}
-
+/* printf's width/justification for a *byte* string.  Numbers and &str go
+   through format!() instead -- std does this for them -- but format! cannot
+   take arbitrary bytes, so CSW still needs it. */
 fn pad(v: &mut Vec<u8>, b: &[u8], width: i32) {
     let w = width.unsigned_abs() as usize;
     if b.len() >= w {
@@ -565,42 +555,48 @@ pub(crate) fn cvec(s: &[c_char]) -> Vec<c_char> {
 }
 
 /*===========================================================================
- *  <ctype.h>.  These mirror glibc in the "C" locale, where every class is
- *  false for the negative values a signed `char' can hold.
+ *  <ctype.h>.  Rust's u8 methods cover most of these exactly; the two that
+ *  differ are noted.  All take a c_char because the FITS buffers come from
+ *  rsfitsio as [c_char], and glibc in the "C" locale reports false for every
+ *  class on the negative values a signed char can hold -- which `as u8'
+ *  reproduces, and which also makes these independent of whether c_char is
+ *  signed or unsigned on the target.
  *==========================================================================*/
 
+/* isprint(): u8::is_ascii_graphic() is 0x21..=0x7e, i.e. printable *except*
+   the space, which C counts. */
 #[inline]
 pub(crate) fn isprint_c(c: c_char) -> bool {
-    (0x20..=0x7e).contains(&(c as u8))
+    let c = c as u8;
+    c == b' ' || c.is_ascii_graphic()
 }
 
+/* isspace(): u8::is_ascii_whitespace() deliberately omits the vertical tab,
+   which C's isspace() includes. */
 #[inline]
 pub(crate) fn isspace_c(c: c_char) -> bool {
-    matches!(c as u8, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+    let c = c as u8;
+    c.is_ascii_whitespace() || c == 0x0b
 }
 
 #[inline]
 pub(crate) fn isdigit_c(c: c_char) -> bool {
-    (b'0'..=b'9').contains(&(c as u8))
+    (c as u8).is_ascii_digit()
 }
 
 #[inline]
 pub(crate) fn isupper_c(c: c_char) -> bool {
-    (b'A'..=b'Z').contains(&(c as u8))
+    (c as u8).is_ascii_uppercase()
 }
 
 #[inline]
 pub(crate) fn isascii_c(c: c_char) -> bool {
-    (c as u8) < 128
+    (c as u8).is_ascii()
 }
 
 #[inline]
 pub(crate) fn toupper_c(c: c_char) -> c_char {
-    if (b'a'..=b'z').contains(&(c as u8)) {
-        (c as u8 - 32) as c_char
-    } else {
-        c
-    }
+    (c as u8).to_ascii_uppercase() as c_char
 }
 
 /*===========================================================================
@@ -840,9 +836,10 @@ mod tests {
         spf!(b; "n=", 42, " c=", CHR(0xfeu8 as c_char), "!");
         assert_eq!(cbytes(&b), b"n=42 c=\xfe!");
 
-        /* %-4d / %-20s / %.8s style conversions */
+        /* Widths for numbers and &str come from std's format!; only CSW pads
+           by hand, because format! cannot take arbitrary bytes. */
         let mut w = [0 as c_char; 64];
-        spf!(w; "[", DW(7, -4), "][", DW(7, 4), "]");
+        spf!(w; "[", format!("{:<4}", 7), "][", format!("{:>4}", 7), "]");
         assert_eq!(cbytes(&w), b"[7   ][   7]");
 
         let name = to_buf::<16>("ABCDEFGHIJ");

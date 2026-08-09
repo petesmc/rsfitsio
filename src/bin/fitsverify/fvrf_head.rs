@@ -2771,7 +2771,7 @@ fn test_header(
             if (0..=10).contains(&yy) {
                 spf!(errmes;
                     "Keyword #", kindex, ", ", CS(&kname), " ", CS(&kvalue),
-                    " intends to mean year 20", SW(&format!("{yy:02}"), -2, None), "?");
+                    " intends to mean year 20", format!("{yy:02}"), "?");
                 wrtwrn(out, &errmes, 0);
             }
         }
@@ -3303,7 +3303,7 @@ fn print_header(out: Out) {
     let mut htemp: [c_char; 100] = [0; 100];
     let ncards = NCARDS.with(Cell::get);
     for i in 1..=ncards {
-        spf!(htemp; DW(i, 4), " | ", CS(&card_at(i as usize - 1)));
+        spf!(htemp; format!("{:>4}", i), " | ", CS(&card_at(i as usize - 1)));
         wrtout(out, &htemp);
     }
     wrtout_str(out, " ");
@@ -3361,7 +3361,7 @@ fn print_summary(
                 spf!(extnv; CS(&tt));
             }
             spf!(comm;
-                " ", DW(i + 1, 3), " ", CSW(&extnv, -20, Some(20)), " ",
+                " ", format!("{:>3}", i + 1), " ", CSW(&extnv, -20, Some(20)), " ",
                 CSW(&tf, -10, Some(10)));
             wrtout(out, &comm);
         }
