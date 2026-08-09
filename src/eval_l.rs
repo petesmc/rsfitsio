@@ -308,7 +308,7 @@ pub(crate) fn fits_parser_yyGetVariable(
             }
         }
 
-        thelval.lng = c_long::from(varNum);
+        *thelval = FITS_PARSER_YYSTYPE::Long(c_long::from(varNum));
     }
     dtype
 }
@@ -539,14 +539,14 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strcat_safe(&mut errMsg, cs!(c"...'"));
                                     ffpmsg_slice(&errMsg);
-                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                    (*yyscanner.yylval_r).text_mut_ptr().write(0);
                                 } else {
                                     strncpy(
-                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
                                         len as usize,
                                     );
-                                    (*yyscanner.yylval_r).astr[len as usize] = 0;
+                                    *(*yyscanner.yylval_r).text_mut_ptr().add(len as usize) = 0;
                                 }
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
@@ -661,10 +661,10 @@ pub(crate) fn fits_parser_yylex(
                                     len_0 += 1;
                                 }
                                 if overflow != 0 {
-                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                    (*yyscanner.yylval_r).text_mut_ptr().write(0);
                                 } else {
                                     strcpy(
-                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
                                         bitstring.as_mut_ptr(),
                                     );
                                 }
@@ -812,14 +812,20 @@ pub(crate) fn fits_parser_yylex(
                                     len_1 += 1;
                                 }
                                 if overflow != 0 {
-                                    (*yyscanner.yylval_r).astr[0] = 0;
+                                    (*yyscanner.yylval_r).text_mut_ptr().write(0);
                                 } else {
                                     strcpy(
-                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
                                         bitstring_0.as_mut_ptr(),
                                     );
                                 }
-                                strcpy_safe(&mut ((*yyscanner.yylval_r).astr), &bitstring_0);
+                                strcpy_safe(
+                                    core::slice::from_raw_parts_mut(
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
+                                        MAX_STRLEN as usize,
+                                    ),
+                                    &bitstring_0,
+                                );
                                 return fits_parser_yytokentype::BITSTR as c_int;
                             }
                             5 => {
@@ -832,7 +838,7 @@ pub(crate) fn fits_parser_yylex(
                                         | c_int::from(c_int::from(*p) == '1' as i32) as c_long;
                                     p = p.offset(1);
                                 }
-                                (*yyscanner.yylval_r).lng = constval;
+                                (*yyscanner.yylval_r) = FITS_PARSER_YYSTYPE::Long(constval);
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             6 => {
@@ -845,7 +851,7 @@ pub(crate) fn fits_parser_yylex(
                                         | c_long::from(c_int::from(*p_0) - '0' as i32);
                                     p_0 = p_0.offset(1);
                                 }
-                                (*yyscanner.yylval_r).lng = constval_0;
+                                (*yyscanner.yylval_r) = FITS_PARSER_YYSTYPE::Long(constval_0);
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             7 => {
@@ -862,25 +868,27 @@ pub(crate) fn fits_parser_yylex(
                                     constval_1 = constval_1 << 4 as c_int | c_long::from(v);
                                     p_1 = p_1.offset(1);
                                 }
-                                (*yyscanner.yylval_r).lng = constval_1;
+                                (*yyscanner.yylval_r) = FITS_PARSER_YYSTYPE::Long(constval_1);
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             8 => {
-                                (*yyscanner.yylval_r).lng = atol(yyscanner.yytext_r);
+                                (*yyscanner.yylval_r) =
+                                    FITS_PARSER_YYSTYPE::Long(atol(yyscanner.yytext_r));
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             9 => {
                                 if c_int::from(*(yyscanner.yytext_r).offset(0)) == 't' as i32
                                     || c_int::from(*(yyscanner.yytext_r).offset(0)) == 'T' as i32
                                 {
-                                    (*yyscanner.yylval_r).log = 1;
+                                    (*yyscanner.yylval_r) = FITS_PARSER_YYSTYPE::Logical(1);
                                 } else {
-                                    (*yyscanner.yylval_r).log = 0;
+                                    (*yyscanner.yylval_r) = FITS_PARSER_YYSTYPE::Logical(0);
                                 }
                                 return fits_parser_yytokentype::BOOLEAN as c_int;
                             }
                             10 => {
-                                (*yyscanner.yylval_r).dbl = atof(yyscanner.yytext_r);
+                                (*yyscanner.yylval_r) =
+                                    FITS_PARSER_YYSTYPE::Double(atof(yyscanner.yytext_r));
                                 return fits_parser_yytokentype::DOUBLE as c_int;
                             }
                             11 => {
@@ -892,7 +900,8 @@ pub(crate) fn fits_parser_yylex(
                                     fits_strcasecmp(s1, cs!(c"#PI"))
                                 } == 0
                                 {
-                                    (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan();
+                                    (*yyscanner.yylval_r) =
+                                        FITS_PARSER_YYSTYPE::Double(4.0 * (1.0_f64).atan());
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
                                     let s1 = core::slice::from_raw_parts(
@@ -902,7 +911,8 @@ pub(crate) fn fits_parser_yylex(
                                     fits_strcasecmp(s1, cs!(c"#E"))
                                 } == 0
                                 {
-                                    (*yyscanner.yylval_r).dbl = (1.0_f64).exp();
+                                    (*yyscanner.yylval_r) =
+                                        FITS_PARSER_YYSTYPE::Double((1.0_f64).exp());
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
                                     let s1 = core::slice::from_raw_parts(
@@ -912,7 +922,8 @@ pub(crate) fn fits_parser_yylex(
                                     fits_strcasecmp(s1, cs!(c"#DEG"))
                                 } == 0
                                 {
-                                    (*yyscanner.yylval_r).dbl = 4.0 * (1.0_f64).atan() / 180.0;
+                                    (*yyscanner.yylval_r) =
+                                        FITS_PARSER_YYSTYPE::Double(4.0 * (1.0_f64).atan() / 180.0);
                                     return fits_parser_yytokentype::DOUBLE as c_int;
                                 } else if {
                                     let s1 = core::slice::from_raw_parts(
@@ -961,18 +972,20 @@ pub(crate) fn fits_parser_yylex(
                                             );
                                             strcat_safe(&mut errMsg, cs!(c"...'"));
                                             ffpmsg_slice(&errMsg);
-                                            (*yyscanner.yylval_r).astr[0] = 0;
+                                            (*yyscanner.yylval_r).text_mut_ptr().write(0);
                                         } else {
-                                            (*yyscanner.yylval_r).astr[0] = '#' as i32 as c_char;
+                                            *(*yyscanner.yylval_r).text_mut_ptr().add(0) =
+                                                '#' as i32 as c_char;
                                             strncpy(
-                                                ((*yyscanner.yylval_r).astr).as_mut_ptr().offset(1),
+                                                (*yyscanner.yylval_r).text_mut_ptr().offset(1),
                                                 &*(yyscanner.yytext_r).offset(2 as c_int as isize),
                                                 len_2 as usize,
                                             );
-                                            (*yyscanner.yylval_r).astr[(len_2 + 1) as usize] = 0;
+                                            *(*yyscanner.yylval_r)
+                                                .text_mut_ptr()
+                                                .add((len_2 + 1) as usize) = 0;
                                         }
-                                        yyscanner.yytext_r =
-                                            ((*yyscanner.yylval_r).astr).as_mut_ptr();
+                                        yyscanner.yytext_r = (*yyscanner.yylval_r).text_mut_ptr();
                                     }
 
                                     let yytext_r_slice = cast_slice(
@@ -1012,12 +1025,12 @@ pub(crate) fn fits_parser_yylex(
                                     len_3 = 0;
                                 } else {
                                     strncpy(
-                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
                                         len_3 as usize,
                                     );
                                 }
-                                (*yyscanner.yylval_r).astr[len_3 as usize] = 0;
+                                *(*yyscanner.yylval_r).text_mut_ptr().add(len_3 as usize) = 0;
                                 return fits_parser_yytokentype::STRING as c_int;
                             }
                             13 => {
@@ -1038,18 +1051,18 @@ pub(crate) fn fits_parser_yylex(
                                     );
                                     strcat_safe(&mut errMsg, cs!(c"...'"));
                                     ffpmsg_slice(&errMsg);
-                                    (*yyscanner.yylval_r).astr[0] = 0;
-                                    yyscanner.yytext_r = ((*yyscanner.yylval_r).astr).as_mut_ptr();
+                                    (*yyscanner.yylval_r).text_mut_ptr().write(0);
+                                    yyscanner.yytext_r = (*yyscanner.yylval_r).text_mut_ptr();
                                 } else if c_int::from(*(yyscanner.yytext_r).offset(0)) == '$' as i32
                                 {
                                     len_4 = (strlen(yyscanner.yytext_r)).wrapping_sub(2) as c_int;
                                     strncpy(
-                                        ((*yyscanner.yylval_r).astr).as_mut_ptr(),
+                                        (*yyscanner.yylval_r).text_mut_ptr(),
                                         &*(yyscanner.yytext_r).offset(1),
                                         len_4 as usize,
                                     );
-                                    (*yyscanner.yylval_r).astr[len_4 as usize] = 0;
-                                    yyscanner.yytext_r = ((*yyscanner.yylval_r).astr).as_mut_ptr();
+                                    *(*yyscanner.yylval_r).text_mut_ptr().add(len_4 as usize) = 0;
+                                    yyscanner.yytext_r = (*yyscanner.yylval_r).text_mut_ptr();
                                 }
 
                                 let yytext_r_slice = cast_slice(
@@ -1065,7 +1078,10 @@ pub(crate) fn fits_parser_yylex(
                             }
                             14 => {
                                 let mut len: usize = strlen(yyscanner.yytext_r);
-                                let fname = &mut ((*yyscanner.yylval_r).astr);
+                                let fname = core::slice::from_raw_parts_mut(
+                                    (*yyscanner.yylval_r).text_mut_ptr(),
+                                    MAX_STRLEN as usize,
+                                );
 
                                 if len >= MAX_STRLEN as usize {
                                     let mut errMsg: [c_char; 100] = [0; 100];
