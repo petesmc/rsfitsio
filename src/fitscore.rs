@@ -462,12 +462,52 @@ pub fn ffgerr_safe(
     strcpy_safe(errtext, cast_slice(t.to_bytes_with_nul()));
 }
 
-#[derive(Debug, Clone)]
+/// The most a single stack entry can hold.  `push_message` splits at this
+/// size and `ffgmsg` copies at most `FLEN_ERRMSG - 1`, so the two agree by
+/// construction rather than by convention.
+const ERRMSG_CHUNK: usize = FLEN_ERRMSG - 1;
+
+/// One entry in the error stack.
+///
+/// Fixed-size, mirroring the C's `static char errbuff[errmsgsiz][81]`: the
+/// whole stack is then `ERRMSGSIZ * ~82` bytes of static storage and `ffpmsg`
+/// does not reach for the allocator, which matters because it is called while
+/// handling failures.
+///
+/// The length is explicit rather than NUL-terminated.  The stack stores raw
+/// bytes -- the C's ffpmsg() keeps whatever it is handed, and FITS diagnostics
+/// routinely echo card bytes that are not valid UTF-8 -- and a malformed card
+/// can contain an embedded NUL, which terminating would silently truncate.
+#[derive(Debug, Clone, Copy)]
 struct ErrorMessage {
-    /// Raw bytes: the C's ffpmsg() stores whatever it is handed, and FITS
-    /// diagnostics routinely echo card bytes that are not valid UTF-8.
-    content: Vec<u8>,
+    content: [u8; ERRMSG_CHUNK],
+    len: u8,
     is_marker: bool,
+}
+
+impl ErrorMessage {
+    fn new(chunk: &[u8]) -> Self {
+        debug_assert!(chunk.len() <= ERRMSG_CHUNK);
+        let mut content = [0u8; ERRMSG_CHUNK];
+        content[..chunk.len()].copy_from_slice(chunk);
+        Self {
+            content,
+            len: chunk.len() as u8,
+            is_marker: false,
+        }
+    }
+
+    fn marker() -> Self {
+        Self {
+            content: [0; ERRMSG_CHUNK],
+            len: 0,
+            is_marker: true,
+        }
+    }
+
+    fn bytes(&self) -> &[u8] {
+        &self.content[..self.len as usize]
+    }
 }
 
 struct ErrorStack {
@@ -485,18 +525,15 @@ impl ErrorStack {
         let mut remaining = message;
 
         while !remaining.is_empty() {
-            let chunk_size = core::cmp::min(80, remaining.len());
-            let chunk = &remaining[..chunk_size];
+            let chunk_size = core::cmp::min(ERRMSG_CHUNK, remaining.len());
+            let (chunk, rest) = remaining.split_at(chunk_size);
 
             if self.messages.len() >= ERRMSGSIZ {
                 self.messages.pop_front();
             }
 
-            self.messages.push_back(ErrorMessage {
-                content: chunk.to_vec(),
-                is_marker: false,
-            });
-            remaining = &remaining[chunk_size..];
+            self.messages.push_back(ErrorMessage::new(chunk));
+            remaining = rest;
         }
     }
 
@@ -505,16 +542,13 @@ impl ErrorStack {
             self.messages.pop_front();
         }
 
-        self.messages.push_back(ErrorMessage {
-            content: Vec::new(),
-            is_marker: true,
-        });
+        self.messages.push_back(ErrorMessage::marker());
     }
 
-    fn pop_message(&mut self) -> Option<Vec<u8>> {
+    fn pop_message(&mut self) -> Option<ErrorMessage> {
         while let Some(msg) = self.messages.pop_front() {
             if !msg.is_marker {
-                return Some(msg.content);
+                return Some(msg);
             }
         }
         None
@@ -612,7 +646,7 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
 
     if let Some(message) = stack.pop_message() {
         // Copy message to buffer
-        let message_bytes = &message[..];
+        let message_bytes = message.bytes();
         let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
         for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
@@ -688,7 +722,7 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
             if let Some(err_message) = errmsg {
                 if let Some(message) = stack.pop_message() {
                     // Copy message to buffer
-                    let message_bytes = &message[..];
+                    let message_bytes = message.bytes();
                     let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     for (i, &byte) in message_bytes.iter().take(copy_len).enumerate() {
@@ -737,7 +771,7 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
             if let Some(message) = stack.pop_message() {
                 // Safely copy to the provided buffer
                 if !errmsg.is_null() {
-                    let message_bytes = &message[..];
+                    let message_bytes = message.bytes();
                     let copy_len = core::cmp::min(message_bytes.len(), FLEN_ERRMSG - 1);
 
                     unsafe {
@@ -12507,6 +12541,67 @@ mod tests {
 
         let card_str = CStr::from_bytes_until_nul(cast_slice(&card)).unwrap();
         assert_eq!(card_str.to_bytes_with_nul(), expected.to_bytes_with_nul());
+    }
+
+    /* The error stack's storage invariants.  These use a local ErrorStack, so
+       they do not need the global TEST_LOCK. */
+
+    #[test]
+    fn test_stored_entry_always_fits_the_reader_buffer() {
+        /* ffgmsg copies at most FLEN_ERRMSG - 1 bytes, so keeping the chunk
+           size at or below that means no stored entry can ever be truncated on
+           the way out. */
+        assert!(ERRMSG_CHUNK <= FLEN_ERRMSG - 1);
+    }
+
+    #[test]
+    fn test_error_stack_chunks_long_messages() {
+        let mut st = ErrorStack::new();
+        let msg: Vec<u8> = (0..190u32).map(|i| b'a' + (i % 26) as u8).collect();
+        st.push_message(&msg);
+
+        let mut out: Vec<Vec<u8>> = Vec::new();
+        while let Some(m) = st.pop_message() {
+            out.push(m.bytes().to_vec());
+        }
+
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].len(), ERRMSG_CHUNK);
+        assert_eq!(out[1].len(), ERRMSG_CHUNK);
+        assert_eq!(out[2].len(), 190 - 2 * ERRMSG_CHUNK);
+        /* split, not lost or reordered */
+        assert_eq!(out.concat(), msg);
+    }
+
+    #[test]
+    fn test_error_stack_keeps_raw_bytes() {
+        /* FITS diagnostics echo card bytes, which are frequently not valid
+           UTF-8; and an embedded NUL must not shorten the stored entry, which
+           is why the length is explicit rather than NUL-terminated. */
+        let mut st = ErrorStack::new();
+        let msg = b"card \xff\xfe with a NUL \x00 in it";
+        st.push_message(msg);
+
+        let m = st.pop_message().unwrap();
+        assert_eq!(m.bytes(), msg);
+        assert_eq!(m.len as usize, msg.len());
+    }
+
+    #[test]
+    fn test_error_stack_evicts_oldest_when_full() {
+        let mut st = ErrorStack::new();
+        for i in 0..(ERRMSGSIZ + 5) {
+            st.push_message(&[b'a' + i as u8]);
+        }
+
+        let mut got: Vec<u8> = Vec::new();
+        while let Some(m) = st.pop_message() {
+            got.push(m.bytes()[0]);
+        }
+
+        assert_eq!(got.len(), ERRMSGSIZ);
+        /* the first five were dropped, so the oldest survivor is the sixth */
+        assert_eq!(got[0], b'a' + 5);
     }
 
     #[test]
