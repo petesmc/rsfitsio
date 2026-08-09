@@ -6,7 +6,6 @@
 /*  Goddard Space Flight Center.                                           */
 
 use core::cmp;
-use core::ffi::CStr;
 
 use crate::c_types::*;
 

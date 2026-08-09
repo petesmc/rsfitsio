@@ -204,10 +204,14 @@ macro_rules! int_snprintf {
 #[macro_export]
 macro_rules! slice_to_str {
     ($e:expr) => {
-        CStr::from_bytes_until_nul(cast_slice($e))
-            .unwrap()
-            .to_str()
-            .unwrap()
+        // FITS buffers can hold arbitrary bytes and may reach here without a
+        // terminator (a malformed header is exactly what fitsverify reports
+        // on), so fall back rather than panicking, as the C's printf would.
+        {
+            let __b: &[u8] = cast_slice($e);
+            let __n = __b.iter().position(|&c| c == 0).unwrap_or(__b.len());
+            ::std::string::String::from_utf8_lossy(&__b[..__n])
+        }
     };
 }
 
