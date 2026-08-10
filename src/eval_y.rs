@@ -415,6 +415,70 @@ const CHAR_PIPE: c_int = b'|' as c_int; /* '|' */
 const CHAR_CARET: c_int = b'^' as c_int; /* '^' */
 const CHAR_TILDE: c_int = b'~' as c_int; /* '~' */
 
+/// A binary operator, as `Node::operation` stores it.
+///
+/// The `Do_BinOp_*` kernels all dispatch on the same twenty codes -- eleven
+/// bison tokens and nine ASCII characters. They are one thing pretending to be
+/// two because `operation` is a `c_int`; this names them as one.
+///
+/// Unlike [`funcOp`] the codes are not contiguous, so the conversion is a
+/// match rather than an index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Operator {
+    Or,
+    And,
+    Eq,
+    Ne,
+    Gt,
+    Lt,
+    Lte,
+    Gte,
+    Power,
+    Accum,
+    Diff,
+    Percent,
+    Ampersand,
+    Star,
+    Plus,
+    Minus,
+    Slash,
+    Caret,
+    Pipe,
+    Tilde,
+}
+
+impl Operator {
+    /// The operator stored in [`Node::operation`].
+    ///
+    /// The `Do_BinOp_*` kernels are only installed as a node's `DoOp` by
+    /// `New_BinOp`, so a node reaching one always holds an operator.
+    pub(crate) fn from_operation(op: c_int) -> Operator {
+        match op {
+            OR => Operator::Or,
+            AND => Operator::And,
+            EQ => Operator::Eq,
+            NE => Operator::Ne,
+            GT => Operator::Gt,
+            LT => Operator::Lt,
+            LTE => Operator::Lte,
+            GTE => Operator::Gte,
+            POWER => Operator::Power,
+            ACCUM => Operator::Accum,
+            DIFF => Operator::Diff,
+            CHAR_PERCENT => Operator::Percent,
+            CHAR_AMPERSAND => Operator::Ampersand,
+            CHAR_STAR => Operator::Star,
+            CHAR_PLUS => Operator::Plus,
+            CHAR_MINUS => Operator::Minus,
+            CHAR_SLASH => Operator::Slash,
+            CHAR_CARET => Operator::Caret,
+            CHAR_PIPE => Operator::Pipe,
+            CHAR_TILDE => Operator::Tilde,
+            other => panic!("operation {other} is not a binary operator"),
+        }
+    }
+}
+
 const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
 #[derive(Copy, Clone)]
@@ -9467,17 +9531,17 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  BITSTR comparisons  */
-                NE => {
+                Operator::Ne => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 });
                 }
-                EQ => {
+                Operator::Eq => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(bitcmp(sptr1, sptr2));
                 }
-                GT | LT | LTE | GTE => {
+                Operator::Gt | Operator::Lt | Operator::Lte | Operator::Gte => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bitlgte(
                         sptr1,
                         (lParse.Nodes[this_node_idx]).operation,
@@ -9485,21 +9549,21 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     ));
                 }
                 /*  BITSTR AND/ORs ...  no UNDEFS in or out */
-                CHAR_PIPE => {
+                Operator::Pipe => {
                     bitor(
                         (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
-                CHAR_AMPERSAND => {
+                Operator::Ampersand => {
                     bitand(
                         (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
-                CHAR_PLUS => {
+                Operator::Plus => {
                     strcpy(
                         (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
@@ -9510,7 +9574,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     );
                 }
                 /* Accumulate 1 bits */
-                ACCUM => {
+                Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
@@ -9527,8 +9591,13 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
                 rows = lParse.nRows;
-                match (lParse.Nodes[this_node_idx]).operation {
-                    EQ | NE | GT | LT | LTE | GTE => loop {
+                match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                    Operator::Eq
+                    | Operator::Ne
+                    | Operator::Gt
+                    | Operator::Lt
+                    | Operator::Lte
+                    | Operator::Gte => loop {
                         let fresh40 = rows;
                         rows -= 1;
                         if fresh40 == 0 {
@@ -9542,17 +9611,17 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
-                        match (lParse.Nodes[this_node_idx]).operation {
-                            NE => {
+                        match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                            Operator::Ne => {
                                 *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
                             }
-                            EQ => {
+                            Operator::Eq => {
                                 *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) = bitcmp(sptr1, sptr2);
                             }
-                            GT | LT | LTE | GTE => {
+                            Operator::Gt | Operator::Lt | Operator::Lte | Operator::Gte => {
                                 *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
@@ -9561,7 +9630,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) = 0;
                     },
-                    CHAR_PIPE | CHAR_AMPERSAND | CHAR_PLUS => loop {
+                    Operator::Pipe | Operator::Ampersand | Operator::Plus => loop {
                         let fresh41 = rows;
                         rows -= 1;
                         if fresh41 == 0 {
@@ -9602,7 +9671,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                     },
-                    ACCUM => {
+                    Operator::Accum => {
                         let mut i: c_long = 0;
                         let mut previous: c_long = 0;
                         let mut curr: c_long = 0;
@@ -9683,9 +9752,9 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  Compare Strings  */
-                NE | EQ => {
+                Operator::Ne | Operator::Eq => {
                     val = c_int::from(
                         (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9705,7 +9774,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         }) as c_char,
                     );
                 }
-                GT => {
+                Operator::Gt => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9721,7 +9790,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                     );
                 }
-                LT => {
+                Operator::Lt => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9737,7 +9806,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                     );
                 }
-                GTE => {
+                Operator::Gte => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9753,7 +9822,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                     );
                 }
-                LTE => {
+                Operator::Lte => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9770,7 +9839,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                     );
                 }
                 /*  Concat Strings  */
-                CHAR_PLUS => {
+                Operator::Plus => {
                     strcpy(
                         (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
@@ -9788,9 +9857,9 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
                 rows = lParse.nRows;
-                match (lParse.Nodes[this_node_idx]).operation {
+                match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                     /*  Compare Strings  */
-                    NE | EQ => loop {
+                    Operator::Ne | Operator::Eq => loop {
                         let fresh42 = rows;
                         rows -= 1;
                         if fresh42 == 0 {
@@ -9838,7 +9907,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             }) as c_char;
                         }
                     },
-                    GT | LT => loop {
+                    Operator::Gt | Operator::Lt => loop {
                         let fresh43 = rows;
                         rows -= 1;
                         if fresh43 == 0 {
@@ -9883,7 +9952,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             }) as c_char;
                         }
                     },
-                    GTE | LTE => loop {
+                    Operator::Gte | Operator::Lte => loop {
                         let fresh44 = rows;
                         rows -= 1;
                         if fresh44 == 0 {
@@ -9929,7 +9998,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /*  Concat Strings  */
-                    CHAR_PLUS => loop {
+                    Operator::Plus => loop {
                         let fresh45 = rows;
                         rows -= 1;
                         if fresh45 == 0 {
@@ -10023,8 +10092,8 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             val2 = (lParse.Nodes[that2_idx]).value.data.log();
         }
         if vector1 == 0 && vector2 == 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
-                OR => {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                Operator::Or => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                             1
@@ -10032,7 +10101,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                             0
                         });
                 }
-                AND => {
+                Operator::And => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                             1
@@ -10040,13 +10109,13 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                             0
                         });
                 }
-                EQ => {
+                Operator::Eq => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(c_int::from(
                         c_int::from(val1) != 0 && c_int::from(val2) != 0 || val1 == 0 && val2 == 0,
                     )
                         as c_char);
                 }
-                NE => {
+                Operator::Ne => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if c_int::from(val1) != 0 && val2 == 0
                             || val1 == 0 && c_int::from(val2) != 0
@@ -10057,7 +10126,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                         },
                     );
                 }
-                ACCUM => {
+                Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(val1));
                 }
                 _ => {}
@@ -10156,8 +10225,8 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 0
                             };
-                        match (lParse.Nodes[this_node_idx]).operation {
-                            OR => {
+                        match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                            Operator::Or => {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && TRUE  */
                                 if null1 == 0 && null2 == 0 {
@@ -10181,7 +10250,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize) = 0;
                                 }
                             }
-                            AND => {
+                            Operator::And => {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && FALSE */
                                 if null1 == 0 && null2 == 0 {
@@ -10201,7 +10270,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize) = 0;
                                 }
                             }
-                            EQ => {
+                            Operator::Eq => {
                                 *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && c_int::from(val2) != 0
@@ -10209,7 +10278,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                 )
                                     as c_char;
                             }
-                            NE => {
+                            Operator::Ne => {
                                 *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && val2 == 0
@@ -10265,51 +10334,51 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
 
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /* Treat as == for LONGS */
-                CHAR_TILDE | EQ => {
+                Operator::Tilde | Operator::Eq => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
-                NE => {
+                Operator::Ne => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
-                GT => {
+                Operator::Gt => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
-                LT => {
+                Operator::Lt => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
-                LTE => {
+                Operator::Lte => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
-                GTE => {
+                Operator::Gte => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
-                CHAR_PLUS => {
+                Operator::Plus => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 + val2);
                 }
-                CHAR_MINUS => {
+                Operator::Minus => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 - val2);
                 }
-                CHAR_STAR => {
+                Operator::Star => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 * val2);
                 }
-                CHAR_AMPERSAND => {
+                Operator::Ampersand => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 & val2);
                 }
-                CHAR_PIPE => {
+                Operator::Pipe => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 | val2);
                 }
-                CHAR_CARET => {
+                Operator::Caret => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 ^ val2);
                 }
-                CHAR_PERCENT => {
+                Operator::Percent => {
                     if val2 != 0 {
                         if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
@@ -10324,7 +10393,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                CHAR_SLASH => {
+                Operator::Slash => {
                     if val2 != 0 {
                         if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
@@ -10339,14 +10408,14 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                POWER => {
+                Operator::Power => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Long(pow(val1 as c_double, val2 as c_double) as c_long);
                 }
-                ACCUM => {
+                Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1);
                 }
-                DIFF => {
+                Operator::Diff => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                 }
                 _ => {}
@@ -10457,57 +10526,57 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         } else {
                             0
                         };
-                    match (lParse.Nodes[this_node_idx]).operation {
+                    match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                         /* Treat as == for LONGS */
-                        CHAR_TILDE | EQ => {
+                        Operator::Tilde | Operator::Eq => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
-                        NE => {
+                        Operator::Ne => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
-                        GT => {
+                        Operator::Gt => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
-                        LT => {
+                        Operator::Lt => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
-                        LTE => {
+                        Operator::Lte => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
-                        GTE => {
+                        Operator::Gte => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
-                        CHAR_PLUS => {
+                        Operator::Plus => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
-                        CHAR_MINUS => {
+                        Operator::Minus => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
-                        CHAR_STAR => {
+                        Operator::Star => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
-                        CHAR_AMPERSAND => {
+                        Operator::Ampersand => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 & val2;
                         }
-                        CHAR_PIPE => {
+                        Operator::Pipe => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 | val2;
                         }
-                        CHAR_CARET => {
+                        Operator::Caret => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 ^ val2;
                         }
-                        CHAR_PERCENT => {
+                        Operator::Percent => {
                             if val2 != 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 % val2;
@@ -10518,7 +10587,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        CHAR_SLASH => {
+                        Operator::Slash => {
                             if val2 != 0 {
                                 *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 / val2;
@@ -10529,7 +10598,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        POWER => {
+                        Operator::Power => {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
                                 pow(val1 as c_double, val2 as c_double) as c_long;
@@ -10609,45 +10678,45 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
 
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
-            match (lParse.Nodes[this_node_idx]).operation {
-                CHAR_TILDE => {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                Operator::Tilde => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if fabs(val1 - val2) < APPROX { 1 } else { 0 });
                 }
-                EQ => {
+                Operator::Eq => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
-                NE => {
+                Operator::Ne => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
-                GT => {
+                Operator::Gt => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
-                LT => {
+                Operator::Lt => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
-                LTE => {
+                Operator::Lte => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
-                GTE => {
+                Operator::Gte => {
                     (lParse.Nodes[this_node_idx]).value.data =
                         NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
-                CHAR_PLUS => {
+                Operator::Plus => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 + val2);
                 }
-                CHAR_MINUS => {
+                Operator::Minus => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 - val2);
                 }
-                CHAR_STAR => {
+                Operator::Star => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 * val2);
                 }
-                CHAR_PERCENT => {
+                Operator::Percent => {
                     if val2 != 0. {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(val1 - val2 * c_double::from((val1 / val2) as c_int));
@@ -10655,20 +10724,20 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                CHAR_SLASH => {
+                Operator::Slash => {
                     if val2 != 0. {
                         (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 / val2);
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                POWER => {
+                Operator::Power => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(pow(val1, val2));
                 }
-                ACCUM => {
+                Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1);
                 }
-                DIFF => {
+                Operator::Diff => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0);
                 }
                 _ => {}
@@ -10778,49 +10847,49 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         } else {
                             0
                         };
-                    match (lParse.Nodes[this_node_idx]).operation {
-                        CHAR_TILDE => {
+                    match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                        Operator::Tilde => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) =
                                 if fabs(val1 - val2) < APPROX { 1 } else { 0 };
                         }
-                        EQ => {
+                        Operator::Eq => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
-                        NE => {
+                        Operator::Ne => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
-                        GT => {
+                        Operator::Gt => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
-                        LT => {
+                        Operator::Lt => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
-                        LTE => {
+                        Operator::Lte => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
-                        GTE => {
+                        Operator::Gte => {
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
-                        CHAR_PLUS => {
+                        Operator::Plus => {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
-                        CHAR_MINUS => {
+                        Operator::Minus => {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
-                        CHAR_STAR => {
+                        Operator::Star => {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
-                        CHAR_PERCENT => {
+                        Operator::Percent => {
                             if val2 != 0. {
                                 *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
@@ -10832,7 +10901,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        CHAR_SLASH => {
+                        Operator::Slash => {
                             if val2 != 0. {
                                 *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = val1 / val2;
@@ -10843,7 +10912,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        POWER => {
+                        Operator::Power => {
                             *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = pow(val1, val2);
                         }
