@@ -7934,6 +7934,32 @@ fn New_GTI(
         } else {
             timeZeroF[1] = 0.0;
         }
+        /*  Read in START/STOP times  */
+
+        /* Done before any node is built, so that everything from here back to
+        resolving the TIME column touches only the file -- which is what lets
+        the navigation be lifted out on its own. */
+        if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
+            return -(1);
+        }
+        let gti = if nrows != 0 {
+            let Some(read) = read_gti_intervals(
+                lParse,
+                fptr,
+                startCol,
+                stopCol,
+                nrows,
+                &timeZeroI,
+                &timeZeroF,
+                Op == funcOp::GTIOVER_FCT,
+            ) else {
+                return -(1);
+            };
+            Some(read)
+        } else {
+            None
+        };
+
         n = Alloc_Node(lParse);
         if n >= 0 {
             this_node_idx = n as usize;
@@ -7982,26 +8008,8 @@ fn New_GTI(
             (lParse.Nodes[that0_idx]).DoOp = None;
             (lParse.Nodes[that0_idx]).value.data = NodeValue::Empty;
 
-            /*  Read in START/STOP times  */
-
-            if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
-                return -(1);
-            }
-
             (lParse.Nodes[that0_idx]).value.nelem = nrows;
-            if nrows != 0 {
-                let Some((times, ordered)) = read_gti_intervals(
-                    lParse,
-                    fptr,
-                    startCol,
-                    stopCol,
-                    nrows,
-                    &timeZeroI,
-                    &timeZeroF,
-                    Op == funcOp::GTIOVER_FCT,
-                ) else {
-                    return -(1);
-                };
+            if let Some((times, ordered)) = gti {
                 (lParse.Nodes[that0_idx]).gtiOrdered = ordered;
 
                 /* Hand the intervals to the node in the layout Do_GTI reads:
