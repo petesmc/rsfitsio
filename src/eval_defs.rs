@@ -293,6 +293,42 @@ pub(crate) struct Node {
     pub value: lval,
 }
 
+impl Node {
+    /// A constant folded at parse time.
+    pub(crate) fn is_const(&self) -> bool {
+        self.operation == CONST_OP
+    }
+
+    /// A reference to a table column, rather than something computed.
+    ///
+    /// `New_Column` stores the column as `-ColNum`, and `ColNum` indexes
+    /// `varData` from zero -- so column 0 is `operation == 0`, and the test
+    /// has to be `<= 0` rather than `< 0`. Getting that wrong classifies the
+    /// first column as something computed, and the engine then reads a buffer
+    /// the node never had.
+    pub(crate) fn is_column(&self) -> bool {
+        self.operation <= 0 && self.operation != CONST_OP
+    }
+
+    /// The index into [`ParseData::varData`] this column node refers to.
+    pub(crate) fn column(&self) -> c_int {
+        debug_assert!(self.is_column(), "not a column node: {}", self.operation);
+        -self.operation
+    }
+
+    /// Whether this node computes something -- an operator, a cast or a
+    /// function -- as opposed to being a constant or a column.
+    ///
+    /// `Node::operation` packs four encodings into one `c_int`: a function
+    /// code (1001 and up), an operator (an ASCII character or a bison token,
+    /// both positive), `CONST_OP`, or a negated column number. The engine
+    /// tests `operation > 0` to mean "has operands to evaluate and a buffer of
+    /// its own to free"; this says so.
+    pub(crate) fn is_computed(&self) -> bool {
+        self.operation > 0
+    }
+}
+
 /// Fetches a single named value for the parser (ffcalc's keyword lookup).
 pub(crate) type GetDataFn =
     fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int;

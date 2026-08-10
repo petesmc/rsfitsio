@@ -67,7 +67,7 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, P_ERROR, ParseData,
+    DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, P_ERROR, ParseData,
     ParseStatusVariables, ValueSort, parseInfo,
 };
 use crate::eval_l::{
@@ -1533,7 +1533,7 @@ pub(crate) fn ffiprs(
     lParse.datatype = *datatype;
     lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
 
-    if result.operation == CONST_OP {
+    if result.is_const() {
         *nelem = -*nelem;
     }
     *status
@@ -1902,7 +1902,7 @@ pub(crate) fn fits_parser_workfn_safe(
             /*  Copy results into data array  */
 
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
+            if result.is_const() {
                 constant = 1;
             }
 
@@ -2029,7 +2029,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                 }
                             }
                         }
-                        if result.operation > 0 {
+                        if result.is_computed() {
                             result.value.data.free_buffer();
                         }
                     }
@@ -2138,7 +2138,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             lParse.status = PARSE_BAD_TYPE;
                         }
                     }
-                    if result.operation > 0 {
+                    if result.is_computed() {
                         /* the row pointers all index one block, allocated at [0] */
                         let mut block = *(result.value.data.str_buf());
                         FREE!(block);
@@ -2178,7 +2178,7 @@ pub(crate) fn fits_parser_workfn_safe(
                         ffpmsg_str("Cannot convert string expression to desired type.");
                         lParse.status = PARSE_BAD_TYPE;
                     }
-                    if result.operation > 0 {
+                    if result.is_computed() {
                         /* the row pointers all index one block, allocated at [0] */
                         let mut block = *(result.value.data.str_buf());
                         FREE!(block);
@@ -3872,7 +3872,7 @@ pub(crate) fn ffffrw_work_safe(
 
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
+            if result.is_const() {
                 if result.value.data.log() != 0 {
                     *(workData.prownum) = firstrow;
                     return -1;

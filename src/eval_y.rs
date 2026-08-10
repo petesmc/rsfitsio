@@ -922,7 +922,7 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
             i += 1;
         }
 
-        if (that_node).operation == CONST_OP {
+        if (that_node).is_const() {
             ((this_node).DoOp).expect("non-null function pointer")(lParse, n as usize);
         }
     }
@@ -958,8 +958,7 @@ fn New_BinOp(
             .expect("New_* was given a returnType that is not a value sort");
 
         constant = c_int::from(
-            (lParse.Nodes[that1_idx]).operation == CONST_OP
-                && (lParse.Nodes[that2_idx]).operation == CONST_OP,
+            (lParse.Nodes[that1_idx]).is_const() && (lParse.Nodes[that2_idx]).is_const(),
         );
 
         if (lParse.Nodes[that1_idx]).ntype != ValueSort::String
@@ -7505,7 +7504,7 @@ fn New_Deref(
 
     let theVar = Var;
 
-    if (lParse.Nodes[theVar]).operation == CONST_OP || (lParse.Nodes[theVar]).value.nelem == 1 {
+    if (lParse.Nodes[theVar]).is_const() || (lParse.Nodes[theVar]).value.nelem == 1 {
         fits_parser_yyerror(lParse, cs!(c"Cannot index a scalar value"));
         return -(1);
     }
@@ -7531,12 +7530,11 @@ fn New_Deref(
         theDim[3] = Dim4;
         theDim[4] = Dim5;
 
-        constant = c_int::from((lParse.Nodes[theVar]).operation == CONST_OP);
+        constant = c_int::from((lParse.Nodes[theVar]).is_const());
         idx = 0;
         while idx < nDim {
-            constant = c_int::from(
-                constant != 0 && (lParse.Nodes[theDim[idx as usize]]).operation == CONST_OP,
-            );
+            constant =
+                c_int::from(constant != 0 && (lParse.Nodes[theDim[idx as usize]]).is_const());
             idx += 1;
         }
         idx = 0;
@@ -8091,9 +8089,9 @@ fn New_GTI(
 
             /* If Node1 is constant (gtifilt_fct) or
             Node1 and Node2 are constant (gtiover_fct), then evaluate now */
-            if ((lParse.Nodes)[Node1 as usize]).operation == CONST_OP
+            if ((lParse.Nodes)[Node1 as usize]).is_const()
                 && (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
-                    || ((lParse.Nodes)[Node2 as usize]).operation == CONST_OP)
+                    || ((lParse.Nodes)[Node2 as usize]).is_const())
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
@@ -8333,8 +8331,8 @@ fn New_REG(
                 .value
                 .data
                 .set_buffer(BufferKind::Opaque, Rgn.cast::<c_void>());
-            if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
-                && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
+            if ((lParse.Nodes)[NodeX as usize]).is_const()
+                && ((lParse.Nodes)[NodeY as usize]).is_const()
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
@@ -8423,7 +8421,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
         i += 1;
     }
 
-    if ((lParse.Nodes)[dimNode as usize]).operation == CONST_OP {
+    if ((lParse.Nodes)[dimNode as usize]).is_const() {
         /* ARRAY(V,n) is a constant integer */
 
         if ((lParse.Nodes)[dimNode as usize]).ntype != ValueSort::Long {
@@ -8534,14 +8532,14 @@ fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
     let mut newCol: c_int = 0;
     let mut nfound: c_int = 0;
 
-    if this.nSubNodes == 0 && this.operation <= 0 && this.operation != CONST_OP {
-        return ((lParse.colData)[(-this.operation) as usize]).colnum;
+    if this.nSubNodes == 0 && this.is_column() {
+        return ((lParse.colData)[this.column() as usize]).colnum;
     }
 
     i = 0;
     while i < this.nSubNodes {
         let that = &(lParse.Nodes)[this.SubNodes[i as usize] as usize];
-        if that.operation > 0 {
+        if that.is_computed() {
             newCol = Locate_Col(lParse, that);
             if newCol <= 0 {
                 nfound += -newCol;
@@ -8551,9 +8549,9 @@ fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
             } else if col != newCol {
                 nfound += 1;
             }
-        } else if that.operation != CONST_OP {
+        } else if !that.is_const() {
             /*  Found a Column  */
-            newCol = ((lParse.colData)[(-that.operation) as usize]).colnum;
+            newCol = ((lParse.colData)[that.column() as usize]).colnum;
             if nfound == 0 {
                 col = newCol;
                 nfound += 1;
@@ -8652,8 +8650,8 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
         rowOffset = firstRow - lParse.firstDataRow;
         i = 0;
         while i < lParse.nNodes {
-            if !(((lParse.Nodes)[i as usize]).operation > 0
-                || ((lParse.Nodes)[i as usize]).operation == CONST_OP)
+            if !(((lParse.Nodes)[i as usize]).is_computed()
+                || ((lParse.Nodes)[i as usize]).is_const())
             {
                 column = -((lParse.Nodes)[i as usize]).operation;
                 offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
@@ -8735,7 +8733,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
         return;
     }
 
-    if (lParse.Nodes)[thisNode as usize].operation > 0 {
+    if (lParse.Nodes)[thisNode as usize].is_computed() {
         /* <=0 indicate constants and columns */
         i = ((lParse.Nodes)[thisNode as usize]).nSubNodes;
         loop {
@@ -8896,7 +8894,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
         let (this_node, that_node) =
             get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
-        if that_node.operation == CONST_OP {
+        if that_node.is_const() {
             /* Operating on a constant! */
             match (this_node).operation {
                 x if x == fits_parser_yytokentype::DOUBLE as c_int
@@ -9149,7 +9147,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
 
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
 
-        if (lParse.Nodes[that_idx]).operation > 0 {
+        if (lParse.Nodes[that_idx]).is_computed() {
             free((lParse.Nodes[that_idx]).value.data.raw());
         }
     }
@@ -9456,8 +9454,8 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
-        const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
+        const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
+        const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
         sptr1 = if const1 != 0 {
             (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
@@ -9633,7 +9631,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
+        if (lParse.Nodes[that1_idx]).is_computed() {
             free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
             free(
                 (lParse.Nodes[that1_idx])
@@ -9643,7 +9641,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                     .cast::<c_void>(),
             );
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
+        if (lParse.Nodes[that2_idx]).is_computed() {
             free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
             free(
                 (lParse.Nodes[that2_idx])
@@ -9672,8 +9670,8 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
-        const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
+        const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
+        const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
         sptr1 = if const1 != 0 {
             (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
@@ -9974,7 +9972,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
+        if (lParse.Nodes[that1_idx]).is_computed() {
             free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
             free(
                 (lParse.Nodes[that1_idx])
@@ -9984,7 +9982,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                     .cast::<c_void>(),
             );
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
+        if (lParse.Nodes[that2_idx]).is_computed() {
             free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
             free(
                 (lParse.Nodes[that2_idx])
@@ -10012,13 +10010,13 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
             val1 = (lParse.Nodes[that1_idx]).value.data.log();
         }
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
@@ -10226,10 +10224,10 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
+        if (lParse.Nodes[that1_idx]).is_computed() {
             free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
+        if (lParse.Nodes[that2_idx]).is_computed() {
             free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
@@ -10249,7 +10247,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
 
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
 
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
@@ -10257,7 +10255,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             val1 = (lParse.Nodes[that1_idx]).value.data.lng();
         }
 
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
@@ -10542,10 +10540,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
+        if (lParse.Nodes[that1_idx]).is_computed() {
             free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
+        if (lParse.Nodes[that2_idx]).is_computed() {
             free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
@@ -10587,14 +10585,14 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
             val1 = (lParse.Nodes[that1_idx]).value.data.dbl();
         }
 
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
@@ -10855,10 +10853,10 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                 nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
+        if (lParse.Nodes[that1_idx]).is_computed() {
             free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
+        if (lParse.Nodes[that2_idx]).is_computed() {
             free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
@@ -11016,8 +11014,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 break;
             }
             theParams[i as usize] = (lParse.Nodes[this_node_idx]).SubNodes[i as usize] as usize;
-            vector[i as usize] =
-                c_int::from((lParse.Nodes[theParams[i as usize]]).operation != CONST_OP);
+            vector[i as usize] = c_int::from(!(lParse.Nodes[theParams[i as usize]]).is_const());
             if vector[i as usize] != 0 {
                 allConst = 0;
                 vector[i as usize] = (lParse.Nodes[theParams[i as usize]]).value.nelem as c_int;
@@ -11608,7 +11605,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     },
                     funcOp::POIRND_FCT => {
                         if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
-                            if (lParse.Nodes[theParams[0]]).operation == CONST_OP {
+                            if (lParse.Nodes[theParams[0]]).is_const() {
                                 loop {
                                     let fresh58 = elem;
                                     elem -= 1;
@@ -11661,7 +11658,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).operation == CONST_OP {
+                        } else if (lParse.Nodes[theParams[0]]).is_const() {
                             loop {
                                 let fresh60 = elem;
                                 elem -= 1;
@@ -14172,12 +14169,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         _ => {}
                     },
                     funcOp::STRMID_FCT => {
-                        let strconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
-                        let posconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[1]]).operation == CONST_OP);
-                        let lenconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[2]]).operation == CONST_OP);
+                        let strconst: c_int = c_int::from((lParse.Nodes[theParams[0]]).is_const());
+                        let posconst: c_int = c_int::from((lParse.Nodes[theParams[1]]).is_const());
+                        let lenconst: c_int = c_int::from((lParse.Nodes[theParams[2]]).is_const());
                         let dest_len: c_int = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                         let mut src_len: c_int = (lParse.Nodes[theParams[0]]).value.nelem as c_int;
                         loop {
@@ -14252,10 +14246,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     funcOp::STRPOS_FCT => {
-                        let const1: c_int =
-                            c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
-                        let const2: c_int =
-                            c_int::from((lParse.Nodes[theParams[1]]).operation == CONST_OP);
+                        let const1: c_int = c_int::from((lParse.Nodes[theParams[0]]).is_const());
+                        let const2: c_int = c_int::from((lParse.Nodes[theParams[1]]).is_const());
                         loop {
                             let fresh197 = row;
                             row -= 1;
@@ -14317,7 +14309,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             if fresh198 == 0 {
                 break;
             }
-            if (lParse.Nodes[theParams[i as usize]]).operation > 0 {
+            if (lParse.Nodes[theParams[i as usize]]).is_computed() {
                 /*  Currently only numeric params allowed  */
                 free((lParse.Nodes[theParams[i as usize]]).value.data.raw());
             }
@@ -14351,8 +14343,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             i -= 1;
 
             theDims[i as usize] = (lParse.Nodes[this_node_idx]).SubNodes[(i + 1) as usize] as usize;
-            isConst[i as usize] =
-                c_int::from((lParse.Nodes[theDims[i as usize]]).operation == CONST_OP);
+            isConst[i as usize] = c_int::from((lParse.Nodes[theDims[i as usize]]).is_const());
             if isConst[i as usize] != 0 {
                 dimVals[i as usize] = (lParse.Nodes[theDims[i as usize]]).value.data.lng();
             } else {
@@ -14719,7 +14710,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[theVar]).operation > 0 {
+        if (lParse.Nodes[theVar]).is_computed() {
             if (lParse.Nodes[theVar]).ntype == ValueSort::String
                 || (lParse.Nodes[theVar]).ntype == ValueSort::Bits
             {
@@ -14730,7 +14721,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
         }
         i = 0;
         while i < nDims {
-            if (lParse.Nodes[theDims[i as usize]]).operation > 0 {
+            if (lParse.Nodes[theDims[i as usize]]).is_computed() {
                 free((lParse.Nodes[theDims[i as usize]]).value.data.raw());
             }
             i += 1;
@@ -14759,7 +14750,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         start = (lParse.Nodes[theTimes]).value.data.dbl_buf();
         stop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize);
         ordered = c_int::from((lParse.Nodes[theTimes]).gtiOrdered);
-        if (lParse.Nodes[theExpr]).operation == CONST_OP {
+        if (lParse.Nodes[theExpr]).is_const() {
             gti = Search_GTI(
                 (lParse.Nodes[theExpr]).value.data.dbl(),
                 nGTI,
@@ -14846,7 +14837,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[theExpr]).operation > 0 {
+        if (lParse.Nodes[theExpr]).is_computed() {
             free((lParse.Nodes[theExpr]).value.data.raw());
         }
     }
@@ -14874,9 +14865,7 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
         gtiStart = (lParse.Nodes[theTimes]).value.data.dbl_buf(); /* GTI start */
         gtiStop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize); /* GTI stop */
-        if (lParse.Nodes[theStart]).operation == CONST_OP
-            && (lParse.Nodes[theStop]).operation == CONST_OP
-        {
+        if (lParse.Nodes[theStart]).is_const() && (lParse.Nodes[theStop]).is_const() {
             (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(GTI_Over(
                 (lParse.Nodes[theStart]).value.data.dbl(),
                 (lParse.Nodes[theStop]).value.data.dbl(),
@@ -14891,10 +14880,10 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
             let mut undefStop: c_char = 0; /* Input values are undef? */
             let mut uStart: c_double = 0.0;
             let mut uStop: c_double = 0.0; /* User start/stop values */
-            if (lParse.Nodes[theStart]).operation == CONST_OP {
+            if (lParse.Nodes[theStart]).is_const() {
                 uStart = (lParse.Nodes[theStart]).value.data.dbl();
             }
-            if (lParse.Nodes[theStop]).operation == CONST_OP {
+            if (lParse.Nodes[theStop]).is_const() {
                 uStop = (lParse.Nodes[theStop]).value.data.dbl();
             }
 
@@ -14913,12 +14902,12 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh206 == 0 {
                             break;
                         }
-                        if (lParse.Nodes[theStart]).operation != CONST_OP {
+                        if !(lParse.Nodes[theStart]).is_const() {
                             undefStart =
                                 *((lParse.Nodes[theStart]).value.undef).offset(elem as isize);
                             uStart = *evtStart.offset(elem as isize);
                         }
-                        if (lParse.Nodes[theStop]).operation != CONST_OP {
+                        if !(lParse.Nodes[theStop]).is_const() {
                             undefStop =
                                 *((lParse.Nodes[theStop]).value.undef).offset(elem as isize);
                             uStop = *evtStop.offset(elem as isize);
@@ -14967,10 +14956,10 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[theStart]).operation > 0 {
+        if (lParse.Nodes[theStart]).is_computed() {
             free((lParse.Nodes[theStart]).value.data.raw());
         }
-        if (lParse.Nodes[theStop]).operation > 0 {
+        if (lParse.Nodes[theStop]).is_computed() {
             free((lParse.Nodes[theStop]).value.data.raw());
         }
     }
@@ -15164,13 +15153,13 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
         let theX = (lParse.Nodes[this_node_idx]).SubNodes[1];
         let theY = (lParse.Nodes[this_node_idx]).SubNodes[2];
 
-        Xvector = c_int::from((lParse.Nodes[theX]).operation != CONST_OP);
+        Xvector = c_int::from(!(lParse.Nodes[theX]).is_const());
         if Xvector != 0 {
             Xvector = (lParse.Nodes[theX]).value.nelem as c_int;
         } else {
             Xval = (lParse.Nodes[theX]).value.data.dbl();
         }
-        Yvector = c_int::from((lParse.Nodes[theY]).operation != CONST_OP);
+        Yvector = c_int::from(!(lParse.Nodes[theY]).is_const());
         if Yvector != 0 {
             Yvector = (lParse.Nodes[theY]).value.nelem as c_int;
         } else {
@@ -15260,10 +15249,10 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[theX]).operation > 0 {
+        if (lParse.Nodes[theX]).is_computed() {
             free((lParse.Nodes[theX]).value.data.raw());
         }
-        if (lParse.Nodes[theY]).operation > 0 {
+        if (lParse.Nodes[theY]).is_computed() {
             free((lParse.Nodes[theY]).value.data.raw());
         }
     }
@@ -15367,7 +15356,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                 let (this_node, that_node) =
                     get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_node_idx);
 
-                if that_node.operation == CONST_OP {
+                if that_node.is_const() {
                     idx = lParse.nRows * (this_node).value.nelem + offset;
                     loop {
                         idx -= (this_node).value.nelem;
@@ -15474,7 +15463,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
             get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
         if lParse.status == 0 {
-            if (that_node).operation == CONST_OP {
+            if (that_node).is_const() {
                 idx = lParse.nRows * this_node.value.nelem + offset;
                 loop {
                     let fresh214 = idx;
@@ -15567,7 +15556,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
 
-            if ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]]).operation > 0 {
+            if ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]]).is_computed() {
                 free(
                     ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]])
                         .value
