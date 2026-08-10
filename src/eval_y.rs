@@ -7688,24 +7688,33 @@ fn read_gti_intervals(
     Some((times, ordered))
 }
 
-fn New_GTI(
+/// A GTI's row count, and its intervals when it has any.
+///
+/// The intervals are the starts followed by the stops, with a flag saying
+/// whether they are fully time-ordered.
+type GtiData = (c_long, Option<(Vec<c_double>, bool)>);
+
+/// Open a GTI file, find its START/STOP columns and read the intervals.
+///
+/// Everything `New_GTI` does to the file, with no node in sight: the caller
+/// gets the row count and the intervals back and decides what to build from
+/// them. Splitting it out is only possible because the file work was first
+/// gathered into one run -- it used to sit either side of the node building.
+///
+/// Returns `None` with `lParse.status` set on failure, and `nrows == 0` with
+/// no intervals for an empty GTI.
+fn load_gti(
     lParse: &mut ParseData,
     Op: funcOp,
     mut fname: *mut c_char,
-    mut Node1: c_int,
-    mut Node2: c_int,
     start: *mut c_char,
     stop: *mut c_char,
-) -> c_int {
+) -> Option<GtiData> {
     unsafe {
         let mut fptr: *mut fitsfile = core::ptr::null_mut();
-        let this_node_idx: usize;
-        let mut type_0: c_int = 0;
         let mut i: c_int = 0;
-        let mut n: c_int = 0;
         let mut startCol: c_int = 0;
         let mut stopCol: c_int = 0;
-        let mut Node0: c_int = 0;
         let mut hdutype: c_int = 0;
         let mut hdunum: c_int = 0;
         let mut evthdu: c_int = 0;
@@ -7719,46 +7728,6 @@ fn New_GTI(
         let mut timeZeroF: [c_double; 2] = [0.; 2];
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
-        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
-
-        if (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
-            || Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint)
-            && Node1 == -99
-        {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
-            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                Node1 = New_Column(lParse, colVal.lng() as c_int);
-            } else {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
-                );
-                return -(1);
-            }
-        }
-
-        if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
-            if Node1 == -99 || Node2 == -99 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
-                );
-                return -(1);
-            }
-            /* Also case TIME_STOP to double precision */
-            Node2 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node2);
-            if Node2 < 0 {
-                return -(1);
-            }
-        }
-
-        /* Type cast TIME to double precision */
-        Node1 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node1);
-        Node0 = Alloc_Node(lParse); /* This will hold the START/STOP times */
-
-        if Node1 < 0 || Node0 < 0 {
-            return -(1);
-        }
 
         /*  Record current HDU number in case we need to move within this file  */
 
@@ -7826,11 +7795,11 @@ fn New_GTI(
                             lParse,
                             cs!(c"Cannot use primary array for GTI filter"),
                         );
-                        return -(1);
+                        return None;
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"File extension specifier lacks closing ']'"));
-                    return -(1);
+                    return None;
                 }
             }
             b'+' => {
@@ -7844,7 +7813,7 @@ fn New_GTI(
                         lParse,
                         cs!(c"Cannot use primary array for GTI filter / GTIFIND"),
                     );
-                    return -(1);
+                    return None;
                 }
             }
             _ => {
@@ -7867,7 +7836,7 @@ fn New_GTI(
         }
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  If at primary, search for GTI extension  */
@@ -7894,7 +7863,7 @@ fn New_GTI(
                 if lParse.status == 107 as c_int {
                     fits_parser_yyerror(lParse, cs!(c"GTI extension not found in this file"));
                 }
-                return -(1);
+                return None;
             }
         }
 
@@ -7917,7 +7886,7 @@ fn New_GTI(
         );
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  Look for TIMEZERO keywords in GTI extension  */
@@ -7940,10 +7909,10 @@ fn New_GTI(
         resolving the TIME column touches only the file -- which is what lets
         the navigation be lifted out on its own. */
         if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
-            return -(1);
+            return None;
         }
         let gti = if nrows != 0 {
-            let Some(read) = read_gti_intervals(
+            Some(read_gti_intervals(
                 lParse,
                 fptr,
                 startCol,
@@ -7952,14 +7921,97 @@ fn New_GTI(
                 &timeZeroI,
                 &timeZeroF,
                 Op == funcOp::GTIOVER_FCT,
-            ) else {
-                return -(1);
-            };
-            Some(read)
+            )?)
         } else {
             None
         };
 
+        /*  Restore the original HDU, or close the file we opened  */
+        if samefile != 0 {
+            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
+        } else {
+            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
+        }
+
+        Some((nrows, gti))
+    }
+}
+
+fn New_GTI(
+    lParse: &mut ParseData,
+    Op: funcOp,
+    fname: *mut c_char,
+    mut Node1: c_int,
+    mut Node2: c_int,
+    start: *mut c_char,
+    stop: *mut c_char,
+) -> c_int {
+    unsafe {
+        let fptr: *mut fitsfile = core::ptr::null_mut();
+        let this_node_idx: usize;
+        let mut type_0: c_int = 0;
+        let mut i: c_int = 0;
+        let mut n: c_int = 0;
+        let startCol: c_int = 0;
+        let stopCol: c_int = 0;
+        let mut Node0: c_int = 0;
+        let hdutype: c_int = 0;
+        let hdunum: c_int = 0;
+        let evthdu: c_int = 0;
+        let samefile: c_int = 0;
+        let extvers: c_int = 0;
+        let movetotype: c_int = 0;
+        let tstat: c_int = 0;
+        let extname: [c_char; 100] = [0; 100];
+        let nrows: c_long = 0;
+        let timeZeroI: [c_double; 2] = [0.; 2];
+        let timeZeroF: [c_double; 2] = [0.; 2];
+        let xcol: [c_char; 20] = [0; 20];
+        let xexpr: [c_char; 20] = [0; 20];
+        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
+
+        if (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
+            || Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint)
+            && Node1 == -99
+        {
+            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
+            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
+                Node1 = New_Column(lParse, colVal.lng() as c_int);
+            } else {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
+                );
+                return -(1);
+            }
+        }
+
+        if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
+            if Node1 == -99 || Node2 == -99 {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
+                );
+                return -(1);
+            }
+            /* Also case TIME_STOP to double precision */
+            Node2 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node2);
+            if Node2 < 0 {
+                return -(1);
+            }
+        }
+
+        /* Type cast TIME to double precision */
+        Node1 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node1);
+        Node0 = Alloc_Node(lParse); /* This will hold the START/STOP times */
+
+        if Node1 < 0 || Node0 < 0 {
+            return -(1);
+        }
+
+        let Some((nrows, gti)) = load_gti(lParse, Op, fname, start, stop) else {
+            return -(1);
+        };
         n = Alloc_Node(lParse);
         if n >= 0 {
             this_node_idx = n as usize;
@@ -8050,11 +8102,6 @@ fn New_GTI(
             }
         }
 
-        if samefile != 0 {
-            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
-        } else {
-            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
-        }
         n
     }
 }
