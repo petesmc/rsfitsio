@@ -479,6 +479,53 @@ impl Operator {
     }
 }
 
+/// A unary operation, as `Node::operation` stores it.
+///
+/// `Do_Unary` handles five things: the three type conversions, negation and
+/// logical not. Two of the conversions have two codes each -- the sort token
+/// and the explicit cast the grammar writes for `(int)` and `(float)` -- which
+/// is why the C tested `case DOUBLE: case FLTCAST:` together. They are one
+/// operation with two spellings, so they are one variant here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnaryOp {
+    /// `DOUBLE` or `FLTCAST`.
+    ToDouble,
+    /// `LONG` or `INTCAST`.
+    ToLong,
+    ToBoolean,
+    /// `UMINUS`.
+    Negate,
+    /// `NOT`.
+    Not,
+}
+
+impl UnaryOp {
+    /// The unary operation stored in [`Node::operation`], if it is one.
+    ///
+    /// Unlike the binary and function conversions this returns an `Option`:
+    /// `Do_Unary`'s constant-folding switch has a `default:` that falls through
+    /// silently, so an unrecognised code is a case the C tolerates rather than
+    /// a node-building bug.
+    pub(crate) fn from_operation(op: c_int) -> Option<UnaryOp> {
+        Some(match op {
+            x if x == fits_parser_yytokentype::DOUBLE as c_int
+                || x == fits_parser_yytokentype::FLTCAST as c_int =>
+            {
+                UnaryOp::ToDouble
+            }
+            x if x == fits_parser_yytokentype::LONG as c_int
+                || x == fits_parser_yytokentype::INTCAST as c_int =>
+            {
+                UnaryOp::ToLong
+            }
+            x if x == fits_parser_yytokentype::BOOLEAN as c_int => UnaryOp::ToBoolean,
+            x if x == fits_parser_yytokentype::UMINUS as c_int => UnaryOp::Negate,
+            x if x == fits_parser_yytokentype::NOT as c_int => UnaryOp::Not,
+            _ => return None,
+        })
+    }
+}
+
 const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
 #[derive(Copy, Clone)]
@@ -8960,10 +9007,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
 
         if that_node.is_const() {
             /* Operating on a constant! */
-            match (this_node).operation {
-                x if x == fits_parser_yytokentype::DOUBLE as c_int
-                    || x == fits_parser_yytokentype::FLTCAST as c_int =>
-                {
+            match UnaryOp::from_operation((this_node).operation) {
+                Some(UnaryOp::ToDouble) => {
                     if that_node.ntype == ValueSort::Long {
                         (this_node).value.data =
                             NodeValue::Double(that_node.value.data.lng() as c_double);
@@ -8976,9 +9021,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             });
                     }
                 }
-                x if x == fits_parser_yytokentype::LONG as c_int
-                    || x == fits_parser_yytokentype::INTCAST as c_int =>
-                {
+                Some(UnaryOp::ToLong) => {
                     if that_node.ntype == ValueSort::Double {
                         (this_node).value.data =
                             NodeValue::Long(that_node.value.data.dbl() as c_long);
@@ -8991,7 +9034,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             });
                     }
                 }
-                x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
+                Some(UnaryOp::ToBoolean) => {
                     if that_node.ntype == ValueSort::Double {
                         (this_node).value.data =
                             NodeValue::Logical(if that_node.value.data.dbl() != 0.0 {
@@ -9008,14 +9051,14 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             });
                     }
                 }
-                x if x == fits_parser_yytokentype::UMINUS as c_int => {
+                Some(UnaryOp::Negate) => {
                     if that_node.ntype == ValueSort::Double {
                         (this_node).value.data = NodeValue::Double(-that_node.value.data.dbl());
                     } else if that_node.ntype == ValueSort::Long {
                         (this_node).value.data = NodeValue::Long(-that_node.value.data.lng());
                     }
                 }
-                x if x == fits_parser_yytokentype::NOT as c_int => {
+                Some(UnaryOp::Not) => {
                     if that_node.ntype == ValueSort::Boolean {
                         (this_node).value.data =
                             NodeValue::Logical(if that_node.value.data.log() == 0 {
@@ -9055,8 +9098,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 elem = lParse.nRows * (this_node).value.nelem;
-                match (this_node).operation.into() {
-                    fits_parser_yytokentype::BOOLEAN => {
+                match UnaryOp::from_operation((this_node).operation) {
+                    Some(UnaryOp::ToBoolean) => {
                         if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh23 = elem;
@@ -9090,7 +9133,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::DOUBLE | fits_parser_yytokentype::FLTCAST => {
+                    Some(UnaryOp::ToDouble) => {
                         if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh25 = elem;
@@ -9121,7 +9164,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::LONG | fits_parser_yytokentype::INTCAST => {
+                    Some(UnaryOp::ToLong) => {
                         if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh27 = elem;
@@ -9152,7 +9195,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::UMINUS => {
+                    Some(UnaryOp::Negate) => {
                         if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh29 = elem;
@@ -9175,7 +9218,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::NOT => {
+                    Some(UnaryOp::Not) => {
                         if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh31 = elem;
