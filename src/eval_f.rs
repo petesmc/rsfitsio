@@ -275,7 +275,7 @@ pub fn fffrow_safe(
 /// files are the same, delete the FALSE rows (preserve the TRUE rows).
 /// Can copy rows between extensions of the same file, *BUT* if output
 /// extension is before the input extension, the second extension *MUST* be
-/// opened using ffreopen, so that CFITSIO can handle changing file lengths
+/// opened using ffreopen, so that CFITSIO can handle changing file lengths.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffsrow(
     infptr: *mut fitsfile,  /* I - Input FITS file                      */
@@ -1273,7 +1273,7 @@ pub fn ffcalc_rng_safe(
 }
 
 /*--------------------------------------------------------------------------*/
-/// Evaluate the given expression and return information on the (*result).
+/// Evaluate the given expression and return information on the result.      
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftexp(
     fptr: *mut fitsfile,  /* I - Input FITS file                     */
@@ -2073,6 +2073,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             }
                         }
                         TBIT | TLOGICAL => {
+                            /*  Fall through to TBYTE  */
                             if constant != 0 {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
@@ -2290,6 +2291,8 @@ pub(crate) fn fits_parser_workfn_safe(
         lParse.status /* return successful status */
     }
 }
+
+/*  Internal routines needed to allow the evaluator to operate on FITS data  */
 
 /***********************************************************************/
 /// Setup the varData array in gParse to contain the fits column data.
@@ -3900,7 +3903,10 @@ pub unsafe extern "C" fn fits_pixel_filter(
     }
 }
 
+/*--------------------------------------------------------------------------*/
 /// Apply pixel filtering operations (safe version)
+/* Evaluate an expression using the data in the input FITS file(s)          */
+/*--------------------------------------------------------------------------*/
 pub fn fits_pixel_filter_safer(
     filter: &mut PixelFilter, /* I - pixel filter structure */
     status: &mut c_int,       /* IO - error status */
@@ -4021,8 +4027,8 @@ pub fn fits_pixel_filter_safer(
         }
 
         if info.datatype == TDOUBLE {
-            // for floating point expressions, set the default output image to
-            // bitpix = -32 (float) unless the default is already a double
+            /*  for floating point expressions, set the default output image to
+            bitpix = -32 (float) unless the default is already a double */
             if bitpix != DOUBLE_IMG {
                 bitpix = FLOAT_IMG;
             }
@@ -4343,6 +4349,12 @@ fn set_image_col_types(
             if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
                 varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
                 colIter.datatype = TLONG;
+            /*    Reading an unsigned long column as a long can cause overflow errors.
+            Treat the column as a double instead.
+            } else if (tscale == 1.0 &&  tzero == 2147483648.0 ) {
+                varInfo->type     = LONG;
+                colIter->datatype = TULONG;
+             */
             } else {
                 varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
                 colIter.datatype = TDOUBLE;

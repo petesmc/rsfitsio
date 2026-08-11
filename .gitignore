@@ -29,3 +29,10 @@ CLAUDE.md
 .mcp.json
 /.claude
 TRANSPILING.md
+BUGS_TO_FIX.md
+TEST_CONVERSION.md
+
+# Scratch directories from the iraffits tests. They are tempfile::TempDir
+# created in the repo root on purpose -- an IRAF header card truncates long
+# paths -- so they clean themselves up, unless the test process dies first.
+rsfitsio-iraf-*
