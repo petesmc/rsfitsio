@@ -64,7 +64,7 @@ use crate::fitscore::{
     ffcmrk_safe, ffcrhd_safe, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
     ffgisz_safe, ffgkcl_safe, ffmahd_safe, ffpmrk_safe, ffpmsg_cstr, ffpmsg_slice, ffpmsg_str,
     ffpsvc_safe, ffpxsz, ffrdef_safe, fits_is_compressed_image_safe, fits_strcasecmp,
-    fits_strncasecmp, fits_translate_keywords_safer,
+    fits_strncasecmp, fits_translate_keywords_safe,
 };
 use crate::getkey::{ffdtdm_safe, ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgrec_safe};
 use crate::modkey::{ffikyj_safe, ffucrd_safe};
@@ -752,7 +752,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
 
         let dims = slice::from_raw_parts_mut(dims, ndim as usize);
 
-        fits_get_tile_dim_safer(fptr, ndim, dims, status)
+        fits_get_tile_dim_safe(fptr, ndim, dims, status)
     }
 }
 
@@ -761,7 +761,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
-pub unsafe fn fits_get_tile_dim_safer(
+pub fn fits_get_tile_dim_safe(
     fptr: &mut fitsfile, /* I - FITS file pointer             */
     ndim: c_int,         /* number of dimensions in the compressed image      */
     dims: &mut [c_long], /* size of image compression tile in each dimension  */
@@ -1323,7 +1323,7 @@ pub fn fits_img_compress_safe(
     }
 
     /* Copy the image header keywords to the table header. */
-    if unsafe { imcomp_copy_img2comp(infptr, outfptr, status) } > 0 {
+    if imcomp_copy_img2comp(infptr, outfptr, status) > 0 {
         return *status;
     }
 
@@ -3280,7 +3280,7 @@ fn imcomp_write_nocompress_tile(
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
 /// Note that the calling routine must have allocated the input array big enough
 /// to be able to do this.
-unsafe fn imcomp_convert_tile_tshort(
+fn imcomp_convert_tile_tshort(
     outfptr: &mut fitsfile,
     tiledata: &mut [u8],
     tilelen: c_long,
@@ -3799,7 +3799,7 @@ fn imcomp_convert_tile_tsbyte(
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
 /// Note that the calling routine must have allocated the input array big enough
 /// to be able to do this.
-unsafe fn imcomp_convert_tile_tfloat(
+fn imcomp_convert_tile_tfloat(
     outfptr: &mut fitsfile,
     row: c_long,
     tiledata: &mut [u8],
@@ -5424,90 +5424,88 @@ pub unsafe extern "C" fn fits_img_decompress(
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_img_decompress_safer(infptr, outfptr, status)
+        fits_img_decompress_safe(infptr, outfptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// This routine decompresses the whole image and writes it to the output file.
-pub unsafe fn fits_img_decompress_safer(
+pub fn fits_img_decompress_safe(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut datatype: c_int = 0;
-        let mut nullcheck: NullCheckType = NullCheckType::None;
-        let mut anynul: c_int = 0;
-        let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut fnulval: f32 = 0.0;
-        let mut dnulval: f64 = 0.0;
+    let mut datatype: c_int = 0;
+    let mut nullcheck: NullCheckType = NullCheckType::None;
+    let mut anynul: c_int = 0;
+    let mut fpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lpixel: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut inc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut fnulval: f32 = 0.0;
+    let mut dnulval: f64 = 0.0;
 
-        if fits_img_decompress_header_safer(infptr, outfptr, status) > 0 {
-            return *status;
-        }
-
-        /* force a rescan of the output header keywords, then reset the scaling */
-        /* in case the BSCALE and BZERO keywords are present, so that the       */
-        /* decompressed values won't be scaled when written to the output image */
-        ffrdef_safe(outfptr, status);
-        ffpscl_safe(outfptr, 1.0, 0.0, status);
-        ffpscl_safe(infptr, 1.0, 0.0, status);
-
-        /* initialize; no null checking is needed for integer images */
-        nullcheck = NullCheckType::None;
-        let mut nulladdr = NullValue::Float(fnulval);
-
-        /* determine datatype for image */
-        if (infptr.Fptr).zbitpix == BYTE_IMG {
-            datatype = TBYTE;
-        } else if (infptr.Fptr).zbitpix == SHORT_IMG {
-            datatype = TSHORT;
-        } else if (infptr.Fptr).zbitpix == LONG_IMG {
-            datatype = TINT;
-        } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
-            /* In the case of float images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            fnulval = FLOATNULLVALUE;
-            nulladdr = NullValue::Float(fnulval);
-            datatype = TFLOAT;
-        } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
-            /* In the case of double images we must check for NaNs  */
-            nullcheck = NullCheckType::SetPixel;
-            dnulval = DOUBLENULLVALUE;
-            nulladdr = NullValue::Double(dnulval);
-            datatype = TDOUBLE;
-        }
-
-        /* calculate size of the image (in pixels) */
-        // let mut imgsize = 1;
-        for ii in 0..((infptr.Fptr).zndim as usize) {
-            // imgsize *= (infptr.Fptr).znaxis[ii];
-            fpixel[ii] = 1; /* Set first and last pixel to */
-            lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
-            inc[ii] = 1;
-        }
-
-        /* uncompress the input image and write to output image, one tile at a time
-         */
-
-        fits_read_write_compressed_img(
-            infptr,
-            datatype,
-            &fpixel,
-            &lpixel,
-            &inc,
-            nullcheck,
-            &Some(nulladdr),
-            Some(&mut anynul),
-            outfptr,
-            status,
-        );
-
-        *status
+    if fits_img_decompress_header_safe(infptr, outfptr, status) > 0 {
+        return *status;
     }
+
+    /* force a rescan of the output header keywords, then reset the scaling */
+    /* in case the BSCALE and BZERO keywords are present, so that the       */
+    /* decompressed values won't be scaled when written to the output image */
+    ffrdef_safe(outfptr, status);
+    ffpscl_safe(outfptr, 1.0, 0.0, status);
+    ffpscl_safe(infptr, 1.0, 0.0, status);
+
+    /* initialize; no null checking is needed for integer images */
+    nullcheck = NullCheckType::None;
+    let mut nulladdr = NullValue::Float(fnulval);
+
+    /* determine datatype for image */
+    if (infptr.Fptr).zbitpix == BYTE_IMG {
+        datatype = TBYTE;
+    } else if (infptr.Fptr).zbitpix == SHORT_IMG {
+        datatype = TSHORT;
+    } else if (infptr.Fptr).zbitpix == LONG_IMG {
+        datatype = TINT;
+    } else if (infptr.Fptr).zbitpix == FLOAT_IMG {
+        /* In the case of float images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        fnulval = FLOATNULLVALUE;
+        nulladdr = NullValue::Float(fnulval);
+        datatype = TFLOAT;
+    } else if (infptr.Fptr).zbitpix == DOUBLE_IMG {
+        /* In the case of double images we must check for NaNs  */
+        nullcheck = NullCheckType::SetPixel;
+        dnulval = DOUBLENULLVALUE;
+        nulladdr = NullValue::Double(dnulval);
+        datatype = TDOUBLE;
+    }
+
+    /* calculate size of the image (in pixels) */
+    // let mut imgsize = 1;
+    for ii in 0..((infptr.Fptr).zndim as usize) {
+        // imgsize *= (infptr.Fptr).znaxis[ii];
+        fpixel[ii] = 1; /* Set first and last pixel to */
+        lpixel[ii] = (infptr.Fptr).znaxis[ii] as LONGLONG; /* include the entire image. */
+        inc[ii] = 1;
+    }
+
+    /* uncompress the input image and write to output image, one tile at a time
+     */
+
+    fits_read_write_compressed_img(
+        infptr,
+        datatype,
+        &fpixel,
+        &lpixel,
+        &inc,
+        nullcheck,
+        &Some(nulladdr),
+        Some(&mut anynul),
+        outfptr,
+        status,
+    );
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5694,103 +5692,123 @@ pub unsafe extern "C" fn fits_img_decompress_header(
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        fits_img_decompress_header_safer(infptr, outfptr, status)
+        fits_img_decompress_header_safe(infptr, outfptr, status)
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// This routine reads the header of the input tile compressed image and
 /// converts it to that of a standard uncompress FITS image.
-pub unsafe fn fits_img_decompress_header_safer(
+pub fn fits_img_decompress_header_safe(
     infptr: &mut fitsfile,  /* image (bintable) to uncompress */
     outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
     status: &mut c_int,     /* IO - error status               */
 ) -> c_int {
-    unsafe {
-        let mut writeprime = false;
-        let mut hdupos: c_int = 0;
-        let mut inhdupos: c_int = 0;
-        let mut numkeys: c_int = 0;
-        let mut nullprime = false;
-        let mut copyprime = false;
-        let mut norec = false;
-        let mut tstatus: c_int = 0;
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut naxis: c_int = 0;
-        let mut bitpix: c_int = 0;
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut writeprime = false;
+    let mut hdupos: c_int = 0;
+    let mut inhdupos: c_int = 0;
+    let mut numkeys: c_int = 0;
+    let mut nullprime = false;
+    let mut copyprime = false;
+    let mut norec = false;
+    let mut tstatus: c_int = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut naxis: c_int = 0;
+    let mut bitpix: c_int = 0;
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        if *status > 0 {
-            return *status;
-        } else if *status == -1 {
-            *status = 0;
-            writeprime = true;
-        }
+    if *status > 0 {
+        return *status;
+    } else if *status == -1 {
+        *status = 0;
+        writeprime = true;
+    }
 
-        if fits_is_compressed_image_safe(infptr, status) == 0 {
-            ffpmsg_str("CHDU is not a compressed image (fits_img_decompress)");
-            *status = DATA_DECOMPRESSION_ERR;
-            return *status;
-        }
+    if fits_is_compressed_image_safe(infptr, status) == 0 {
+        ffpmsg_str("CHDU is not a compressed image (fits_img_decompress)");
+        *status = DATA_DECOMPRESSION_ERR;
+        return *status;
+    }
 
-        /* get information about the state of the output file; does it already */
-        /* contain any keywords and HDUs?  */
-        fits_get_hdu_num(infptr, &mut inhdupos); /* Get the current output HDU position */
-        fits_get_hdu_num(outfptr, &mut hdupos); /* Get the current output HDU position */
-        fits_get_hdrspace(outfptr, Some(&mut numkeys), None, status);
+    /* get information about the state of the output file; does it already */
+    /* contain any keywords and HDUs?  */
+    fits_get_hdu_num(infptr, &mut inhdupos); /* Get the current output HDU position */
+    fits_get_hdu_num(outfptr, &mut hdupos); /* Get the current output HDU position */
+    fits_get_hdrspace(outfptr, Some(&mut numkeys), None, status);
 
-        /* Was the input compressed HDU originally the primary array image? */
-        tstatus = 0;
-        if fits_read_card(infptr, cs!(c"ZSIMPLE"), &mut card, &mut tstatus) == 0 {
-            /* yes, input HDU was a primary array (not an IMAGE extension) */
-            /* Now determine if we can uncompress it into the primary array of */
-            /* the output file.  This is only possible if the output file */
-            /* currently only contains a null primary array, with no addition */
-            /* header keywords and with no following extension in the FITS file. */
+    /* Was the input compressed HDU originally the primary array image? */
+    tstatus = 0;
+    if fits_read_card(infptr, cs!(c"ZSIMPLE"), &mut card, &mut tstatus) == 0 {
+        /* yes, input HDU was a primary array (not an IMAGE extension) */
+        /* Now determine if we can uncompress it into the primary array of */
+        /* the output file.  This is only possible if the output file */
+        /* currently only contains a null primary array, with no addition */
+        /* header keywords and with no following extension in the FITS file. */
 
-            if hdupos == 1 {
-                /* are we positioned at the primary array? */
-                if numkeys == 0 {
-                    /* primary HDU is completely empty */
+        if hdupos == 1 {
+            /* are we positioned at the primary array? */
+            if numkeys == 0 {
+                /* primary HDU is completely empty */
+                nullprime = true;
+            } else {
+                fits_get_img_param(
+                    outfptr,
+                    MAX_COMPRESS_DIM as c_int,
+                    Some(&mut bitpix),
+                    Some(&mut naxis),
+                    Some(&mut naxes),
+                    status,
+                );
+
+                if naxis == 0 {
+                    /* is this a null image? */
                     nullprime = true;
-                } else {
-                    fits_get_img_param(
-                        outfptr,
-                        MAX_COMPRESS_DIM as c_int,
-                        Some(&mut bitpix),
-                        Some(&mut naxis),
-                        Some(&mut naxes),
-                        status,
-                    );
 
-                    if naxis == 0 {
-                        /* is this a null image? */
-                        nullprime = true;
-
-                        if inhdupos == 2 {
-                            /* must be at the first extension */
-                            copyprime = true;
-                        }
+                    if inhdupos == 2 {
+                        /* must be at the first extension */
+                        copyprime = true;
                     }
                 }
             }
         }
+    }
 
-        if nullprime {
-            /* We will delete the existing keywords in the null primary array
-            and uncompress the input image into the primary array of the output.
-            Some of these keywords may be added back to the uncompressed image
-            header later.
-            */
+    if nullprime {
+        /* We will delete the existing keywords in the null primary array
+        and uncompress the input image into the primary array of the output.
+        Some of these keywords may be added back to the uncompressed image
+        header later.
+        */
 
-            for ii in 1..=numkeys {
-                fits_delete_record(outfptr, ii as c_int, status);
+        for ii in 1..=numkeys {
+            fits_delete_record(outfptr, ii as c_int, status);
+        }
+    } else {
+        /* if the ZTENSION keyword doesn't exist, then we have to
+        write the required keywords manually */
+        tstatus = 0;
+        if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
+            /* create an empty output image with the correct dimensions */
+            if ffcrim_safe(
+                outfptr,
+                (infptr.Fptr).zbitpix,
+                (infptr.Fptr).zndim,
+                &(infptr.Fptr).znaxis,
+                status,
+            ) > 0
+            {
+                ffpmsg_str("error creating output decompressed image HDU");
+                return *status;
             }
+
+            norec = true; /* the required keywords have already been written */
         } else {
-            /* if the ZTENSION keyword doesn't exist, then we have to
-            write the required keywords manually */
-            tstatus = 0;
-            if fits_read_card(infptr, cs!(c"ZTENSION"), &mut card, &mut tstatus) != 0 {
+            /* the input compressed image does have ZTENSION keyword */
+
+            if writeprime {
+                /* convert the image extension to a primary array */
+                /* have to write the required keywords manually */
+
                 /* create an empty output image with the correct dimensions */
                 if ffcrim_safe(
                     outfptr,
@@ -5806,85 +5824,63 @@ pub unsafe fn fits_img_decompress_header_safer(
 
                 norec = true; /* the required keywords have already been written */
             } else {
-                /* the input compressed image does have ZTENSION keyword */
+                /* write the input compressed image to an image extension */
 
-                if writeprime {
-                    /* convert the image extension to a primary array */
-                    /* have to write the required keywords manually */
+                if numkeys == 0 {
+                    /* the output file is currently completely empty */
 
-                    /* create an empty output image with the correct dimensions */
-                    if ffcrim_safe(
-                        outfptr,
-                        (infptr.Fptr).zbitpix,
-                        (infptr.Fptr).zndim,
-                        &(infptr.Fptr).znaxis,
-                        status,
-                    ) > 0
-                    {
+                    /* In this case, the input is a compressed IMAGE extension. */
+                    /* Since the uncompressed output file is currently completely empty, */
+                    /* we need to write a null primary array before uncompressing the */
+                    /* image extension */
+
+                    ffcrim_safe(outfptr, 8, 0, &naxes, status); /* naxes is not used */
+
+                    /* now create the empty extension to uncompress into */
+                    if fits_create_hdu(outfptr, status) > 0 {
                         ffpmsg_str("error creating output decompressed image HDU");
                         return *status;
                     }
-
-                    norec = true; /* the required keywords have already been written */
                 } else {
-                    /* write the input compressed image to an image extension */
-
-                    if numkeys == 0 {
-                        /* the output file is currently completely empty */
-
-                        /* In this case, the input is a compressed IMAGE extension. */
-                        /* Since the uncompressed output file is currently completely empty, */
-                        /* we need to write a null primary array before uncompressing the */
-                        /* image extension */
-
-                        ffcrim_safe(outfptr, 8, 0, &naxes, status); /* naxes is not used */
-
-                        /* now create the empty extension to uncompress into */
-                        if fits_create_hdu(outfptr, status) > 0 {
-                            ffpmsg_str("error creating output decompressed image HDU");
-                            return *status;
-                        }
-                    } else {
-                        /* just create a new empty extension, then copy all the required */
-                        /* keywords into it.  */
-                        fits_create_hdu(outfptr, status);
-                    }
+                    /* just create a new empty extension, then copy all the required */
+                    /* keywords into it.  */
+                    fits_create_hdu(outfptr, status);
                 }
             }
         }
-
-        if *status > 0 {
-            ffpmsg_str("error creating output decompressed image HDU");
-            return *status;
-        }
-
-        /* Copy the table header to the image header. */
-
-        if imcomp_copy_comp2img(infptr, outfptr, norec, status) > 0 {
-            ffpmsg_str("error copying header keywords from compressed image");
-        }
-
-        if copyprime {
-            /* append any unexpected keywords from the primary array.
-            This includes any keywords except SIMPLE, BITPIX, NAXIS,
-            EXTEND, COMMENT, HISTORY, CHECKSUM, and DATASUM.
-            */
-
-            fits_movabs_hdu(infptr, 1, None, status); /* move to primary array */
-
-            /* do this so that any new keywords get written before any blank
-            keywords that may have been appended by imcomp_copy_comp2img  */
-            fits_set_hdustruc(outfptr, status);
-
-            if imcomp_copy_prime2img(infptr, outfptr, status) > 0 {
-                ffpmsg_str("error copying primary keywords from compressed file");
-            }
-
-            fits_movabs_hdu(infptr, 2, None, status); /* move back to where we were */
-        }
-
-        *status
     }
+
+    if *status > 0 {
+        ffpmsg_str("error creating output decompressed image HDU");
+        return *status;
+    }
+
+    /* Copy the table header to the image header. */
+
+    if imcomp_copy_comp2img(infptr, outfptr, norec, status) > 0 {
+        ffpmsg_str("error copying header keywords from compressed image");
+    }
+
+    if copyprime {
+        /* append any unexpected keywords from the primary array.
+        This includes any keywords except SIMPLE, BITPIX, NAXIS,
+        EXTEND, COMMENT, HISTORY, CHECKSUM, and DATASUM.
+        */
+
+        fits_movabs_hdu(infptr, 1, None, status); /* move to primary array */
+
+        /* do this so that any new keywords get written before any blank
+        keywords that may have been appended by imcomp_copy_comp2img  */
+        fits_set_hdustruc(outfptr, status);
+
+        if imcomp_copy_prime2img(infptr, outfptr, status) > 0 {
+            ffpmsg_str("error copying primary keywords from compressed file");
+        }
+
+        fits_movabs_hdu(infptr, 2, None, status); /* move back to where we were */
+    }
+
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -6162,7 +6158,7 @@ pub(crate) fn fits_read_compressed_img(
 /// This is similar to fits_read_compressed_img, except that it writes
 /// the pixels to the output image, on a tile by tile basis instead of returning
 /// the array.
-unsafe fn fits_read_write_compressed_img(
+fn fits_read_write_compressed_img(
     fptr: &mut fitsfile,            /* I - FITS file pointer      */
     datatype: c_int,                /* I - datatype of the array to be returned      */
     infpixel: &[LONGLONG],          /* I - 'bottom left corner' of the subsection    */
@@ -7378,162 +7374,150 @@ fn imcomp_copy_imheader(
 /*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the uncompressed input image
 /// and to the compressed image (in a binary table)
-unsafe fn imcomp_copy_img2comp(
+fn imcomp_copy_img2comp(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        /* a header record */
-        let mut card2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
-        let mut nkeys: c_int = 0;
-        let mut nmore: c_int = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    /* a header record */
+    let mut card2: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut nkeys: c_int = 0;
+    let mut nmore: c_int = 0;
 
-        let mut tstatus: c_int = 0;
-        let mut bitpix: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut bitpix: c_int = 0;
 
-        /* tile compressed image keyword translation table  */
-        /*                        INPUT      OUTPUT  */
-        /*                       01234567   01234567 */
-        let _patterns: [[&[u8]; 2]; 12] = [
-            [b"SIMPLE\0", b"ZSIMPLE\0"],
-            [b"XTENSION\0", b"ZTENSION\0"],
-            [b"BITPIX\0", b"ZBITPIX\0"],
-            [b"NAXIS\0", b"ZNAXIS\0"],
-            [b"NAXISm\0", b"ZNAXISm\0"],
-            [b"EXTEND\0", b"ZEXTEND\0"],
-            [b"BLOCKED\0", b"ZBLOCKED\0"],
-            [b"PCOUNT\0", b"ZPCOUNT\0"],
-            [b"GCOUNT\0", b"ZGCOUNT\0"],
-            [b"CHECKSUM\0", b"ZHECKSUM\0"], /* save original checksums */
-            [b"DATASUM\0", b"ZDATASUM\0"],
-            [b"*\0", b"+\0"],
-        ]; /* copy all other keywords */
+    /* tile compressed image keyword translation table  */
+    /*                        INPUT      OUTPUT  */
+    /*                       01234567   01234567 */
+    let patterns: [[&CStr; 2]; 12] = [
+        [c"SIMPLE", c"ZSIMPLE"],
+        [c"XTENSION", c"ZTENSION"],
+        [c"BITPIX", c"ZBITPIX"],
+        [c"NAXIS", c"ZNAXIS"],
+        [c"NAXISm", c"ZNAXISm"],
+        [c"EXTEND", c"ZEXTEND"],
+        [c"BLOCKED", c"ZBLOCKED"],
+        [c"PCOUNT", c"ZPCOUNT"],
+        [c"GCOUNT", c"ZGCOUNT"],
+        [c"CHECKSUM", c"ZHECKSUM"], /* save original checksums */
+        [c"DATASUM", c"ZDATASUM"],
+        [c"*", c"+"],
+    ]; /* copy all other keywords */
 
-        let patterns = _patterns
-            .iter()
-            .map(|x| {
-                [
-                    CStr::from_bytes_with_nul_unchecked(x[0]),
-                    CStr::from_bytes_with_nul_unchecked(x[1]),
-                ]
-            })
-            .collect::<Vec<_>>();
+    let mut npat: c_int = 0;
 
-        let mut npat: c_int = 0;
+    if *status > 0 {
+        return *status;
+    }
 
-        if *status > 0 {
-            return *status;
+    /* write a default EXTNAME keyword if it doesn't exist in input file*/
+    fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, status);
+
+    if *status != 0 {
+        *status = 0;
+        strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"));
+        fits_write_record(outfptr, &card, status);
+    }
+
+    /* copy all the keywords from the input file to the output */
+    npat = patterns.len() as c_int;
+    fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+
+    if (outfptr.Fptr).request_lossy_int_compress != 0 {
+        /* request was made to compress integer images as if they had float pixels. */
+        /* If input image has positive bitpix value, then reset the output ZBITPIX */
+        /* value to -32. */
+
+        fits_read_key(
+            infptr,
+            crate::KeywordDatatypeMut::TINT(&mut bitpix),
+            cs!(c"BITPIX"),
+            None,
+            status,
+        );
+
+        if *status <= 0 && bitpix > 0 {
+            fits_modify_key_lng(outfptr, cs!(c"ZBITPIX"), -32, None, status);
+
+            /* also delete the BSCALE, BZERO, and BLANK keywords */
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BSCALE"), &mut tstatus);
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BZERO"), &mut tstatus);
+            tstatus = 0;
+            fits_delete_key(outfptr, cs!(c"BLANK"), &mut tstatus);
         }
+    }
 
-        /* write a default EXTNAME keyword if it doesn't exist in input file*/
-        fits_read_card(infptr, cs!(c"EXTNAME"), &mut card, status);
+    /*
+    For compatibility with software that uses an older version of CFITSIO,
+    we must make certain that the new ZQUANTIZ keyword, if it exists, must
+    occur after the other peudo-required keywords (e.g., ZSIMPLE, ZBITPIX,
+    etc.).  Do this by trying to delete the keyword.  If that succeeds (and
+    thus the keyword did exist) then rewrite the keyword at the end of header.
+    In principle this should not be necessary once all software has upgraded
+    to a newer version of CFITSIO (version number greater than 3.181, newer
+    than August 2009).
 
-        if *status != 0 {
-            *status = 0;
-            strcpy_safe(&mut card, cs!(c"EXTNAME = 'COMPRESSED_IMAGE'"));
-            fits_write_record(outfptr, &card, status);
-        }
+    Do the same for the new ZDITHER0 keyword.
+    */
 
-        /* copy all the keywords from the input file to the output */
-        npat = patterns.len() as c_int;
-        fits_translate_keywords_safer(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+    tstatus = 0;
+    if fits_read_card(outfptr, cs!(c"ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
+        fits_delete_key(outfptr, cs!(c"ZQUANTIZ"), status);
 
-        if (outfptr.Fptr).request_lossy_int_compress != 0 {
-            /* request was made to compress integer images as if they had float pixels. */
-            /* If input image has positive bitpix value, then reset the output ZBITPIX */
-            /* value to -32. */
+        /* rewrite the deleted keyword at the end of the header */
+        fits_write_record(outfptr, &card, status);
 
-            fits_read_key(
-                infptr,
-                crate::KeywordDatatypeMut::TINT(&mut bitpix),
-                cs!(c"BITPIX"),
-                None,
+        /* write some associated HISTORY keywords */
+        fits_parse_value(&card, &mut card2, None, status);
+        if fits_strncasecmp(&card2, cs!(c"'NONE"), 5) != 0 {
+            /* the value is not 'NONE' */
+            fits_write_history(
+                outfptr,
+                cs!(c"Image was compressed by CFITSIO using scaled integer quantization:"),
                 status,
             );
-
-            if *status <= 0 && bitpix > 0 {
-                fits_modify_key_lng(outfptr, cs!(c"ZBITPIX"), -32, None, status);
-
-                /* also delete the BSCALE, BZERO, and BLANK keywords */
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BSCALE"), &mut tstatus);
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BZERO"), &mut tstatus);
-                tstatus = 0;
-                fits_delete_key(outfptr, cs!(c"BLANK"), &mut tstatus);
-            }
+            int_snprintf!(
+                card2,
+                FLEN_CARD,
+                "  q = {} / quantized level scaling parameter",
+                (outfptr.Fptr).request_quantize_level,
+            );
+            fits_write_history(outfptr, &card2, status);
+            fits_write_history(outfptr, &card[10..], status);
         }
-
-        /*
-        For compatibility with software that uses an older version of CFITSIO,
-        we must make certain that the new ZQUANTIZ keyword, if it exists, must
-        occur after the other peudo-required keywords (e.g., ZSIMPLE, ZBITPIX,
-        etc.).  Do this by trying to delete the keyword.  If that succeeds (and
-        thus the keyword did exist) then rewrite the keyword at the end of header.
-        In principle this should not be necessary once all software has upgraded
-        to a newer version of CFITSIO (version number greater than 3.181, newer
-        than August 2009).
-
-        Do the same for the new ZDITHER0 keyword.
-        */
-
-        tstatus = 0;
-        if fits_read_card(outfptr, cs!(c"ZQUANTIZ"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!(c"ZQUANTIZ"), status);
-
-            /* rewrite the deleted keyword at the end of the header */
-            fits_write_record(outfptr, &card, status);
-
-            /* write some associated HISTORY keywords */
-            fits_parse_value(&card, &mut card2, None, status);
-            if fits_strncasecmp(&card2, cs!(c"'NONE"), 5) != 0 {
-                /* the value is not 'NONE' */
-                fits_write_history(
-                    outfptr,
-                    cs!(c"Image was compressed by CFITSIO using scaled integer quantization:"),
-                    status,
-                );
-                int_snprintf!(
-                    card2,
-                    FLEN_CARD,
-                    "  q = {} / quantized level scaling parameter",
-                    (outfptr.Fptr).request_quantize_level,
-                );
-                fits_write_history(outfptr, &card2, status);
-                fits_write_history(outfptr, &card[10..], status);
-            }
-        }
-
-        tstatus = 0;
-        if fits_read_card(outfptr, cs!(c"ZDITHER0"), &mut card, &mut tstatus) == 0 {
-            fits_delete_key(outfptr, cs!(c"ZDITHER0"), status);
-
-            /* rewrite the deleted keyword at the end of the header */
-            fits_write_record(outfptr, &card, status);
-        }
-
-        ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
-
-        nmore /= 36; /* how many completely empty header blocks are there? */
-
-        /* preserve the same number of spare header blocks in the output header */
-
-        for _jj in 0..(nmore as usize) {
-            for _ii in 0..36 {
-                fits_write_record(outfptr, cs!(c"    "), status);
-            }
-        }
-
-        *status
     }
+
+    tstatus = 0;
+    if fits_read_card(outfptr, cs!(c"ZDITHER0"), &mut card, &mut tstatus) == 0 {
+        fits_delete_key(outfptr, cs!(c"ZDITHER0"), status);
+
+        /* rewrite the deleted keyword at the end of the header */
+        fits_write_record(outfptr, &card, status);
+    }
+
+    ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
+
+    nmore /= 36; /* how many completely empty header blocks are there? */
+
+    /* preserve the same number of spare header blocks in the output header */
+
+    for _jj in 0..(nmore as usize) {
+        for _ii in 0..36 {
+            fits_write_record(outfptr, cs!(c"    "), status);
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the compressed input image
 /// and to the uncompressed image (in a binary table)
-unsafe fn imcomp_copy_comp2img(
+fn imcomp_copy_comp2img(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     norec: bool,
@@ -7629,7 +7613,7 @@ unsafe fn imcomp_copy_comp2img(
     }
 
     /* translate and copy the keywords from the input file to the output */
-    fits_translate_keywords_safer(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
+    fits_translate_keywords_safe(infptr, outfptr, 1, &patterns, npat, 0, 0, 0, status);
 
     ffghsp_safe(infptr, Some(&mut nkeys), Some(&mut nmore), status); /* get number of keywords in image */
 
@@ -7650,52 +7634,40 @@ unsafe fn imcomp_copy_comp2img(
 /// This routine copies any unexpected keywords from the primary array
 /// of the compressed input image into the header of the uncompressed image
 /// (which is the primary array of the output file).
-unsafe fn imcomp_copy_prime2img(
+fn imcomp_copy_prime2img(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut nsp: c_int = 0;
+    let mut nsp: c_int = 0;
 
-        /* keywords that will not be copied */
-        let spkeys: [[&[u8]; 2]; 13] = [
-            [b"SIMPLE\0", b"-\0"],
-            [b"BITPIX\0", b"-\0"],
-            [b"NAXIS\0", b"-\0"],
-            [b"NAXISm\0", b"-\0"],
-            [b"PCOUNT\0", b"-\0"],
-            [b"EXTEND\0", b"-\0"],
-            [b"GCOUNT\0", b"-\0"],
-            [b"CHECKSUM\0", b"-\0"],
-            [b"DATASUM\0", b"-\0"],
-            [b"EXTNAME\0", b"-\0"],
-            [b"HISTORY\0", b"-\0"],
-            [b"COMMENT\0", b"-\0"],
-            [b"*\0", b"+\0"],
-        ];
+    /* keywords that will not be copied */
+    let spkeys: [[&CStr; 2]; 13] = [
+        [c"SIMPLE", c"-"],
+        [c"BITPIX", c"-"],
+        [c"NAXIS", c"-"],
+        [c"NAXISm", c"-"],
+        [c"PCOUNT", c"-"],
+        [c"EXTEND", c"-"],
+        [c"GCOUNT", c"-"],
+        [c"CHECKSUM", c"-"],
+        [c"DATASUM", c"-"],
+        [c"EXTNAME", c"-"],
+        [c"HISTORY", c"-"],
+        [c"COMMENT", c"-"],
+        [c"*", c"+"],
+    ];
 
-        let spkeys = spkeys
-            .iter()
-            .map(|x| {
-                [
-                    CStr::from_bytes_with_nul_unchecked(x[0]),
-                    CStr::from_bytes_with_nul_unchecked(x[1]),
-                ]
-            })
-            .collect::<Vec<_>>();
-
-        if *status > 0 {
-            return *status;
-        }
-
-        nsp = spkeys.len() as c_int;
-
-        /* translate and copy the keywords from the input file to the output */
-        fits_translate_keywords_safer(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
-
-        *status
+    if *status > 0 {
+        return *status;
     }
+
+    nsp = spkeys.len() as c_int;
+
+    /* translate and copy the keywords from the input file to the output */
+    fits_translate_keywords_safe(infptr, outfptr, 1, &spkeys, nsp, 0, 0, 0, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -10831,696 +10803,681 @@ pub unsafe extern "C" fn fits_compress_table(
         let status = status.as_mut().expect(NULL_MSG);
 
         // Call the safer version of the function
-        fits_compress_table_safer(infptr, outfptr, status)
+        fits_compress_table_safe(infptr, outfptr, status)
     }
 }
 
-pub unsafe fn fits_compress_table_safer(
+pub fn fits_compress_table_safe(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let maxchunksize: c_long = 10000000; // default value for the size of each chunk of the table
+    let maxchunksize: c_long = 10000000; // default value for the size of each chunk of the table
 
-        let mut cm_buffer: Vec<c_char>; // memory buffer for the transposed, Column-Major, chunk of the table
-        let mut cm_colstart: [LONGLONG; 1000] = [0; 1000]; // starting offset of each column in the cm_buffer
-        let mut rm_repeat: [LONGLONG; 1000] = [0; 1000]; // repeat count of each column in the input row-major table
-        let mut rm_colwidth: [LONGLONG; 999] = [0; 999]; // width in bytes of each column in the input row-major table
-        let mut cm_repeat: [LONGLONG; 999] = [0; 999]; // total number of elements in each column of the transposed column-major table
+    let mut cm_buffer: Vec<c_char>; // memory buffer for the transposed, Column-Major, chunk of the table
+    let mut cm_colstart: [LONGLONG; 1000] = [0; 1000]; // starting offset of each column in the cm_buffer
+    let mut rm_repeat: [LONGLONG; 1000] = [0; 1000]; // repeat count of each column in the input row-major table
+    let mut rm_colwidth: [LONGLONG; 999] = [0; 999]; // width in bytes of each column in the input row-major table
+    let mut cm_repeat: [LONGLONG; 999] = [0; 999]; // total number of elements in each column of the transposed column-major table
 
-        let mut coltype: [c_int; 999] = [0; 999]; // data type code for each column
-        let mut compalgor: [c_int; 999] = [0; 999]; // compression algorithm to be applied to each column
-        let mut default_algor: c_int = 0;
-        let mut cratio: [f32; 999] = [0.0; 999]; // compression ratio for each column (for diagnostic purposes)
+    let mut coltype: [c_int; 999] = [0; 999]; // data type code for each column
+    let mut compalgor: [c_int; 999] = [0; 999]; // compression algorithm to be applied to each column
+    let mut default_algor: c_int = 0;
+    let mut cratio: [f32; 999] = [0.0; 999]; // compression ratio for each column (for diagnostic purposes)
 
-        let mut compressed_size: f32;
-        let mut uncompressed_size: f32;
-        let mut tot_compressed_size: f32;
-        let mut tot_uncompressed_size: f32;
-        let mut nrows: LONGLONG = 0;
+    let mut compressed_size: f32;
+    let mut uncompressed_size: f32;
+    let mut tot_compressed_size: f32;
+    let mut tot_uncompressed_size: f32;
+    let mut nrows: LONGLONG = 0;
 
-        let mut headstart: LONGLONG = 0;
-        let mut datastart: LONGLONG = 0;
-        let mut dataend: LONGLONG = 0;
-        let mut startbyte: LONGLONG = 0;
-        let mut kk: LONGLONG;
-        let mut naxis1: LONGLONG = 0;
-        let mut vlalen: LONGLONG = 0;
-        let mut vlamemlen: LONGLONG;
-        let mut vlastart: LONGLONG;
-        let mut bytepos: LONGLONG;
-        let mut repeat: c_long = 0;
-        let mut width: c_long = 0;
-        let mut nchunks: c_long = 0;
-        let mut rowspertile: c_long = 0;
-        let mut lastrows: c_long = 0;
-        let mut ncols: c_int = 0;
-        let mut hdutype: c_int = 0;
-        let ltrue: c_int = 1;
-        let mut print_report = false;
-        let mut tstatus: c_int;
+    let mut headstart: LONGLONG = 0;
+    let mut datastart: LONGLONG = 0;
+    let mut dataend: LONGLONG = 0;
+    let mut startbyte: LONGLONG = 0;
+    let mut kk: LONGLONG;
+    let mut naxis1: LONGLONG = 0;
+    let mut vlalen: LONGLONG = 0;
+    let mut vlamemlen: LONGLONG;
+    let mut vlastart: LONGLONG;
+    let mut bytepos: LONGLONG;
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+    let mut nchunks: c_long = 0;
+    let mut rowspertile: c_long = 0;
+    let mut lastrows: c_long = 0;
+    let mut ncols: c_int = 0;
+    let mut hdutype: c_int = 0;
+    let ltrue: c_int = 1;
+    let mut print_report = false;
+    let mut tstatus: c_int;
 
-        let mut keyname: [c_char; 9] = [0; 9];
-        let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut cdescript: Vec<c_char> = Vec::new();
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut cvlamem: Vec<u8> = Vec::new();
-        let mut tempstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut keyname: [c_char; 9] = [0; 9];
+    let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut cdescript: Vec<c_char> = Vec::new();
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut keyvalue: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut cvlamem: Vec<u8> = Vec::new();
+    let mut tempstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        let mut vlamem: Vec<LONGLONG> = Vec::new();
+    let mut vlamem: Vec<LONGLONG> = Vec::new();
 
-        let mut dlen: usize = 0;
-        let mut datasize: usize;
-        let mut compmemlen: usize;
+    let mut dlen: usize = 0;
+    let mut datasize: usize;
+    let mut compmemlen: usize;
 
-        let mut results: [[c_char; 30]; 999] = [[0; 30]; 999]; // string array for storing the individual column compression stats
+    let mut results: [[c_char; 30]; 999] = [[0; 30]; 999]; // string array for storing the individual column compression stats
 
-        /* ==================================================================================
-         */
-        /* perform initial sanity checks */
-        /* ==================================================================================
-         */
+    /* ==================================================================================
+     */
+    /* perform initial sanity checks */
+    /* ==================================================================================
+     */
 
-        /* special input flag value that means print out diagnostics */
-        if *status == -999 {
-            print_report = true;
-            *status = 0;
-        }
+    /* special input flag value that means print out diagnostics */
+    if *status == -999 {
+        print_report = true;
+        *status = 0;
+    }
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        fits_get_hdu_type(infptr, &mut hdutype, status);
-        if hdutype != BINARY_TBL {
-            *status = NOT_BTABLE;
-            return *status;
-        }
+    fits_get_hdu_type(infptr, &mut hdutype, status);
+    if hdutype != BINARY_TBL {
+        *status = NOT_BTABLE;
+        return *status;
+    }
 
-        if core::ptr::eq(infptr, outfptr) {
-            ffpmsg_str("Cannot compress table 'in place' (fits_compress_table)");
-            ffpmsg_str(" outfptr cannot be the same as infptr.");
+    if core::ptr::eq(infptr, outfptr) {
+        ffpmsg_str("Cannot compress table 'in place' (fits_compress_table)");
+        ffpmsg_str(" outfptr cannot be the same as infptr.");
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
+    }
+
+    /* get dimensions of the table */
+    fits_get_num_rowsll(infptr, &mut nrows, status);
+    fits_get_num_cols(infptr, &mut ncols, status);
+    fits_read_key(
+        infptr,
+        crate::KeywordDatatypeMut::TLONGLONG(&mut naxis1),
+        cs!(c"NAXIS1"),
+        None,
+        status,
+    );
+    /* get offset to the start of the data and total size of the table (including the heap) */
+    fits_get_hduaddrll(
+        infptr,
+        Some(&mut headstart),
+        Some(&mut datastart),
+        Some(&mut dataend),
+        status,
+    );
+
+    if *status > 0 {
+        return *status;
+    }
+
+    tstatus = 0;
+    if fits_read_key(
+        infptr,
+        crate::KeywordDatatypeMut::TSTRING(&mut tempstring),
+        cs!(c"FZALGOR"),
+        None,
+        &mut tstatus,
+    ) == 0
+    {
+        if fits_strcasecmp(&tempstring, cs!(c"NONE")) == 0 {
+            default_algor = NOCOMPRESS;
+        } else if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
+            || fits_strcasecmp(&tempstring, cs!(c"GZIP_1")) == 0
+        {
+            default_algor = GZIP_1;
+        } else if fits_strcasecmp(&tempstring, cs!(c"GZIP_2")) == 0 {
+            default_algor = GZIP_2;
+        } else if fits_strcasecmp(&tempstring, cs!(c"RICE_1")) == 0 {
+            default_algor = RICE_1;
+        } else {
+            ffpmsg_str("FZALGOR specifies unsupported table compression algorithm:");
+            ffpmsg_slice(&tempstring);
             *status = DATA_COMPRESSION_ERR;
             return *status;
         }
+    }
 
-        /* get dimensions of the table */
-        fits_get_num_rowsll(infptr, &mut nrows, status);
-        fits_get_num_cols(infptr, &mut ncols, status);
+    /* just copy the HDU verbatim if the table has 0 columns or rows or if the table */
+    /* is less than 5760 bytes (2 blocks) in size, or compression directive keyword = "NONE" */
+    if nrows < 1 || ncols < 1 || (dataend - datastart) < 5760 || default_algor == NOCOMPRESS {
+        fits_copy_hdu(infptr, outfptr, 0, status);
+        return *status;
+    }
+
+    /* Check if the chunk size has been specified with the FZTILELN keyword. */
+    /* If not, calculate a default number of rows per chunck, */
+
+    tstatus = 0;
+    if fits_read_key(
+        infptr,
+        crate::KeywordDatatypeMut::TLONG(&mut rowspertile),
+        cs!(c"FZTILELN"),
+        None,
+        &mut tstatus,
+    ) != 0
+    {
+        rowspertile = (maxchunksize as LONGLONG / naxis1) as c_long;
+    }
+
+    if rowspertile < 1 {
+        rowspertile = 1;
+    }
+
+    if rowspertile as LONGLONG > nrows {
+        rowspertile = nrows as c_long;
+    }
+
+    nchunks = ((nrows - 1) / rowspertile as LONGLONG + 1) as c_long; /* total number of chunks */
+    lastrows = (nrows - ((nchunks as LONGLONG - 1) * rowspertile as LONGLONG)) as c_long; /* number of rows in last chunk */
+
+    /* allocate space for the transposed, column-major chunk of the table */
+    cm_buffer = Vec::new();
+    let tmp_len = naxis1 as usize * rowspertile as usize;
+    if cm_buffer.try_reserve_exact(tmp_len).is_err() {
+        ffpmsg_str("Could not allocate cm_buffer for transposed table");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        cm_buffer.resize(tmp_len, 0);
+    }
+
+    /* ==================================================================================
+     */
+    /*  Construct the header of the output compressed table  */
+    /* ==================================================================================
+     */
+    fits_copy_header(infptr, outfptr, status); /* start with verbatim copy of the input header */
+
+    fits_write_key(
+        outfptr,
+        crate::KeywordDatatype::TLOGICAL(&ltrue),
+        cs!(c"ZTABLE"),
+        Some(cs!(c"this is a compressed table")),
+        status,
+    );
+    fits_write_key(
+        outfptr,
+        crate::KeywordDatatype::TLONG(&rowspertile),
+        cs!(c"ZTILELEN"),
+        Some(cs!(c"number of rows in each tile")),
+        status,
+    );
+
+    fits_read_card(outfptr, cs!(c"NAXIS1"), &mut card, status); /* copy NAXIS1 to ZNAXIS1 */
+    strncpy_safe(&mut card, cs!(c"ZNAXIS1"), 7);
+    fits_write_record(outfptr, &card, status);
+
+    fits_read_card(outfptr, cs!(c"NAXIS2"), &mut card, status); /* copy NAXIS2 to ZNAXIS2 */
+    strncpy_safe(&mut card, cs!(c"ZNAXIS2"), 7);
+    fits_write_record(outfptr, &card, status);
+
+    fits_read_card(outfptr, cs!(c"PCOUNT"), &mut card, status); /* copy PCOUNT to ZPCOUNT */
+    strncpy_safe(&mut card, cs!(c"ZPCOUNT"), 7);
+    fits_write_record(outfptr, &card, status);
+
+    fits_modify_key_lng(
+        outfptr,
+        cs!(c"NAXIS2"),
+        nchunks as LONGLONG,
+        Some(cs!(c"&")),
+        status,
+    ); /* 1 row per chunk */
+    fits_modify_key_lng(
+        outfptr,
+        cs!(c"NAXIS1"),
+        LONGLONG::from(ncols * 16),
+        Some(cs!(c"&")),
+        status,
+    ); /* 16 bytes for each 1QB column */
+    fits_modify_key_lng(outfptr, cs!(c"PCOUNT"), 0, Some(cs!(c"&")), status); /* reset PCOUNT to 0 */
+
+    /* rename the Checksum keywords, if they exist */
+    tstatus = 0;
+    fits_modify_name(outfptr, cs!(c"CHECKSUM"), cs!(c"ZHECKSUM"), &mut tstatus);
+    tstatus = 0;
+    fits_modify_name(outfptr, cs!(c"DATASUM"), cs!(c"ZDATASUM"), &mut tstatus);
+
+    /* ==================================================================================
+     */
+    /*  Now loop over each column of the input table: write the column-specific keywords */
+    /*  and determine which compression algorithm to use.     */
+    /*  Also calculate various offsets to the start of the column data in both the */
+    /*  original row-major table and in the transposed column-major form of the table.  */
+    /* ==================================================================================
+     */
+
+    cm_colstart[0] = 0;
+    for ii in 0..(ncols as usize) {
+        /* get the structural parameters of the original uncompressed column */
+        fits_make_keyn(
+            cs!(c"TFORM"),
+            (ii + 1).try_into().unwrap(),
+            &mut keyname,
+            status,
+        );
         fits_read_key(
-            infptr,
-            crate::KeywordDatatypeMut::TLONGLONG(&mut naxis1),
-            cs!(c"NAXIS1"),
-            None,
-            status,
-        );
-        /* get offset to the start of the data and total size of the table (including the heap) */
-        fits_get_hduaddrll(
-            infptr,
-            Some(&mut headstart),
-            Some(&mut datastart),
-            Some(&mut dataend),
+            outfptr,
+            crate::KeywordDatatypeMut::TSTRING(&mut tform),
+            &keyname,
+            Some(&mut comm),
             status,
         );
 
-        if *status > 0 {
-            return *status;
+        fits_binary_tform(
+            &tform,
+            Some(&mut coltype[ii]),
+            Some(&mut repeat),
+            Some(&mut width),
+            status,
+        ); /* get the repeat count and the width */
+
+        /* preserve the original TFORM value and comment string in a ZFORMn keyword */
+        fits_read_card(outfptr, &keyname, &mut card, status);
+        card[0] = bb(b'Z');
+        fits_write_record(outfptr, &card, status);
+
+        /* All columns in the compressed table will have a variable-length array type. */
+        fits_modify_key_str(outfptr, &keyname, cs!(c"1QB"), Some(cs!(c"&")), status); /* Use 'Q' pointers (64-bit) */
+
+        /* deal with special cases: bit, string, and variable length array columns */
+        if coltype[ii] == TBIT {
+            repeat = (repeat + 7) / 8; /* convert from bits to equivalent number of bytes */
+        } else if coltype[ii] == TSTRING {
+            width = 1; /* ignore the optional 'w' in 'rAw' format */
+        } else if coltype[ii] < 0 {
+            /* pointer to variable length array */
+            if strchr_safe(&tform, bb(b'Q')).is_some() {
+                width = 16; /* 'Q' descriptor has 64-bit pointers */
+            } else {
+                width = 8; /* 'P' descriptor has 32-bit pointers */
+            }
+            repeat = 1;
         }
 
+        rm_repeat[ii] = repeat as LONGLONG;
+        rm_colwidth[ii] = (repeat * width) as LONGLONG; /* column width (in bytes)in the input table */
+
+        /* starting offset of each field in the OUTPUT transposed column-major table */
+        cm_colstart[ii + 1] = cm_colstart[ii] + rm_colwidth[ii] * rowspertile as LONGLONG;
+        /* total number of elements in each column of the transposed column-major table */
+        cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
+
+        compalgor[ii] = default_algor; /* initialize the column compression
+        algorithm to the default */
+
+        /*  check if a compression method has been specified for this column */
+        fits_make_keyn(cs!(c"FZALG"), (ii as c_int) + 1, &mut keyname, status);
         tstatus = 0;
         if fits_read_key(
-            infptr,
+            outfptr,
             crate::KeywordDatatypeMut::TSTRING(&mut tempstring),
-            cs!(c"FZALGOR"),
+            &keyname,
             None,
             &mut tstatus,
         ) == 0
         {
-            if fits_strcasecmp(&tempstring, cs!(c"NONE")) == 0 {
-                default_algor = NOCOMPRESS;
-            } else if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
+            if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
                 || fits_strcasecmp(&tempstring, cs!(c"GZIP_1")) == 0
             {
-                default_algor = GZIP_1;
+                compalgor[ii] = GZIP_1;
             } else if fits_strcasecmp(&tempstring, cs!(c"GZIP_2")) == 0 {
-                default_algor = GZIP_2;
+                compalgor[ii] = GZIP_2;
             } else if fits_strcasecmp(&tempstring, cs!(c"RICE_1")) == 0 {
-                default_algor = RICE_1;
+                compalgor[ii] = RICE_1;
             } else {
-                ffpmsg_str("FZALGOR specifies unsupported table compression algorithm:");
+                ffpmsg_str("Unsupported table compression algorithm specification.");
+                ffpmsg_slice(&keyname);
                 ffpmsg_slice(&tempstring);
                 *status = DATA_COMPRESSION_ERR;
                 return *status;
             }
         }
 
-        /* just copy the HDU verbatim if the table has 0 columns or rows or if the table */
-        /* is less than 5760 bytes (2 blocks) in size, or compression directive keyword = "NONE" */
-        if nrows < 1 || ncols < 1 || (dataend - datastart) < 5760 || default_algor == NOCOMPRESS {
-            fits_copy_hdu(infptr, outfptr, 0, status);
-            return *status;
-        }
-
-        /* Check if the chunk size has been specified with the FZTILELN keyword. */
-        /* If not, calculate a default number of rows per chunck, */
-
-        tstatus = 0;
-        if fits_read_key(
-            infptr,
-            crate::KeywordDatatypeMut::TLONG(&mut rowspertile),
-            cs!(c"FZTILELN"),
-            None,
-            &mut tstatus,
-        ) != 0
+        /* do sanity check of the requested algorithm and override if necessary
+         */
+        if (coltype[ii]).abs() == TLOGICAL
+            || (coltype[ii]).abs() == TBIT
+            || (coltype[ii]).abs() == TSTRING
         {
-            rowspertile = (maxchunksize as LONGLONG / naxis1) as c_long;
-        }
-
-        if rowspertile < 1 {
-            rowspertile = 1;
-        }
-
-        if rowspertile as LONGLONG > nrows {
-            rowspertile = nrows as c_long;
-        }
-
-        nchunks = ((nrows - 1) / rowspertile as LONGLONG + 1) as c_long; /* total number of chunks */
-        lastrows = (nrows - ((nchunks as LONGLONG - 1) * rowspertile as LONGLONG)) as c_long; /* number of rows in last chunk */
-
-        /* allocate space for the transposed, column-major chunk of the table */
-        cm_buffer = Vec::new();
-        let tmp_len = naxis1 as usize * rowspertile as usize;
-        if cm_buffer.try_reserve_exact(tmp_len).is_err() {
-            ffpmsg_str("Could not allocate cm_buffer for transposed table");
-            *status = MEMORY_ALLOCATION;
-            return *status;
-        } else {
-            cm_buffer.resize(tmp_len, 0);
-        }
-
-        /* ==================================================================================
-         */
-        /*  Construct the header of the output compressed table  */
-        /* ==================================================================================
-         */
-        fits_copy_header(infptr, outfptr, status); /* start with verbatim copy of the input header */
-
-        fits_write_key(
-            outfptr,
-            crate::KeywordDatatype::TLOGICAL(&ltrue),
-            cs!(c"ZTABLE"),
-            Some(cs!(c"this is a compressed table")),
-            status,
-        );
-        fits_write_key(
-            outfptr,
-            crate::KeywordDatatype::TLONG(&rowspertile),
-            cs!(c"ZTILELEN"),
-            Some(cs!(c"number of rows in each tile")),
-            status,
-        );
-
-        fits_read_card(outfptr, cs!(c"NAXIS1"), &mut card, status); /* copy NAXIS1 to ZNAXIS1 */
-        strncpy_safe(&mut card, cs!(c"ZNAXIS1"), 7);
-        fits_write_record(outfptr, &card, status);
-
-        fits_read_card(outfptr, cs!(c"NAXIS2"), &mut card, status); /* copy NAXIS2 to ZNAXIS2 */
-        strncpy_safe(&mut card, cs!(c"ZNAXIS2"), 7);
-        fits_write_record(outfptr, &card, status);
-
-        fits_read_card(outfptr, cs!(c"PCOUNT"), &mut card, status); /* copy PCOUNT to ZPCOUNT */
-        strncpy_safe(&mut card, cs!(c"ZPCOUNT"), 7);
-        fits_write_record(outfptr, &card, status);
-
-        fits_modify_key_lng(
-            outfptr,
-            cs!(c"NAXIS2"),
-            nchunks as LONGLONG,
-            Some(cs!(c"&")),
-            status,
-        ); /* 1 row per chunk */
-        fits_modify_key_lng(
-            outfptr,
-            cs!(c"NAXIS1"),
-            LONGLONG::from(ncols * 16),
-            Some(cs!(c"&")),
-            status,
-        ); /* 16 bytes for each 1QB column */
-        fits_modify_key_lng(outfptr, cs!(c"PCOUNT"), 0, Some(cs!(c"&")), status); /* reset PCOUNT to 0 */
-
-        /* rename the Checksum keywords, if they exist */
-        tstatus = 0;
-        fits_modify_name(outfptr, cs!(c"CHECKSUM"), cs!(c"ZHECKSUM"), &mut tstatus);
-        tstatus = 0;
-        fits_modify_name(outfptr, cs!(c"DATASUM"), cs!(c"ZDATASUM"), &mut tstatus);
-
-        /* ==================================================================================
-         */
-        /*  Now loop over each column of the input table: write the column-specific keywords */
-        /*  and determine which compression algorithm to use.     */
-        /*  Also calculate various offsets to the start of the column data in both the */
-        /*  original row-major table and in the transposed column-major form of the table.  */
-        /* ==================================================================================
-         */
-
-        cm_colstart[0] = 0;
-        for ii in 0..(ncols as usize) {
-            /* get the structural parameters of the original uncompressed column */
-            fits_make_keyn(
-                cs!(c"TFORM"),
-                (ii + 1).try_into().unwrap(),
-                &mut keyname,
-                status,
-            );
-            fits_read_key(
-                outfptr,
-                crate::KeywordDatatypeMut::TSTRING(&mut tform),
-                &keyname,
-                Some(&mut comm),
-                status,
-            );
-
-            fits_binary_tform(
-                &tform,
-                Some(&mut coltype[ii]),
-                Some(&mut repeat),
-                Some(&mut width),
-                status,
-            ); /* get the repeat count and the width */
-
-            /* preserve the original TFORM value and comment string in a ZFORMn keyword */
-            fits_read_card(outfptr, &keyname, &mut card, status);
-            card[0] = bb(b'Z');
-            fits_write_record(outfptr, &card, status);
-
-            /* All columns in the compressed table will have a variable-length array type. */
-            fits_modify_key_str(outfptr, &keyname, cs!(c"1QB"), Some(cs!(c"&")), status); /* Use 'Q' pointers (64-bit) */
-
-            /* deal with special cases: bit, string, and variable length array columns */
-            if coltype[ii] == TBIT {
-                repeat = (repeat + 7) / 8; /* convert from bits to equivalent number of bytes */
-            } else if coltype[ii] == TSTRING {
-                width = 1; /* ignore the optional 'w' in 'rAw' format */
-            } else if coltype[ii] < 0 {
-                /* pointer to variable length array */
-                if strchr_safe(&tform, bb(b'Q')).is_some() {
-                    width = 16; /* 'Q' descriptor has 64-bit pointers */
-                } else {
-                    width = 8; /* 'P' descriptor has 32-bit pointers */
-                }
-                repeat = 1;
-            }
-
-            rm_repeat[ii] = repeat as LONGLONG;
-            rm_colwidth[ii] = (repeat * width) as LONGLONG; /* column width (in bytes)in the input table */
-
-            /* starting offset of each field in the OUTPUT transposed column-major table */
-            cm_colstart[ii + 1] = cm_colstart[ii] + rm_colwidth[ii] * rowspertile as LONGLONG;
-            /* total number of elements in each column of the transposed column-major table */
-            cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
-
-            compalgor[ii] = default_algor; /* initialize the column compression
-            algorithm to the default */
-
-            /*  check if a compression method has been specified for this column */
-            fits_make_keyn(cs!(c"FZALG"), (ii as c_int) + 1, &mut keyname, status);
-            tstatus = 0;
-            if fits_read_key(
-                outfptr,
-                crate::KeywordDatatypeMut::TSTRING(&mut tempstring),
-                &keyname,
-                None,
-                &mut tstatus,
-            ) == 0
-            {
-                if fits_strcasecmp(&tempstring, cs!(c"GZIP")) == 0
-                    || fits_strcasecmp(&tempstring, cs!(c"GZIP_1")) == 0
-                {
-                    compalgor[ii] = GZIP_1;
-                } else if fits_strcasecmp(&tempstring, cs!(c"GZIP_2")) == 0 {
-                    compalgor[ii] = GZIP_2;
-                } else if fits_strcasecmp(&tempstring, cs!(c"RICE_1")) == 0 {
-                    compalgor[ii] = RICE_1;
-                } else {
-                    ffpmsg_str("Unsupported table compression algorithm specification.");
-                    ffpmsg_slice(&keyname);
-                    ffpmsg_slice(&tempstring);
-                    *status = DATA_COMPRESSION_ERR;
-                    return *status;
-                }
-            }
-
-            /* do sanity check of the requested algorithm and override if necessary
-             */
-            if (coltype[ii]).abs() == TLOGICAL
-                || (coltype[ii]).abs() == TBIT
-                || (coltype[ii]).abs() == TSTRING
-            {
-                if compalgor[ii] != GZIP_1 {
-                    compalgor[ii] = GZIP_1;
-                }
-            } else if (coltype[ii]).abs() == TCOMPLEX
-                || (coltype[ii]).abs() == TDBLCOMPLEX
-                || (coltype[ii]).abs() == TFLOAT
-                || (coltype[ii]).abs() == TDOUBLE
-                || (coltype[ii]).abs() == TLONGLONG
-            {
-                if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 {
-                    compalgor[ii] = GZIP_2; /* gzip_2 usually works better gzip_1 */
-                }
-            } else if (coltype[ii]).abs() == TSHORT {
-                if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 && compalgor[ii] != RICE_1 {
-                    compalgor[ii] = GZIP_2; /* gzip_2 usually works better rice_1 */
-                }
-            } else if (coltype[ii]).abs() == TLONG {
-                if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 && compalgor[ii] != RICE_1 {
-                    compalgor[ii] = RICE_1;
-                }
-            } else if (coltype[ii]).abs() == TBYTE
-                && compalgor[ii] != GZIP_1
-                && compalgor[ii] != RICE_1
-            {
+            if compalgor[ii] != GZIP_1 {
                 compalgor[ii] = GZIP_1;
             }
-        } /* end of loop over columns */
-
-        /* ==================================================================================
-         */
-        /*    now process each chunk of the table, in turn          */
-        /* ==================================================================================
-         */
-
-        tot_uncompressed_size = 0.0;
-        tot_compressed_size = 0.0;
-        // let mut firstrow: LONGLONG = 1;
-        for ll in 0..(nchunks as usize) {
-            if ll as c_long == nchunks - 1 {
-                /* the last chunk may have fewer rows */
-                rowspertile = lastrows;
-                for ii in 0..(ncols as usize) {
-                    cm_colstart[ii + 1] =
-                        cm_colstart[ii] + (rm_colwidth[ii] * rowspertile as LONGLONG);
-                    cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
-                }
+        } else if (coltype[ii]).abs() == TCOMPLEX
+            || (coltype[ii]).abs() == TDBLCOMPLEX
+            || (coltype[ii]).abs() == TFLOAT
+            || (coltype[ii]).abs() == TDOUBLE
+            || (coltype[ii]).abs() == TLONGLONG
+        {
+            if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 {
+                compalgor[ii] = GZIP_2; /* gzip_2 usually works better gzip_1 */
             }
+        } else if (coltype[ii]).abs() == TSHORT {
+            if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 && compalgor[ii] != RICE_1 {
+                compalgor[ii] = GZIP_2; /* gzip_2 usually works better rice_1 */
+            }
+        } else if (coltype[ii]).abs() == TLONG {
+            if compalgor[ii] != GZIP_1 && compalgor[ii] != GZIP_2 && compalgor[ii] != RICE_1 {
+                compalgor[ii] = RICE_1;
+            }
+        } else if (coltype[ii]).abs() == TBYTE && compalgor[ii] != GZIP_1 && compalgor[ii] != RICE_1
+        {
+            compalgor[ii] = GZIP_1;
+        }
+    } /* end of loop over columns */
 
-            /* move to the start of the chunk in the input table */
-            ffmbyt_safe(infptr, datastart, 0, status);
+    /* ==================================================================================
+     */
+    /*    now process each chunk of the table, in turn          */
+    /* ==================================================================================
+     */
 
-            /* ================================================================================*/
-            /*  First, transpose this chunck from row-major order to column-major order  */
-            /*  At the same time, shuffle the bytes in each datum, if doing GZIP_2 compression */
-            /* ================================================================================*/
+    tot_uncompressed_size = 0.0;
+    tot_compressed_size = 0.0;
+    // let mut firstrow: LONGLONG = 1;
+    for ll in 0..(nchunks as usize) {
+        if ll as c_long == nchunks - 1 {
+            /* the last chunk may have fewer rows */
+            rowspertile = lastrows;
+            for ii in 0..(ncols as usize) {
+                cm_colstart[ii + 1] = cm_colstart[ii] + (rm_colwidth[ii] * rowspertile as LONGLONG);
+                cm_repeat[ii] = rm_repeat[ii] * rowspertile as LONGLONG;
+            }
+        }
 
-            let mut cptr: usize = 0; // into cm_buffer
+        /* move to the start of the chunk in the input table */
+        ffmbyt_safe(infptr, datastart, 0, status);
 
-            for jj in 0..(rowspertile as usize) {
-                /* loop over rows */
-                for ii in 0..(ncols as usize) {
-                    /* loop over columns */
+        /* ================================================================================*/
+        /*  First, transpose this chunck from row-major order to column-major order  */
+        /*  At the same time, shuffle the bytes in each datum, if doing GZIP_2 compression */
+        /* ================================================================================*/
 
-                    if rm_repeat[ii] > 0 {
-                        /*  skip virtual columns that have 0 elements */
+        let mut cptr: usize = 0; // into cm_buffer
 
-                        kk = 0;
-
-                        /* if the  GZIP_2 compression algorithm is used, shuffle the bytes */
-                        if coltype[ii] == TSHORT && compalgor[ii] == GZIP_2 {
-                            while kk < rm_colwidth[ii] {
-                                cptr = (cm_colstart[ii]
-                                    + (jj as LONGLONG * rm_repeat[ii])
-                                    + kk as LONGLONG / 2)
-                                    as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
-                                kk += 2;
-                            }
-                        } else if (coltype[ii] == TFLOAT || coltype[ii] == TLONG)
-                            && compalgor[ii] == GZIP_2
-                        {
-                            while kk < rm_colwidth[ii] {
-                                cptr = (cm_colstart[ii]
-                                    + (jj as LONGLONG * rm_repeat[ii])
-                                    + kk as LONGLONG / 4)
-                                    as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 3rd byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 4th byte */
-                                kk += 4;
-                            }
-                        } else if (coltype[ii] == TDOUBLE || coltype[ii] == TLONGLONG)
-                            && compalgor[ii] == GZIP_2
-                        {
-                            while kk < rm_colwidth[ii] {
-                                cptr = (cm_colstart[ii]
-                                    + (jj as LONGLONG * rm_repeat[ii])
-                                    + kk as LONGLONG / 8)
-                                    as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 3rd byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 4th byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 5th byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 6th byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 7th byte */
-                                cptr += cm_repeat[ii] as usize;
-                                ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 8th byte */
-                                kk += 8;
-                            }
-                        } else {
-                            /* all other cases: don't shuffle the bytes; simply
-                            transpose the column */
-                            cptr = (cm_colstart[ii] + (jj as LONGLONG * rm_colwidth[ii])) as usize; /* addr to copy to */
-                            startbyte = (infptr.Fptr).bytepos; /* save the starting byte location */
-                            ffgbyt(
-                                infptr,
-                                rm_colwidth[ii],
-                                cast_slice_mut(&mut cm_buffer[cptr..]),
-                                status,
-                            ); /* copy all the bytes */
-
-                            if rm_colwidth[ii] >= MINDIRECT {
-                                /* have to explicitly move to next byte */
-                                ffmbyt_safe(infptr, startbyte + rm_colwidth[ii], 0, status);
-                            }
-                        } /* end of test of coltypee */
-                    } /* end of not virtual column */
-                } /* end of loop over columns */
-            } /* end of loop over rows */
-
-            /* ================================================================================*/
-            /*  now compress each column in the transposed chunk of the table    */
-            /* ================================================================================*/
-
-            fits_set_hdustruc(outfptr, status); /* initialize structures in the output table */
-
+        for jj in 0..(rowspertile as usize) {
+            /* loop over rows */
             for ii in 0..(ncols as usize) {
                 /* loop over columns */
-                /* initialize the diagnostic compression results string */
-                int_snprintf!(
-                    results[ii],
-                    30,
-                    "{:3} {:3} {:3} ",
-                    ii + 1,
-                    coltype[ii],
-                    compalgor[ii],
-                );
-                cratio[ii] = 0.0;
 
                 if rm_repeat[ii] > 0 {
-                    /* skip virtual columns with zero width */
+                    /*  skip virtual columns that have 0 elements */
 
-                    if coltype[ii] < 0 {
-                        /* this is a variable length array (VLA) column */
+                    kk = 0;
 
-                        /*=========================================================================*/
-                        /* variable-length array columns are a complicated special case  */
-                        /*=========================================================================*/
+                    /* if the  GZIP_2 compression algorithm is used, shuffle the bytes */
+                    if coltype[ii] == TSHORT && compalgor[ii] == GZIP_2 {
+                        while kk < rm_colwidth[ii] {
+                            cptr = (cm_colstart[ii]
+                                + (jj as LONGLONG * rm_repeat[ii])
+                                + kk as LONGLONG / 2) as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
+                            kk += 2;
+                        }
+                    } else if (coltype[ii] == TFLOAT || coltype[ii] == TLONG)
+                        && compalgor[ii] == GZIP_2
+                    {
+                        while kk < rm_colwidth[ii] {
+                            cptr = (cm_colstart[ii]
+                                + (jj as LONGLONG * rm_repeat[ii])
+                                + kk as LONGLONG / 4) as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 3rd byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 4th byte */
+                            kk += 4;
+                        }
+                    } else if (coltype[ii] == TDOUBLE || coltype[ii] == TLONGLONG)
+                        && compalgor[ii] == GZIP_2
+                    {
+                        while kk < rm_colwidth[ii] {
+                            cptr = (cm_colstart[ii]
+                                + (jj as LONGLONG * rm_repeat[ii])
+                                + kk as LONGLONG / 8) as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 1st byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 2nd byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 3rd byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 4th byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 5th byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 6th byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 7th byte */
+                            cptr += cm_repeat[ii] as usize;
+                            ffgbyt(infptr, 1, cast_slice_mut(&mut cm_buffer[cptr..]), status); /* get 8th byte */
+                            kk += 8;
+                        }
+                    } else {
+                        /* all other cases: don't shuffle the bytes; simply
+                        transpose the column */
+                        cptr = (cm_colstart[ii] + (jj as LONGLONG * rm_colwidth[ii])) as usize; /* addr to copy to */
+                        startbyte = (infptr.Fptr).bytepos; /* save the starting byte location */
+                        ffgbyt(
+                            infptr,
+                            rm_colwidth[ii],
+                            cast_slice_mut(&mut cm_buffer[cptr..]),
+                            status,
+                        ); /* copy all the bytes */
 
-                        /* allocate memory to hold all the VLA descriptors from the input table, plus */
-                        /* room to hold the descriptors to the compressed VLAs in the output table */
-                        /* In total, there will be 2 descriptors for each row in this chunk */
+                        if rm_colwidth[ii] >= MINDIRECT {
+                            /* have to explicitly move to next byte */
+                            ffmbyt_safe(infptr, startbyte + rm_colwidth[ii], 0, status);
+                        }
+                    } /* end of test of coltypee */
+                } /* end of not virtual column */
+            } /* end of loop over columns */
+        } /* end of loop over rows */
 
-                        uncompressed_size = 0.;
-                        compressed_size = 0.0;
+        /* ================================================================================*/
+        /*  now compress each column in the transposed chunk of the table    */
+        /* ================================================================================*/
 
-                        datasize = (cm_colstart[ii + 1] - cm_colstart[ii]) as usize; /* size of input descriptors */
+        fits_set_hdustruc(outfptr, status); /* initialize structures in the output table */
 
-                        /* room for both descriptors */
-                        let tmp_len = datasize + (rowspertile as usize * 16);
-                        if cdescript.try_reserve_exact(tmp_len).is_err() {
-                            ffpmsg_str("Could not allocate buffer for descriptors");
-                            *status = MEMORY_ALLOCATION;
-                            return *status;
+        for ii in 0..(ncols as usize) {
+            /* loop over columns */
+            /* initialize the diagnostic compression results string */
+            int_snprintf!(
+                results[ii],
+                30,
+                "{:3} {:3} {:3} ",
+                ii + 1,
+                coltype[ii],
+                compalgor[ii],
+            );
+            cratio[ii] = 0.0;
+
+            if rm_repeat[ii] > 0 {
+                /* skip virtual columns with zero width */
+
+                if coltype[ii] < 0 {
+                    /* this is a variable length array (VLA) column */
+
+                    /*=========================================================================*/
+                    /* variable-length array columns are a complicated special case  */
+                    /*=========================================================================*/
+
+                    /* allocate memory to hold all the VLA descriptors from the input table, plus */
+                    /* room to hold the descriptors to the compressed VLAs in the output table */
+                    /* In total, there will be 2 descriptors for each row in this chunk */
+
+                    uncompressed_size = 0.;
+                    compressed_size = 0.0;
+
+                    datasize = (cm_colstart[ii + 1] - cm_colstart[ii]) as usize; /* size of input descriptors */
+
+                    /* room for both descriptors */
+                    let tmp_len = datasize + (rowspertile as usize * 16);
+                    if cdescript.try_reserve_exact(tmp_len).is_err() {
+                        ffpmsg_str("Could not allocate buffer for descriptors");
+                        *status = MEMORY_ALLOCATION;
+                        return *status;
+                    } else {
+                        cdescript.resize(tmp_len, 0);
+                    }
+
+                    /* copy the input descriptors to this array */
+                    cdescript[..datasize].copy_from_slice(cast_slice(
+                        &cm_buffer[cm_colstart[ii] as usize..(cm_colstart[ii] as usize + datasize)],
+                    ));
+
+                    if BYTESWAPPED {
+                        /* byte-swap the integer values into the native machine representation */
+                        if rm_colwidth[ii] == 16 {
+                            ffswap8(cast_slice_mut(&mut cdescript), rowspertile * 2);
                         } else {
-                            cdescript.resize(tmp_len, 0);
+                            ffswap4(cast_slice_mut(&mut cdescript), rowspertile * 2);
+                        }
+                    }
+
+                    /* pointer to the 2nd set of descriptors */
+
+                    for jj in 0..(rowspertile as usize) {
+                        /* loop to compress each VLA in turn */
+
+                        if rm_colwidth[ii] == 16 {
+                            /* if Q pointers */
+                            let descriptors: &[LONGLONG] = cast_slice(&cdescript); /* use this for Q type descriptors */
+                            vlalen = descriptors[jj * 2];
+                            vlastart = descriptors[(jj * 2) + 1];
+                        } else {
+                            /* if P pointers */
+                            let pdescriptors: &[c_int] = cast_slice(&cdescript); /* use this instead for or P type descriptors */
+                            vlalen = LONGLONG::from(pdescriptors[jj * 2]);
+                            vlastart = LONGLONG::from(pdescriptors[(jj * 2) + 1]);
                         }
 
-                        /* copy the input descriptors to this array */
-                        cdescript[..datasize].copy_from_slice(cast_slice(
-                            &cm_buffer
-                                [cm_colstart[ii] as usize..(cm_colstart[ii] as usize + datasize)],
-                        ));
+                        if vlalen > 0 {
+                            /* skip zero-length VLAs */
 
-                        if BYTESWAPPED {
-                            /* byte-swap the integer values into the native machine representation */
-                            if rm_colwidth[ii] == 16 {
-                                ffswap8(cast_slice_mut(&mut cdescript), rowspertile * 2);
+                            vlamemlen = vlalen * LONGLONG::from(-coltype[ii] / 10);
+
+                            /* memory for the input uncompressed VLA */
+                            if vlamem.try_reserve_exact(vlamemlen as usize).is_err() {
+                                ffpmsg_str("Could not allocate buffer for VLA");
+                                *status = MEMORY_ALLOCATION;
+                                return *status;
                             } else {
-                                ffswap4(cast_slice_mut(&mut cdescript), rowspertile * 2);
-                            }
-                        }
-
-                        /* pointer to the 2nd set of descriptors */
-
-                        for jj in 0..(rowspertile as usize) {
-                            /* loop to compress each VLA in turn */
-
-                            if rm_colwidth[ii] == 16 {
-                                /* if Q pointers */
-                                let descriptors: &[LONGLONG] = cast_slice(&cdescript); /* use this for Q type descriptors */
-                                vlalen = descriptors[jj * 2];
-                                vlastart = descriptors[(jj * 2) + 1];
-                            } else {
-                                /* if P pointers */
-                                let pdescriptors: &[c_int] = cast_slice(&cdescript); /* use this instead for or P type descriptors */
-                                vlalen = LONGLONG::from(pdescriptors[jj * 2]);
-                                vlastart = LONGLONG::from(pdescriptors[(jj * 2) + 1]);
+                                vlamem.resize(vlamemlen as usize, 0);
                             }
 
-                            if vlalen > 0 {
-                                /* skip zero-length VLAs */
+                            compmemlen = ((vlalen * LONGLONG::from(-coltype[ii] / 10)) as f64 * 1.5)
+                                as usize;
+                            if compmemlen < 100 {
+                                compmemlen = 100;
+                            }
 
-                                vlamemlen = vlalen * LONGLONG::from(-coltype[ii] / 10);
+                            /* memory for the output compressed VLA */
+                            if cvlamem.try_reserve_exact(compmemlen).is_err() {
+                                ffpmsg_str("Could not allocate buffer for compressed data");
+                                *status = MEMORY_ALLOCATION;
+                                return *status;
+                            } else {
+                                cvlamem.resize(compmemlen, 0);
+                            }
 
-                                /* memory for the input uncompressed VLA */
-                                if vlamem.try_reserve_exact(vlamemlen as usize).is_err() {
-                                    ffpmsg_str("Could not allocate buffer for VLA");
-                                    *status = MEMORY_ALLOCATION;
-                                    return *status;
-                                } else {
-                                    vlamem.resize(vlamemlen as usize, 0);
-                                }
+                            /* read the raw bytes directly from the heap, without any byte-swapping or null value detection */
+                            bytepos = (infptr.Fptr).datastart + (infptr.Fptr).heapstart + vlastart;
+                            ffmbyt_safe(infptr, bytepos, REPORT_EOF, status);
+                            ffgbyt(infptr, vlamemlen, cast_slice_mut(&mut vlamem), status); /* read the bytes */
+                            uncompressed_size += vlamemlen as f32; /* total size of the uncompressed VLAs */
+                            tot_uncompressed_size += vlamemlen as f32; /* total size of the uncompressed file */
 
-                                compmemlen = ((vlalen * LONGLONG::from(-coltype[ii] / 10)) as f64
-                                    * 1.5) as usize;
-                                if compmemlen < 100 {
-                                    compmemlen = 100;
-                                }
+                            /* compress the VLA with the appropriate algorithm */
+                            if compalgor[ii] == RICE_1 {
+                                let mut rce = RCEncoder::new(&mut cvlamem);
+                                rce.set_log_fn(ffpmsg_str);
 
-                                /* memory for the output compressed VLA */
-                                if cvlamem.try_reserve_exact(compmemlen).is_err() {
-                                    ffpmsg_str("Could not allocate buffer for compressed data");
-                                    *status = MEMORY_ALLOCATION;
-                                    return *status;
-                                } else {
-                                    cvlamem.resize(compmemlen, 0);
-                                }
-
-                                /* read the raw bytes directly from the heap, without any byte-swapping or null value detection */
-                                bytepos =
-                                    (infptr.Fptr).datastart + (infptr.Fptr).heapstart + vlastart;
-                                ffmbyt_safe(infptr, bytepos, REPORT_EOF, status);
-                                ffgbyt(infptr, vlamemlen, cast_slice_mut(&mut vlamem), status); /* read the bytes */
-                                uncompressed_size += vlamemlen as f32; /* total size of the uncompressed VLAs */
-                                tot_uncompressed_size += vlamemlen as f32; /* total size of the uncompressed file */
-
-                                /* compress the VLA with the appropriate algorithm */
-                                if compalgor[ii] == RICE_1 {
-                                    let mut rce = RCEncoder::new(&mut cvlamem);
-                                    rce.set_log_fn(ffpmsg_str);
-
-                                    if -coltype[ii] == TSHORT {
-                                        if BYTESWAPPED {
-                                            ffswap2(cast_slice_mut(&mut vlamem), vlalen as c_long);
-                                        }
-
-                                        let r = rce.encode_short(
-                                            cast_slice(&vlamem),
-                                            vlalen as usize,
-                                            32,
-                                        );
-                                        match r {
-                                            Ok(x) => dlen = x,
-                                            Err(_e) => {
-                                                *status = DATA_COMPRESSION_ERR;
-                                                // return *status;
-                                            }
-                                        }
-                                    } else if -coltype[ii] == TLONG {
-                                        if BYTESWAPPED {
-                                            ffswap4(cast_slice_mut(&mut vlamem), vlalen as c_long);
-                                        }
-
-                                        let r =
-                                            rce.encode(cast_slice(&vlamem), vlalen as usize, 32);
-                                        match r {
-                                            Ok(x) => dlen = x,
-                                            Err(_e) => {
-                                                *status = DATA_COMPRESSION_ERR;
-                                                // return *status;
-                                            }
-                                        }
-                                    } else if -coltype[ii] == TBYTE {
-                                        let r = rce.encode_byte(
-                                            cast_slice(&vlamem),
-                                            vlalen as usize,
-                                            32,
-                                        );
-                                        match r {
-                                            Ok(x) => dlen = x,
-                                            Err(_e) => {
-                                                *status = DATA_COMPRESSION_ERR;
-                                                // return *status;
-                                            }
-                                        }
-                                    } else {
-                                        /* this should not happen */
-                                        ffpmsg_str(
-                                            " Error: cannot compress this column type with the RICE algorithm",
-                                        );
-                                        *status = DATA_COMPRESSION_ERR;
-                                        return *status;
+                                if -coltype[ii] == TSHORT {
+                                    if BYTESWAPPED {
+                                        ffswap2(cast_slice_mut(&mut vlamem), vlalen as c_long);
                                     }
-                                } else if compalgor[ii] == GZIP_1 || compalgor[ii] == GZIP_2 {
-                                    if compalgor[ii] == GZIP_2 {
-                                        /* shuffle the bytes before
-                                        gzipping them */
-                                        if ((-coltype[ii] / 10) as c_int) == 2 {
-                                            fits_shuffle_2bytes(
-                                                cast_slice_mut(&mut vlamem),
-                                                vlalen,
-                                                status,
-                                            );
-                                        } else if ((-coltype[ii] / 10) as c_int) == 4 {
-                                            fits_shuffle_4bytes(
-                                                cast_slice_mut(&mut vlamem),
-                                                vlalen,
-                                                status,
-                                            );
-                                        } else if ((-coltype[ii] / 10) as c_int) == 8 {
-                                            fits_shuffle_8bytes(
-                                                cast_slice_mut(&mut vlamem),
-                                                vlalen,
-                                                status,
-                                            );
+
+                                    let r =
+                                        rce.encode_short(cast_slice(&vlamem), vlalen as usize, 32);
+                                    match r {
+                                        Ok(x) => dlen = x,
+                                        Err(_e) => {
+                                            *status = DATA_COMPRESSION_ERR;
+                                            // return *status;
                                         }
                                     }
-                                    /*: gzip compress the array of bytes */
+                                } else if -coltype[ii] == TLONG {
+                                    if BYTESWAPPED {
+                                        ffswap4(cast_slice_mut(&mut vlamem), vlalen as c_long);
+                                    }
+
+                                    let r = rce.encode(cast_slice(&vlamem), vlalen as usize, 32);
+                                    match r {
+                                        Ok(x) => dlen = x,
+                                        Err(_e) => {
+                                            *status = DATA_COMPRESSION_ERR;
+                                            // return *status;
+                                        }
+                                    }
+                                } else if -coltype[ii] == TBYTE {
+                                    let r =
+                                        rce.encode_byte(cast_slice(&vlamem), vlalen as usize, 32);
+                                    match r {
+                                        Ok(x) => dlen = x,
+                                        Err(_e) => {
+                                            *status = DATA_COMPRESSION_ERR;
+                                            // return *status;
+                                        }
+                                    }
+                                } else {
+                                    /* this should not happen */
+                                    ffpmsg_str(
+                                        " Error: cannot compress this column type with the RICE algorithm",
+                                    );
+                                    *status = DATA_COMPRESSION_ERR;
+                                    return *status;
+                                }
+                            } else if compalgor[ii] == GZIP_1 || compalgor[ii] == GZIP_2 {
+                                if compalgor[ii] == GZIP_2 {
+                                    /* shuffle the bytes before
+                                    gzipping them */
+                                    if ((-coltype[ii] / 10) as c_int) == 2 {
+                                        fits_shuffle_2bytes(
+                                            cast_slice_mut(&mut vlamem),
+                                            vlalen,
+                                            status,
+                                        );
+                                    } else if ((-coltype[ii] / 10) as c_int) == 4 {
+                                        fits_shuffle_4bytes(
+                                            cast_slice_mut(&mut vlamem),
+                                            vlalen,
+                                            status,
+                                        );
+                                    } else if ((-coltype[ii] / 10) as c_int) == 8 {
+                                        fits_shuffle_8bytes(
+                                            cast_slice_mut(&mut vlamem),
+                                            vlalen,
+                                            status,
+                                        );
+                                    }
+                                }
+                                /*: gzip compress the array of bytes */
+                                unsafe {
                                     compress2mem_from_mem(
                                         cast_slice(&vlamem),
                                         vlamemlen as usize,
@@ -11528,126 +11485,123 @@ pub unsafe fn fits_compress_table_safer(
                                         Some(&mut dlen),
                                         status,
                                     );
-                                } else {
-                                    /* this should not happen */
-                                    ffpmsg_str(" Error: unknown compression algorithm");
-                                    *status = DATA_COMPRESSION_ERR;
-                                    return *status;
                                 }
-
-                                /* write the compressed array to the output table, but... */
-                                /* We use a trick of always writing the array to the same row of the output table */
-                                /* and then copy the descriptor into the array of descriptors that we allocated. */
-
-                                /* First, reset the descriptor */
-                                fits_write_descript(
-                                    outfptr,
-                                    (ii + 1) as c_int,
-                                    (ll + 1) as LONGLONG,
-                                    0,
-                                    0,
-                                    status,
-                                );
-
-                                /* write the compressed VLA if it is smaller than the original, else write */
-                                /* the uncompressed array */
-                                fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
-                                if dlen < vlamemlen as usize {
-                                    fits_write_col(
-                                        outfptr,
-                                        TBYTE,
-                                        (ii + 1) as c_int,
-                                        (ll + 1) as LONGLONG,
-                                        1,
-                                        dlen as LONGLONG,
-                                        &cvlamem,
-                                        status,
-                                    );
-                                    compressed_size += dlen as f32; /* total size of the compressed VLAs */
-                                    tot_compressed_size += dlen as f32; /* total size of the compressed file */
-                                } else {
-                                    if -coltype[ii] != TBYTE && compalgor[ii] != GZIP_1 {
-                                        /* it is probably faster to reread the raw bytes, rather than unshuffle or unswap them */
-                                        bytepos = (infptr.Fptr).datastart
-                                            + (infptr.Fptr).heapstart
-                                            + vlastart;
-                                        ffmbyt_safe(infptr, bytepos, REPORT_EOF, status);
-                                        ffgbyt(
-                                            infptr,
-                                            vlamemlen,
-                                            cast_slice_mut(&mut vlamem),
-                                            status,
-                                        ); /* read the bytes */
-                                    }
-                                    fits_write_col(
-                                        outfptr,
-                                        TBYTE,
-                                        (ii + 1) as c_int,
-                                        (ll + 1) as LONGLONG,
-                                        1,
-                                        vlamemlen,
-                                        cast_slice(&vlamem),
-                                        status,
-                                    );
-                                    compressed_size += vlamemlen as f32; /* total size of the compressed VLAs */
-                                    tot_compressed_size += vlamemlen as f32; /* total size of the compressed file */
-                                }
-
-                                /* read back the descriptor and save it in the array of descriptors */
-                                let outdescript: &mut [LONGLONG] =
-                                    cast_slice_mut(&mut cdescript[datasize..]); // cdescript + datasize as LONGLONG
-                                let mut read_len = outdescript[jj * 2];
-                                let mut read_heapaddr = outdescript[jj * 2 + 1];
-                                fits_read_descriptll(
-                                    outfptr,
-                                    (ii + 1) as c_int,
-                                    (ll + 1) as LONGLONG,
-                                    Some(&mut read_len),
-                                    Some(&mut read_heapaddr),
-                                    status,
-                                );
-
-                                outdescript[jj * 2] = read_len;
-                                outdescript[jj * 2 + 1] = read_heapaddr;
-                            } /* end of vlalen > 0 */
-                        } /* end of loop over rows */
-
-                        if compressed_size != 0.0 {
-                            cratio[ii] = uncompressed_size / compressed_size;
-                        }
-
-                        int_snprintf!(tempstring, FLEN_VALUE, " r={:6.2}", cratio[ii]);
-                        let len = strlen_safe(&results[ii]);
-                        strncat_safe(&mut results[ii], &tempstring, 29 - len);
-
-                        /* now we just have to compress the array of descriptors (both input and output) */
-                        /* and write them to the output table. */
-
-                        /* allocate memory for the compressed descriptors */
-                        if cvlamem
-                            .try_reserve_exact(datasize + (rowspertile as usize * 16))
-                            .is_err()
-                        {
-                            ffpmsg_str("Could not allocate buffer for compressed data");
-                            *status = MEMORY_ALLOCATION;
-                            return *status;
-                        } else {
-                            cvlamem.resize(datasize + (rowspertile as usize * 16), 0);
-                        }
-
-                        if BYTESWAPPED {
-                            /* byte swap the input and output descriptors */
-                            if rm_colwidth[ii] == 16 {
-                                ffswap8(cast_slice_mut(&mut cdescript), rowspertile * 2);
                             } else {
-                                ffswap4(cast_slice_mut(&mut cdescript), rowspertile * 2);
+                                /* this should not happen */
+                                ffpmsg_str(" Error: unknown compression algorithm");
+                                *status = DATA_COMPRESSION_ERR;
+                                return *status;
                             }
 
+                            /* write the compressed array to the output table, but... */
+                            /* We use a trick of always writing the array to the same row of the output table */
+                            /* and then copy the descriptor into the array of descriptors that we allocated. */
+
+                            /* First, reset the descriptor */
+                            fits_write_descript(
+                                outfptr,
+                                (ii + 1) as c_int,
+                                (ll + 1) as LONGLONG,
+                                0,
+                                0,
+                                status,
+                            );
+
+                            /* write the compressed VLA if it is smaller than the original, else write */
+                            /* the uncompressed array */
+                            fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
+                            if dlen < vlamemlen as usize {
+                                fits_write_col(
+                                    outfptr,
+                                    TBYTE,
+                                    (ii + 1) as c_int,
+                                    (ll + 1) as LONGLONG,
+                                    1,
+                                    dlen as LONGLONG,
+                                    &cvlamem,
+                                    status,
+                                );
+                                compressed_size += dlen as f32; /* total size of the compressed VLAs */
+                                tot_compressed_size += dlen as f32; /* total size of the compressed file */
+                            } else {
+                                if -coltype[ii] != TBYTE && compalgor[ii] != GZIP_1 {
+                                    /* it is probably faster to reread the raw bytes, rather than unshuffle or unswap them */
+                                    bytepos = (infptr.Fptr).datastart
+                                        + (infptr.Fptr).heapstart
+                                        + vlastart;
+                                    ffmbyt_safe(infptr, bytepos, REPORT_EOF, status);
+                                    ffgbyt(infptr, vlamemlen, cast_slice_mut(&mut vlamem), status); /* read the bytes */
+                                }
+                                fits_write_col(
+                                    outfptr,
+                                    TBYTE,
+                                    (ii + 1) as c_int,
+                                    (ll + 1) as LONGLONG,
+                                    1,
+                                    vlamemlen,
+                                    cast_slice(&vlamem),
+                                    status,
+                                );
+                                compressed_size += vlamemlen as f32; /* total size of the compressed VLAs */
+                                tot_compressed_size += vlamemlen as f32; /* total size of the compressed file */
+                            }
+
+                            /* read back the descriptor and save it in the array of descriptors */
                             let outdescript: &mut [LONGLONG] =
                                 cast_slice_mut(&mut cdescript[datasize..]); // cdescript + datasize as LONGLONG
-                            ffswap8(outdescript, rowspertile * 2);
+                            let mut read_len = outdescript[jj * 2];
+                            let mut read_heapaddr = outdescript[jj * 2 + 1];
+                            fits_read_descriptll(
+                                outfptr,
+                                (ii + 1) as c_int,
+                                (ll + 1) as LONGLONG,
+                                Some(&mut read_len),
+                                Some(&mut read_heapaddr),
+                                status,
+                            );
+
+                            outdescript[jj * 2] = read_len;
+                            outdescript[jj * 2 + 1] = read_heapaddr;
+                        } /* end of vlalen > 0 */
+                    } /* end of loop over rows */
+
+                    if compressed_size != 0.0 {
+                        cratio[ii] = uncompressed_size / compressed_size;
+                    }
+
+                    int_snprintf!(tempstring, FLEN_VALUE, " r={:6.2}", cratio[ii]);
+                    let len = strlen_safe(&results[ii]);
+                    strncat_safe(&mut results[ii], &tempstring, 29 - len);
+
+                    /* now we just have to compress the array of descriptors (both input and output) */
+                    /* and write them to the output table. */
+
+                    /* allocate memory for the compressed descriptors */
+                    if cvlamem
+                        .try_reserve_exact(datasize + (rowspertile as usize * 16))
+                        .is_err()
+                    {
+                        ffpmsg_str("Could not allocate buffer for compressed data");
+                        *status = MEMORY_ALLOCATION;
+                        return *status;
+                    } else {
+                        cvlamem.resize(datasize + (rowspertile as usize * 16), 0);
+                    }
+
+                    if BYTESWAPPED {
+                        /* byte swap the input and output descriptors */
+                        if rm_colwidth[ii] == 16 {
+                            ffswap8(cast_slice_mut(&mut cdescript), rowspertile * 2);
+                        } else {
+                            ffswap4(cast_slice_mut(&mut cdescript), rowspertile * 2);
                         }
-                        /* compress the array contain both sets of descriptors */
+
+                        let outdescript: &mut [LONGLONG] =
+                            cast_slice_mut(&mut cdescript[datasize..]); // cdescript + datasize as LONGLONG
+                        ffswap8(outdescript, rowspertile * 2);
+                    }
+                    /* compress the array contain both sets of descriptors */
+                    unsafe {
                         compress2mem_from_mem(
                             &cdescript,
                             datasize + (rowspertile * 16) as usize,
@@ -11655,144 +11609,28 @@ pub unsafe fn fits_compress_table_safer(
                             Some(&mut dlen),
                             status,
                         );
-
-                        /* write the compressed descriptors to the output column */
-                        fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
-                        fits_write_descript(
-                            outfptr,
-                            (ii + 1) as c_int,
-                            (ll + 1) as LONGLONG,
-                            0,
-                            0,
-                            status,
-                        ); /* First, reset the descriptor */
-                        fits_write_col(
-                            outfptr,
-                            TBYTE,
-                            (ii + 1) as c_int,
-                            (ll + 1) as LONGLONG,
-                            1,
-                            dlen.try_into().unwrap(),
-                            cast_slice(&cvlamem),
-                            status,
-                        );
-
-                        if ll == 0 {
-                            /* only write the ZCTYPn keyword once, while
-                            processing the first column */
-                            fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
-
-                            if compalgor[ii] == RICE_1 {
-                                strcpy_safe(&mut keyvalue, cs!(c"RICE_1"));
-                            } else if compalgor[ii] == GZIP_2 {
-                                strcpy_safe(&mut keyvalue, cs!(c"GZIP_2"));
-                            } else {
-                                strcpy_safe(&mut keyvalue, cs!(c"GZIP_1"));
-                            }
-
-                            fits_write_key(
-                                outfptr,
-                                crate::KeywordDatatype::TSTRING(&keyvalue),
-                                &keyname,
-                                Some(cs!(c"compression algorithm for column")),
-                                status,
-                            );
-                        }
-
-                        continue; /* jump to end of loop, to go to next column */
-                    } /* end of VLA case */
-
-                    /* ================================================================================*/
-                    /* deal with all the normal fixed-length columns here */
-                    /* ================================================================================*/
-
-                    /* allocate memory for the compressed data */
-                    datasize = (cm_colstart[ii + 1] - cm_colstart[ii]) as usize;
-                    if cvlamem.try_reserve_exact(datasize * 2).is_err() {
-                        ffpmsg_str("Could not allocate buffer for compressed data");
-                        *status = MEMORY_ALLOCATION;
-                        return *status;
-                    } else {
-                        cvlamem.resize(datasize * 2, 0);
                     }
 
-                    tot_uncompressed_size += datasize as f32;
-
-                    if compalgor[ii] == RICE_1 {
-                        let mut rce = RCEncoder::new(&mut cvlamem);
-                        rce.set_log_fn(ffpmsg_str);
-
-                        if coltype[ii] == TSHORT {
-                            if BYTESWAPPED {
-                                ffswap2(
-                                    cast_slice_mut(&mut cm_buffer[cm_colstart[ii] as usize..]),
-                                    (datasize / 2).try_into().unwrap(),
-                                );
-                            }
-
-                            let r = rce.encode_short(
-                                cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
-                                vlalen as usize,
-                                32,
-                            );
-                            match r {
-                                Ok(x) => dlen = x,
-                                Err(_e) => {
-                                    *status = DATA_COMPRESSION_ERR;
-                                    // return *status;
-                                }
-                            }
-                        } else if coltype[ii] == TLONG {
-                            if BYTESWAPPED {
-                                ffswap4(
-                                    cast_slice_mut(&mut cm_buffer[cm_colstart[ii] as usize..]),
-                                    (datasize / 4).try_into().unwrap(),
-                                );
-                            }
-
-                            let r = rce.encode(
-                                cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
-                                vlalen as usize,
-                                32,
-                            );
-                            match r {
-                                Ok(x) => dlen = x,
-                                Err(_e) => {
-                                    *status = DATA_COMPRESSION_ERR;
-                                    // return *status;
-                                }
-                            }
-                        } else if coltype[ii] == TBYTE {
-                            let r = rce.encode_byte(
-                                cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
-                                vlalen as usize,
-                                32,
-                            );
-                            match r {
-                                Ok(x) => dlen = x,
-                                Err(_e) => {
-                                    *status = DATA_COMPRESSION_ERR;
-                                    // return *status;
-                                }
-                            }
-                        } else {
-                            /* this should not happen */
-                            ffpmsg_cstr(
-                                c" Error: cannot compress this column type with the RICE algorthm",
-                            );
-                            *status = DATA_COMPRESSION_ERR;
-                            return *status;
-                        }
-                    } else {
-                        /* all other cases: gzip compress the column (bytes may have been shuffled previously) */
-                        compress2mem_from_mem(
-                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
-                            datasize,
-                            &mut cvlamem,
-                            Some(&mut dlen),
-                            status,
-                        );
-                    }
+                    /* write the compressed descriptors to the output column */
+                    fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
+                    fits_write_descript(
+                        outfptr,
+                        (ii + 1) as c_int,
+                        (ll + 1) as LONGLONG,
+                        0,
+                        0,
+                        status,
+                    ); /* First, reset the descriptor */
+                    fits_write_col(
+                        outfptr,
+                        TBYTE,
+                        (ii + 1) as c_int,
+                        (ll + 1) as LONGLONG,
+                        1,
+                        dlen.try_into().unwrap(),
+                        cast_slice(&cvlamem),
+                        status,
+                    );
 
                     if ll == 0 {
                         /* only write the ZCTYPn keyword once, while
@@ -11816,61 +11654,179 @@ pub unsafe fn fits_compress_table_safer(
                         );
                     }
 
-                    /* write the compressed data to the output column */
-                    fits_set_tscale(outfptr, (ii + 1).try_into().unwrap(), 1.0, 0.0, status); /* turn off any data scaling, first */
-                    fits_write_col(
-                        outfptr,
-                        TBYTE,
-                        (ii + 1).try_into().unwrap(),
-                        (ll + 1).try_into().unwrap(),
-                        1,
-                        dlen.try_into().unwrap(),
-                        cast_slice(&cvlamem),
-                        status,
-                    );
-                    tot_compressed_size += dlen as f32;
+                    continue; /* jump to end of loop, to go to next column */
+                } /* end of VLA case */
 
-                    /* create diagnostic messages */
-                    if dlen != 0 {
-                        cratio[ii] = (datasize as f32) / (dlen as f32); /* compression ratio of the column */
+                /* ================================================================================*/
+                /* deal with all the normal fixed-length columns here */
+                /* ================================================================================*/
+
+                /* allocate memory for the compressed data */
+                datasize = (cm_colstart[ii + 1] - cm_colstart[ii]) as usize;
+                if cvlamem.try_reserve_exact(datasize * 2).is_err() {
+                    ffpmsg_str("Could not allocate buffer for compressed data");
+                    *status = MEMORY_ALLOCATION;
+                    return *status;
+                } else {
+                    cvlamem.resize(datasize * 2, 0);
+                }
+
+                tot_uncompressed_size += datasize as f32;
+
+                if compalgor[ii] == RICE_1 {
+                    let mut rce = RCEncoder::new(&mut cvlamem);
+                    rce.set_log_fn(ffpmsg_str);
+
+                    if coltype[ii] == TSHORT {
+                        if BYTESWAPPED {
+                            ffswap2(
+                                cast_slice_mut(&mut cm_buffer[cm_colstart[ii] as usize..]),
+                                (datasize / 2).try_into().unwrap(),
+                            );
+                        }
+
+                        let r = rce.encode_short(
+                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
+                            vlalen as usize,
+                            32,
+                        );
+                        match r {
+                            Ok(x) => dlen = x,
+                            Err(_e) => {
+                                *status = DATA_COMPRESSION_ERR;
+                                // return *status;
+                            }
+                        }
+                    } else if coltype[ii] == TLONG {
+                        if BYTESWAPPED {
+                            ffswap4(
+                                cast_slice_mut(&mut cm_buffer[cm_colstart[ii] as usize..]),
+                                (datasize / 4).try_into().unwrap(),
+                            );
+                        }
+
+                        let r = rce.encode(
+                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
+                            vlalen as usize,
+                            32,
+                        );
+                        match r {
+                            Ok(x) => dlen = x,
+                            Err(_e) => {
+                                *status = DATA_COMPRESSION_ERR;
+                                // return *status;
+                            }
+                        }
+                    } else if coltype[ii] == TBYTE {
+                        let r = rce.encode_byte(
+                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
+                            vlalen as usize,
+                            32,
+                        );
+                        match r {
+                            Ok(x) => dlen = x,
+                            Err(_e) => {
+                                *status = DATA_COMPRESSION_ERR;
+                                // return *status;
+                            }
+                        }
+                    } else {
+                        /* this should not happen */
+                        ffpmsg_cstr(
+                            c" Error: cannot compress this column type with the RICE algorthm",
+                        );
+                        *status = DATA_COMPRESSION_ERR;
+                        return *status;
+                    }
+                } else {
+                    /* all other cases: gzip compress the column (bytes may have been shuffled previously) */
+                    unsafe {
+                        compress2mem_from_mem(
+                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
+                            datasize,
+                            &mut cvlamem,
+                            Some(&mut dlen),
+                            status,
+                        );
+                    }
+                }
+
+                if ll == 0 {
+                    /* only write the ZCTYPn keyword once, while
+                    processing the first column */
+                    fits_make_keyn(cs!(c"ZCTYP"), (ii + 1) as c_int, &mut keyname, status);
+
+                    if compalgor[ii] == RICE_1 {
+                        strcpy_safe(&mut keyvalue, cs!(c"RICE_1"));
+                    } else if compalgor[ii] == GZIP_2 {
+                        strcpy_safe(&mut keyvalue, cs!(c"GZIP_2"));
+                    } else {
+                        strcpy_safe(&mut keyvalue, cs!(c"GZIP_1"));
                     }
 
-                    int_snprintf!(tempstring, FLEN_VALUE, " r={:6.2}", cratio[ii]);
-                    let str_len = strlen_safe(&results[ii]);
-                    strncat_safe(&mut results[ii], &tempstring, 29 - str_len);
-                } /* end of not a virtual column */
-            } /* end of loop over columns */
-
-            datastart += rowspertile as LONGLONG * naxis1; /* increment to start of next chunk */
-            // firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
-            if print_report {
-                println!("\nChunk = {}", ll + 1);
-                for ii in 0..(ncols as usize) {
-                    let results_str = CStr::from_bytes_until_nul(cast_slice(&results[ii]))
-                        .unwrap()
-                        .to_str()
-                        .unwrap();
-                    println!("{results_str}\n");
+                    fits_write_key(
+                        outfptr,
+                        crate::KeywordDatatype::TSTRING(&keyvalue),
+                        &keyname,
+                        Some(cs!(c"compression algorithm for column")),
+                        status,
+                    );
                 }
+
+                /* write the compressed data to the output column */
+                fits_set_tscale(outfptr, (ii + 1).try_into().unwrap(), 1.0, 0.0, status); /* turn off any data scaling, first */
+                fits_write_col(
+                    outfptr,
+                    TBYTE,
+                    (ii + 1).try_into().unwrap(),
+                    (ll + 1).try_into().unwrap(),
+                    1,
+                    dlen.try_into().unwrap(),
+                    cast_slice(&cvlamem),
+                    status,
+                );
+                tot_compressed_size += dlen as f32;
+
+                /* create diagnostic messages */
+                if dlen != 0 {
+                    cratio[ii] = (datasize as f32) / (dlen as f32); /* compression ratio of the column */
+                }
+
+                int_snprintf!(tempstring, FLEN_VALUE, " r={:6.2}", cratio[ii]);
+                let str_len = strlen_safe(&results[ii]);
+                strncat_safe(&mut results[ii], &tempstring, 29 - str_len);
+            } /* end of not a virtual column */
+        } /* end of loop over columns */
+
+        datastart += rowspertile as LONGLONG * naxis1; /* increment to start of next chunk */
+        // firstrow += rowspertile as LONGLONG; /* increment first row in next chunk */
+        if print_report {
+            println!("\nChunk = {}", ll + 1);
+            for ii in 0..(ncols as usize) {
+                let results_str = CStr::from_bytes_until_nul(cast_slice(&results[ii]))
+                    .unwrap()
+                    .to_str()
+                    .unwrap();
+                println!("{results_str}\n");
             }
-        } /* end of loop over chunks of the table */
-
-        /* =================================================================================*/
-        /*  all done; just clean up and return  */
-        /* ================================================================================*/
-
-        fits_set_hdustruc(outfptr, status); /* reset internal structures */
-
-        if print_report && tot_compressed_size != 0.0 {
-            println!(
-                "\nTotal data size (MB) {:.3} -> {:.3}, ratio = {:.3}",
-                tot_uncompressed_size / 1000000.,
-                tot_compressed_size / 1000000.,
-                tot_uncompressed_size / tot_compressed_size,
-            );
         }
-        *status
+    } /* end of loop over chunks of the table */
+
+    /* =================================================================================*/
+    /*  all done; just clean up and return  */
+    /* ================================================================================*/
+
+    fits_set_hdustruc(outfptr, status); /* reset internal structures */
+
+    if print_report && tot_compressed_size != 0.0 {
+        println!(
+            "\nTotal data size (MB) {:.3} -> {:.3}, ratio = {:.3}",
+            tot_uncompressed_size / 1000000.,
+            tot_compressed_size / 1000000.,
+            tot_uncompressed_size / tot_compressed_size,
+        );
     }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -14123,7 +14079,7 @@ mod ricecomp_tests {
 mod tests {
     use super::{
         c_char, c_int, fits_get_compression_type_safe, fits_get_dither_seed_safe,
-        fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safer,
+        fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safe,
         fits_img_compress_safe, fits_set_compression_type_safe, fits_set_dither_seed_safe,
         fits_set_noise_bits_safe, fits_set_quantize_level_safe, fits_set_quantize_method_safe,
         fits_set_tile_dim_safe, fits_shuffle_2bytes, fits_shuffle_4bytes, fits_shuffle_8bytes,
@@ -14418,9 +14374,7 @@ mod tests {
             assert_eq!(status, 0);
 
             let mut dims_out: [c_long; 2] = [0, 0];
-            unsafe {
-                fits_get_tile_dim_safer(&mut fptr, 2, &mut dims_out, &mut status);
-            }
+            fits_get_tile_dim_safe(&mut fptr, 2, &mut dims_out, &mut status);
             assert_eq!(status, 0);
             assert_eq!(dims_out[0], 32);
             assert_eq!(dims_out[1], 32);

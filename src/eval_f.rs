@@ -67,14 +67,14 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    CONST_OP, DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData,
-    ParseStatusVariables, data_union, parseInfo,
+    DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData, ParseStatusVariables,
+    ValueSort, parseInfo,
 };
 use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{Evaluate_Parser, GTIFILT_FCT, REGFILT_FCT, fits_parser_yyparse};
+use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, funcOp};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -94,7 +94,6 @@ use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
-use crate::region::{SAORegion, fits_free_region};
 use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -218,7 +217,7 @@ pub fn fffrow_safe(
 
     if constant {
         /* No need to call parser... have result from ffiprs */
-        result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log };
+        result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
         *n_good_rows = nrows;
 
         for elem in 0..nrows {
@@ -445,7 +444,7 @@ pub fn ffsrow_safe(
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
 
-            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log;
+            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
 
             for ntodo in 0..inExt.numRows {
                 *Info.dataPtr.cast::<c_char>().add(ntodo as usize) = result;
@@ -1225,7 +1224,7 @@ pub fn ffcalc_rng_safe(
                 ffukyd_safe(
                     outfptr,
                     parName,
-                    unsafe { result.value.data.dbl },
+                    result.value.data.dbl(),
                     15,
                     Some(parInfo),
                     status,
@@ -1235,7 +1234,7 @@ pub fn ffcalc_rng_safe(
                 ffukyj_safe(
                     outfptr,
                     parName,
-                    unsafe { result.value.data.lng } as LONGLONG,
+                    result.value.data.lng() as LONGLONG,
                     Some(parInfo),
                     status,
                 );
@@ -1244,21 +1243,21 @@ pub fn ffcalc_rng_safe(
                 ffukyl_safe(
                     outfptr,
                     parName,
-                    i32::from(unsafe { result.value.data.log }),
+                    i32::from(result.value.data.log()),
                     Some(parInfo),
                     status,
                 );
             }
             TBIT | TSTRING => {
                 if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
-                    ffphis_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                    ffphis_safe(outfptr, result.value.data.text(), status);
                 } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
-                    ffpcom_safe(outfptr, unsafe { &result.value.data.astr }, status);
+                    ffpcom_safe(outfptr, result.value.data.text(), status);
                 } else {
                     ffukys_safe(
                         outfptr,
                         parName,
-                        unsafe { &result.value.data.astr },
+                        result.value.data.text(),
                         Some(parInfo),
                         status,
                     );
@@ -1509,16 +1508,19 @@ pub(crate) fn ffiprs(
         naxes[i as usize] = lParse.nAxes[i as usize];
     }
 
+    /* ValueSort has no other variants, so this arm cannot be reached; it is
+    kept because it is the C's error path and the field may widen again. */
+    #[allow(unreachable_patterns)]
     match result.ntype {
-        val if val == fits_parser_yytokentype::BOOLEAN as c_int => *datatype = TLOGICAL,
+        ValueSort::Boolean => *datatype = TLOGICAL,
 
-        val if val == fits_parser_yytokentype::LONG as c_int => *datatype = TLONG,
+        ValueSort::Long => *datatype = TLONG,
 
-        val if val == fits_parser_yytokentype::DOUBLE as c_int => *datatype = TDOUBLE,
+        ValueSort::Double => *datatype = TDOUBLE,
 
-        val if val == fits_parser_yytokentype::BITSTR as c_int => *datatype = TBIT,
+        ValueSort::Bits => *datatype = TBIT,
 
-        val if val == fits_parser_yytokentype::STRING as c_int => *datatype = TSTRING,
+        ValueSort::String => *datatype = TSTRING,
 
         _ => {
             *datatype = 0;
@@ -1530,7 +1532,7 @@ pub(crate) fn ffiprs(
     lParse.datatype = *datatype;
     lParse.expr = None; // Clear the Option<Box<[u8]>> instead of using FREE!
 
-    if result.operation == CONST_OP {
+    if result.is_const() {
         *nelem = -*nelem;
     }
     *status
@@ -1556,7 +1558,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                     continue;
                 }
 
-                if lParse.varData[col as usize].dtype == fits_parser_yytokentype::BITSTR as c_int {
+                if lParse.varData[col as usize].dtype == ValueSort::Bits {
                     let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
                     let mut first_ptr = *data_ptr;
                     FREE!(first_ptr);
@@ -1575,21 +1577,15 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             node = lParse.nNodes;
             while node != 0 {
                 node -= 1;
-                if (lParse.Nodes[node as usize]).operation == GTIFILT_FCT as c_int {
+                if (lParse.Nodes[node as usize]).operation == funcOp::GTIFILT_FCT as c_int {
                     i = lParse.Nodes[node as usize].SubNodes[0];
-                    if !(lParse.Nodes[i]).value.data.ptr.is_null() {
-                        let mut data_ptr = (lParse.Nodes[i]).value.data.ptr;
-                        FREE!(data_ptr);
-                    }
-                } else if (lParse.Nodes[node as usize]).operation == REGFILT_FCT as c_int {
-                    i = (lParse.Nodes[node as usize]).SubNodes[0];
-                    if !(lParse.Nodes[i]).value.data.ptr.is_null() {
-                        fits_free_region(Box::from_raw(
-                            (lParse.Nodes[i]).value.data.ptr.cast::<SAORegion>(),
-                        ));
-                        (lParse.Nodes[i]).value.data.ptr = core::ptr::null_mut();
+                    if !(lParse.Nodes[i]).value.data.raw().is_null() {
+                        (lParse.Nodes[i]).value.data.free_buffer();
                     }
                 }
+                /* REGFILT nodes used to be freed here by hand. The region now
+                lives in lParse.regions behind an Rc, so it goes when the
+                ParseData does. */
             }
             lParse.nNodes = 0;
         }
@@ -1795,14 +1791,14 @@ pub(crate) fn fits_parser_workfn_safe(
             /* Determine the size of each element of the calculated result */
             /*   (only matters for numeric/logical data)                   */
 
-            match lParse.Nodes[lParse.resultNode as usize].ntype.into() {
-                fits_parser_yytokentype::BOOLEAN => {
+            match lParse.Nodes[lParse.resultNode as usize].ntype {
+                ValueSort::Boolean => {
                     (pv.resDataSize) = size_of::<c_char>() as c_long;
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     (pv.resDataSize) = size_of::<c_long>() as c_long;
                 }
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     (pv.resDataSize) = size_of::<f64>() as c_long;
                 }
                 _ => {}
@@ -1899,21 +1895,19 @@ pub(crate) fn fits_parser_workfn_safe(
             /*  Copy results into data array  */
 
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
+            if result.is_const() {
                 constant = 1;
             }
 
-            match result.ntype.into() {
-                fits_parser_yytokentype::BOOLEAN
-                | fits_parser_yytokentype::LONG
-                | fits_parser_yytokentype::DOUBLE => {
+            match result.ntype {
+                ValueSort::Boolean | ValueSort::Long | ValueSort::Double => {
                     if constant != 0 {
                         let undef: c_char = 0;
                         for kk in 0..ntodo {
                             for jj in 0..pv.repeat {
                                 ffcvtn(
                                     lParse.datatype,
-                                    (&(result.value.data) as *const data_union).cast::<c_void>(),
+                                    result.value.data.scalar_ptr(),
                                     &undef,
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
@@ -1935,7 +1929,7 @@ pub(crate) fn fits_parser_workfn_safe(
                         if (pv.repeat) == result.value.nelem {
                             ffcvtn(
                                 lParse.datatype,
-                                result.value.data.ptr,
+                                result.value.data.raw(),
                                 result.value.undef,
                                 result.value.nelem * ntodo,
                                 (*(pv.userInfo)).datatype,
@@ -1952,7 +1946,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         result
                                             .value
                                             .data
-                                            .ptr
+                                            .raw()
                                             .cast::<c_char>()
                                             .add((kk * (pv.resDataSize)).try_into().unwrap())
                                             as *const c_void,
@@ -1983,7 +1977,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             for kk in 0..ntodo {
                                 ffcvtn(
                                     lParse.datatype,
-                                    (result.value.data.ptr as *const c_char)
+                                    (result.value.data.raw() as *const c_char)
                                         .add(
                                             (kk * result.value.nelem * (pv.resDataSize))
                                                 .try_into()
@@ -2028,8 +2022,8 @@ pub(crate) fn fits_parser_workfn_safe(
                                 }
                             }
                         }
-                        if result.operation > 0 {
-                            FREE!(result.value.data.ptr);
+                        if result.is_computed() {
+                            result.value.data.free_buffer();
                         }
                     }
                     if lParse.status == OVERFLOW_ERR {
@@ -2040,7 +2034,7 @@ pub(crate) fn fits_parser_workfn_safe(
                     }
                 }
 
-                fits_parser_yytokentype::BITSTR => {
+                ValueSort::Bits => {
                     match (*(pv.userInfo)).datatype {
                         TBYTE => {
                             idx = -1;
@@ -2052,7 +2046,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                             0;
                                     }
                                     if constant != 0 {
-                                        if result.value.data.astr[jj as usize] == b'1' as c_char {
+                                        if result.value.data.text()[jj as usize] == b'1' as c_char {
                                             *(pv.Data
                                                 .cast::<c_uchar>()
                                                 .add(idx.try_into().unwrap())) |= 128 >> (jj % 8);
@@ -2060,7 +2054,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                     } else if *(*(result
                                         .value
                                         .data
-                                        .strptr
+                                        .str_buf()
                                         .add(kk.try_into().unwrap())))
                                     .add(jj.try_into().unwrap())
                                         == b'1' as c_char
@@ -2077,7 +2071,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             if constant != 0 {
                                 for kk in 0..ntodo {
                                     for jj in 0..result.value.nelem {
-                                        let r = if (result.value.data.astr[jj as usize])
+                                        let r = if (result.value.data.text()[jj as usize])
                                             == b'1' as c_char
                                         {
                                             1
@@ -2095,7 +2089,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         let r = if (*(*(result
                                             .value
                                             .data
-                                            .strptr
+                                            .str_buf()
                                             .add(kk.try_into().unwrap())))
                                         .add(jj.try_into().unwrap()))
                                             == b'1' as c_char
@@ -2118,7 +2112,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        result.value.data.astr.as_ptr(),
+                                        result.value.data.text().as_ptr(),
                                     );
                                 }
                             } else {
@@ -2127,7 +2121,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                        *(result.value.data.str_buf().add(jj.try_into().unwrap())),
                                     );
                                 }
                             }
@@ -2137,18 +2131,20 @@ pub(crate) fn fits_parser_workfn_safe(
                             lParse.status = PARSE_BAD_TYPE;
                         }
                     }
-                    if result.operation > 0 {
-                        FREE!(*(result.value.data.strptr));
-                        FREE!(result.value.data.strptr);
+                    if result.is_computed() {
+                        /* the row pointers all index one block, allocated at [0] */
+                        let mut block = *(result.value.data.str_buf());
+                        FREE!(block);
+                        result.value.data.free_buffer();
                     }
                 }
-                fits_parser_yytokentype::STRING => {
+                ValueSort::String => {
                     if (*(pv.userInfo)).datatype == TSTRING {
                         if constant != 0 {
                             for jj in 0..ntodo {
                                 strcpy(
                                     *(pv.Data.cast::<*mut c_char>().add(jj.try_into().unwrap())),
-                                    result.value.data.astr.as_ptr(),
+                                    result.value.data.text().as_ptr(),
                                 );
                             }
                         } else {
@@ -2166,7 +2162,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.strptr.add(jj.try_into().unwrap())),
+                                        *(result.value.data.str_buf().add(jj.try_into().unwrap())),
                                     );
                                 }
                             }
@@ -2175,12 +2171,13 @@ pub(crate) fn fits_parser_workfn_safe(
                         ffpmsg_str("Cannot convert string expression to desired type.");
                         lParse.status = PARSE_BAD_TYPE;
                     }
-                    if result.operation > 0 {
-                        FREE!(*(result.value.data.strptr));
-                        FREE!(result.value.data.strptr);
+                    if result.is_computed() {
+                        /* the row pointers all index one block, allocated at [0] */
+                        let mut block = *(result.value.data.str_buf());
+                        FREE!(block);
+                        result.value.data.free_buffer();
                     }
                 }
-                _ => {}
             }
 
             if lParse.status != 0 {
@@ -2189,9 +2186,7 @@ pub(crate) fn fits_parser_workfn_safe(
 
             /*  Increment Data to point to where the next block should go  */
 
-            if result.ntype == fits_parser_yytokentype::BITSTR as c_int
-                && (*(pv.userInfo)).datatype == TBYTE
-            {
+            if result.ntype == ValueSort::Bits && (*(pv.userInfo)).datatype == TBYTE {
                 (pv.Data) = pv
                     .Data
                     .cast::<c_char>()
@@ -2201,7 +2196,7 @@ pub(crate) fn fits_parser_workfn_safe(
                             .unwrap(),
                     )
                     .cast::<c_void>();
-            } else if result.ntype == fits_parser_yytokentype::STRING as c_int {
+            } else if result.ntype == ValueSort::String {
                 (pv.Data) = pv
                     .Data
                     .cast::<c_char>()
@@ -2339,8 +2334,11 @@ fn Setup_DataArrays(
             nelem = varData.nelem;
             len = nelem * nRows;
 
-            match varData.dtype.into() {
-                fits_parser_yytokentype::BITSTR => {
+            /* ValueSort has no other variants, so this arm cannot be reached; it is
+            kept because it is the C's error path and the field may widen again. */
+            #[allow(unreachable_patterns)]
+            match varData.dtype {
+                ValueSort::Bits => {
                     /* No need for UNDEF array, but must make string DATA array */
                     len = (nelem + 1) * nRows; /* Count '\0' */
                     bitStrs = varData.data.cast::<*mut c_char>();
@@ -2393,7 +2391,7 @@ fn Setup_DataArrays(
                     varData.data = bitStrs.cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::STRING => {
+                ValueSort::String => {
                     sptr = icol.array.cast::<*mut c_char>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2427,7 +2425,7 @@ fn Setup_DataArrays(
                     varData.data = sptr.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     barray = icol.array.cast::<c_char>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2453,7 +2451,7 @@ fn Setup_DataArrays(
                     varData.data = barray.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     iarray = icol.array.cast::<c_long>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2479,7 +2477,7 @@ fn Setup_DataArrays(
                     varData.data = iarray.add(1).cast::<c_void>();
                 }
 
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     rarray = icol.array.cast::<c_double>();
                     if do_realloc != 0 {
                         if varData.undef.is_some() {
@@ -2511,7 +2509,7 @@ fn Setup_DataArrays(
                         &mut msg,
                         80,
                         "SetupDataArrays, unhandled type {}\n",
-                        varData.dtype
+                        varData.dtype.code()
                     );
                     ffpmsg_slice(&msg);
                 }
@@ -2523,7 +2521,7 @@ fn Setup_DataArrays(
                 while j > 0 {
                     j -= 1;
                     let varData = &mut lParse.varData[j];
-                    if varData.dtype == fits_parser_yytokentype::BITSTR as c_int {
+                    if varData.dtype == ValueSort::Bits {
                         FREE!(*varData.data.cast::<*mut c_char>().add(0));
                     }
                     varData.undef = None;
@@ -3419,7 +3417,7 @@ pub fn fffrwc_safe(
         if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
                 let result_node = lParse.Nodes[lParse.resultNode as usize];
-                result = (result_node).value.data.log;
+                result = (result_node).value.data.log();
                 let mut elem = ntimes;
                 while elem > 0 {
                     elem -= 1;
@@ -3545,7 +3543,7 @@ pub fn ffffrw_safer(
     *rownum = 0;
     {
         if constant != 0 {
-            result = unsafe { (lParse.Nodes[lParse.resultNode as usize]).value.data.log };
+            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
             if result != 0 {
                 ffgnrw_safe(fptr, &mut nelem, status);
                 if nelem != 0 {
@@ -3867,14 +3865,14 @@ pub(crate) fn ffffrw_work_safe(
 
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
-            if result.operation == CONST_OP {
-                if result.value.data.log != 0 {
+            if result.is_const() {
+                if result.value.data.log() != 0 {
                     *(workData.prownum) = firstrow;
                     return -1;
                 }
             } else {
                 for idx in 0..(nrows as usize) {
-                    if *(result.value.data.logptr.add(idx)) != 0
+                    if *(result.value.data.log_buf().add(idx)) != 0
                         && *(result.value.undef.add(idx)) == 0
                     {
                         *(workData.prownum) = firstrow + idx as c_long;
@@ -4266,7 +4264,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyd_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.dbl,
+                        result.value.data.dbl(),
                         15,
                         par_info,
                         status,
@@ -4276,7 +4274,7 @@ pub fn fits_pixel_filter_safer(
                     ffukyj_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.lng as LONGLONG,
+                        result.value.data.lng() as LONGLONG,
                         par_info,
                         status,
                     );
@@ -4285,15 +4283,15 @@ pub fn fits_pixel_filter_safer(
                     ffukyl_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
-                        result.value.data.log.into(),
+                        result.value.data.log().into(),
                         par_info,
                         status,
                     );
                 }
                 TBIT | TSTRING => {
                     let str_val = core::slice::from_raw_parts(
-                        result.value.data.astr.as_ptr(),
-                        strlen_safe(&result.value.data.astr),
+                        result.value.data.text().as_ptr(),
+                        strlen_safe(result.value.data.text()),
                     );
                     ffukys_safe(
                         outfptr.as_mut().unwrap(),
@@ -4347,7 +4345,7 @@ fn set_image_col_types(
             }
 
             if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                varInfo.dtype = ValueSort::Long;
                 colIter.datatype = TLONG;
             /*    Reading an unsigned long column as a long can cause overflow errors.
             Treat the column as a double instead.
@@ -4356,7 +4354,7 @@ fn set_image_col_types(
                 colIter->datatype = TULONG;
              */
             } else {
-                varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                varInfo.dtype = ValueSort::Double;
                 colIter.datatype = TDOUBLE;
                 if DEBUG_PIXFILTER != 0 {
                     println!(
@@ -4369,7 +4367,7 @@ fn set_image_col_types(
             }
         }
         LONGLONG_IMG | FLOAT_IMG | DOUBLE_IMG => {
-            varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+            varInfo.dtype = ValueSort::Double;
             colIter.datatype = TDOUBLE;
         }
         _ => {
@@ -4466,7 +4464,13 @@ fn find_column(
                 return P_ERROR;
             }
 
-            let mut tstatus = 0;
+            /* The C passes &lParse->status straight in, so a status already
+            set stays set: allocateCol only ever writes MEMORY_ALLOCATION on
+            failure, never clears. Seeding the temporary from lParse.status
+            reproduces that aliasing -- writing back a fresh 0 would discard a
+            pending error, which is how a syntax error raised earlier in the
+            parse used to be lost. */
+            let mut tstatus = lParse.status;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
@@ -4548,7 +4552,13 @@ fn find_column(
                 return P_ERROR;
             }
 
-            let mut tstatus = 0;
+            /* The C passes &lParse->status straight in, so a status already
+            set stays set: allocateCol only ever writes MEMORY_ALLOCATION on
+            failure, never clears. Seeding the temporary from lParse.status
+            reproduces that aliasing -- writing back a fresh 0 would discard a
+            pending error, which is how a syntax error raised earlier in the
+            parse used to be lost. */
+            let mut tstatus = lParse.status;
             if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
@@ -4568,7 +4578,7 @@ fn find_column(
         if lParse.hdutype != IMAGE_HDU {
             match typecode {
                 TBIT => {
-                    varInfo.dtype = fits_parser_yytokentype::BITSTR as c_int;
+                    varInfo.dtype = ValueSort::Bits;
                     colIter.datatype = TBYTE;
                     ktype = fits_parser_yytokentype::BITCOL as c_int;
                 }
@@ -4587,16 +4597,16 @@ fn find_column(
                         tscale = 1.0;
                     }
                     if tscale == 1.0 && (tzero == 0.0 || tzero == 32768.0) {
-                        varInfo.dtype = fits_parser_yytokentype::LONG as c_int;
+                        varInfo.dtype = ValueSort::Long;
                         colIter.datatype = TLONG;
                     /*    Reading an unsigned long column as a long can cause overflow errors.
                          Treat the column as a double instead.
                          } else if (tscale == 1.0 &&  tzero == 2147483648.0 ) {
-                             (*varInfo).dtype     =fits_parser_yytokentype::LONG as c_int;
+                             (*varInfo).dtype     =ValueSort::Long;
                              (*colIter).datatype = TULONG;
                     */
                     } else {
-                        varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                        varInfo.dtype = ValueSort::Double;
                         colIter.datatype = TDOUBLE;
                     }
                     ktype = fits_parser_yytokentype::COLUMN as c_int;
@@ -4607,17 +4617,17 @@ fn find_column(
                   will be to add support for TLONGLONG as a separate datatype.
                 */
                 TLONGLONG | TFLOAT | TDOUBLE => {
-                    varInfo.dtype = fits_parser_yytokentype::DOUBLE as c_int;
+                    varInfo.dtype = ValueSort::Double;
                     colIter.datatype = TDOUBLE;
                     ktype = fits_parser_yytokentype::COLUMN as c_int;
                 }
                 TLOGICAL => {
-                    varInfo.dtype = fits_parser_yytokentype::BOOLEAN as c_int;
+                    varInfo.dtype = ValueSort::Boolean;
                     colIter.datatype = TLOGICAL;
                     ktype = fits_parser_yytokentype::BCOLUMN as c_int;
                 }
                 TSTRING => {
-                    varInfo.dtype = fits_parser_yytokentype::STRING as c_int;
+                    varInfo.dtype = ValueSort::String;
                     colIter.datatype = TSTRING;
                     ktype = fits_parser_yytokentype::SCOLUMN as c_int;
                     if width >= c_long::from(MAX_STRLEN) {
@@ -4671,7 +4681,7 @@ fn find_column(
             }
         }
         lParse.nCols += 1;
-        thelval.lng = c_long::from(col_cnt);
+        *thelval = FITS_PARSER_YYSTYPE::Long(c_long::from(col_cnt));
 
         ktype
     }
@@ -4734,25 +4744,25 @@ fn find_keywd(
                 // 'C' as c_char
                 fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
                 ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(thelval.astr.as_mut_ptr(), keyvalue.as_ptr());
+                strcpy(thelval.text_mut_ptr(), keyvalue.as_ptr());
             }
             b'L' => {
                 // 'L' as c_char
                 fits_read_key_log(fptr, keyname, &mut bval, None, &mut status);
                 ktype = fits_parser_yytokentype::BOOLEAN as c_int;
-                thelval.log = bval as c_char;
+                *thelval = FITS_PARSER_YYSTYPE::Logical(bval as c_char);
             }
             b'I' => {
                 // 'I' as c_char
                 fits_read_key_lng(fptr, keyname, &mut ival, None, &mut status);
                 ktype = fits_parser_yytokentype::LONG as c_int;
-                thelval.lng = ival;
+                *thelval = FITS_PARSER_YYSTYPE::Long(ival);
             }
             b'F' => {
                 // 'F' as c_char
                 fits_read_key_dbl(fptr, keyname, &mut rval, None, &mut status);
                 ktype = fits_parser_yytokentype::DOUBLE as c_int;
-                thelval.dbl = rval;
+                *thelval = FITS_PARSER_YYSTYPE::Double(rval);
             }
             _ => {
                 ktype = P_ERROR;
@@ -4979,8 +4989,8 @@ mod tests {
     use crate::aliases::rust_api::*;
     use crate::fitsio::{
         ASCII_TBL, BINARY_TBL, BYTE_IMG, CASEINSEN, FLEN_VALUE, LONGLONG, NOT_BTABLE,
-        PARSE_BAD_TYPE, READONLY, READWRITE, TBYTE, TDOUBLE, TFLOAT, TINT, TLOGICAL, TLONG,
-        TLONGLONG, TSHORT, fitsfile,
+        PARSE_BAD_TYPE, PARSE_SYNTAX_ERR, READONLY, READWRITE, TBYTE, TDOUBLE, TFLOAT, TINT,
+        TLOGICAL, TLONG, TLONGLONG, TSHORT, fitsfile,
     };
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use libc::{c_char, c_int, c_long, c_void};
@@ -9135,6 +9145,219 @@ mod tests {
             assert_eq!(eval_lng::<1>(&mut f, "0b01001"), [0b01001]);
             /* usable in ordinary arithmetic */
             assert_eq!(eval_lng::<3>(&mut f, "INTCOL + 0x10"), [17, 18, 19]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_rejects_mismatched_operand_types() {
+        /* An operator applied across incompatible operand sorts is a syntax
+        error: the grammar has no production for it, so bison reports one and
+        recovers through `line: error '\n'`.
+
+        The recovery is what made this fragile. Resolving a column name during
+        recovery runs find_column, which calls fits_parser_allocateCol; that
+        used to be handed a fresh `tstatus = 0` whose value was written back
+        over lParse.status, discarding the syntax error and leaving the parse
+        looking successful. fits_test_expr then returned 0 and handed back the
+        *left* operand -- BOOLCOL + INTCOL evaluated to BOOLCOL. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for expr in [
+                "BOOLCOL + INTCOL",
+                "BOOLCOL - FLOATCOL",
+                "BOOLCOL && INTCOL",
+                "STRCOL - INTCOL",
+                "STRCOL > INTCOL",
+            ] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, PARSE_SYNTAX_ERR, "expr should be rejected: {expr}");
+                fits_clear_errmsg();
+            }
+
+            /* the compatible forms still parse */
+            for expr in [
+                "INTCOL + FLOATCOL",
+                "BOOLCOL && BOOLCOL",
+                "INTCOL > FLOATCOL",
+            ] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, 0, "expr should parse: {expr}");
+            }
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_string_keyword_reference() {
+        /* '#KEY' where the keyword's value is a quoted string resolves to a
+        string constant.  ffdtyp tested cval[0] against a backslash instead of
+        a single quote, so quoted values were classified as integers and
+        find_keywd reported BAD_C2I. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            fits_write_key_str(&mut f, &cc("STRKEY"), &cc("gamma"), None, &mut status);
+            assert_eq!(status, 0);
+
+            let mut datatype = 0;
+            let mut nelem: c_long = 0;
+            let mut naxis = 0;
+            let mut naxes = [0 as c_long; 5];
+            fits_test_expr(
+                &mut f,
+                &cc("#STRKEY"),
+                5,
+                &mut datatype,
+                &mut nelem,
+                &mut naxis,
+                &mut naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(datatype, TSTRING);
+
+            /* and it is usable as a string operand */
+            assert_eq!(count_rows(&mut f, "STRCOL == #STRKEY").0, 1);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fffrow_empty_variable_name() {
+        /* '$$' lexes as a variable with an empty name.  The lookup walks the
+        header with namelen == 0, which used to underflow `namelen - 1` in
+        ffgcrd_safe and panic; it must simply fail to find the column. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+            let mut n_good_rows = 0;
+            let mut row_status = [0 as c_char; 10];
+
+            for expr in ["$$", "$$ + 1", "$$ > 1"] {
+                status = 0;
+                fits_find_rows(
+                    &mut f,
+                    &cc(expr),
+                    1,
+                    10,
+                    &mut n_good_rows,
+                    &mut row_status,
+                    &mut status,
+                );
+                assert_ne!(status, 0, "expr should be rejected: {expr}");
+            }
+
+            status = 0;
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffcrow_hex_constant_case() {
+        /* 0x literals must be case-insensitive.  The lexer used to convert
+        non-digits with (*p - 'a' + 10) without folding case, so uppercase
+        A-F produced negative digit values and 0x1F evaluated to -1. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for (expr, want) in [
+                ("0x1f", 31),
+                ("0x1F", 31),
+                ("0xff", 255),
+                ("0xFF", 255),
+                ("0xFf", 255),
+                ("0xa", 10),
+                ("0xA", 10),
+                ("0xabcdef", 11259375),
+                ("0xABCDEF", 11259375),
+                ("0x10", 16),
+                ("0x0", 0),
+            ] {
+                assert_eq!(eval_lng::<1>(&mut f, expr), [want], "expr: {expr}");
+            }
+
+            /* the other radix prefixes must keep working */
+            assert_eq!(eval_lng::<1>(&mut f, "0b1011"), [11]);
+            assert_eq!(eval_lng::<1>(&mut f, "0o17"), [15]);
+
+            fits_close_file(f, &mut status);
+        });
+    }
+
+    #[test]
+    fn test_fftexp_bare_dot_rejected() {
+        /* A lone '.' must not lex as the double 0.0.  The {real} pattern's
+        third alternative used to allow zero digits before the point. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let mut f = create_test_table(&to_buf(filename));
+
+            for expr in [".", "..", "INTCOL + .", ". + 1", ".e5"] {
+                let mut datatype = 0;
+                let mut nelem: c_long = 0;
+                let mut naxis = 0;
+                let mut naxes = [0 as c_long; 5];
+                let mut st = 0;
+                fits_test_expr(
+                    &mut f,
+                    &cc(expr),
+                    5,
+                    &mut datatype,
+                    &mut nelem,
+                    &mut naxis,
+                    &mut naxes,
+                    &mut st,
+                );
+                assert_eq!(st, PARSE_SYNTAX_ERR, "expr should be rejected: {expr}");
+            }
+
+            /* valid reals are unaffected */
+            for (expr, want) in [
+                ("1.", 1.0),
+                ("12.", 12.0),
+                (".5", 0.5),
+                ("1.5", 1.5),
+                ("1.5e3", 1500.0),
+                ("1.5E3", 1500.0),
+                ("0.", 0.0),
+            ] {
+                assert_eq!(eval_dbl::<1>(&mut f, expr), [want], "expr: {expr}");
+            }
 
             fits_close_file(f, &mut status);
         });

@@ -2539,7 +2539,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
             .map(|&p| [CStr::from_ptr(p[0]), CStr::from_ptr(p[1])])
             .collect::<Vec<_>>();
 
-        fits_translate_keywords_safer(
+        fits_translate_keywords_safe(
             infptr,
             outfptr,
             firstkey,
@@ -2562,7 +2562,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
 /// continues to the end of the header.
 ///
 /// This routine was written by Craig Markwardt, GSFC
-pub fn fits_translate_keywords_safer(
+pub fn fits_translate_keywords_safe(
     infptr: &mut fitsfile,   /* I - pointer to input HDU */
     outfptr: &mut fitsfile,  /* I - pointer to output HDU */
     firstkey: c_int,         /* I - first HDU record number to start with */
@@ -11279,28 +11279,7 @@ pub unsafe extern "C" fn ffdtyp(
         let dtype = dtype.as_mut().expect(NULL_MSG);
         raw_to_slice!(cval);
 
-        if *status > 0 {
-            /* inherit input status value if > 0 */
-            return *status;
-        }
-
-        if cval[0] == 0 {
-            *status = VALUE_UNDEFINED;
-            return *status;
-        } else if cval[0] == bb(b'\\') {
-            *dtype = bb(b'C'); /* character string starts with a quote */
-        } else if cval[0] == bb(b'T') || cval[0] == bb(b'F') {
-            *dtype = bb(b'L'); /* logical = T or F character */
-        } else if cval[0] == bb(b'(') {
-            *dtype = bb(b'X'); /* complex datatype "(1.2, -3.4)" */
-        } else if strchr_safe(cval, bb(b'.')).is_some() {
-            *dtype = bb(b'F'); /* float usualy contains a decimal point */
-        } else if strchr_safe(cval, bb(b'E')).is_some() || strchr_safe(cval, bb(b'D')).is_some() {
-            *dtype = bb(b'F'); /* exponential contains a E or D */
-        } else {
-            *dtype = bb(b'I'); /* if none of the above assume it is integer */
-        }
-        *status
+        ffdtyp_safe(cval, dtype, status)
     }
 }
 
@@ -11321,7 +11300,7 @@ pub fn ffdtyp_safe(
     if cval[0] == 0 {
         *status = VALUE_UNDEFINED;
         return *status;
-    } else if cval[0] == bb(b'\\') {
+    } else if cval[0] == bb(b'\'') {
         *dtype = bb(b'C'); /* character string starts with a quote */
     } else if cval[0] == bb(b'T') || cval[0] == bb(b'F') {
         *dtype = bb(b'L'); /* logical = T or F character */
@@ -12520,6 +12499,39 @@ mod tests {
 
     // Serialize tests that touch the global ERROR_STACK to avoid cross-test interference on parallel runs.
     static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    #[test]
+    fn test_ffdtyp_safe_classifies_keyword_values() {
+        /* A character-string value starts with a single quote.  The transpiled
+        code tested for a backslash, so quoted strings were classified 'I' and
+        every caller then tried an integer conversion: find_keywd reported
+        BAD_C2I for '#STRKEY', and ffc2x/ffc2r did the same for any string. */
+        let cases: [(&CStr, u8); 10] = [
+            (c"'hello'", b'C'),
+            (c"'123'", b'C'),
+            (c"'T'", b'C'),
+            (c"T", b'L'),
+            (c"F", b'L'),
+            (c"(1.2, -3.4)", b'X'),
+            (c"12.5", b'F'),
+            (c"1E5", b'F'),
+            (c"1D5", b'F'),
+            (c"42", b'I'),
+        ];
+        for (cval, want) in cases {
+            let mut dtype: c_char = 0;
+            let mut status: c_int = 0;
+            ffdtyp_safe(cs!(cval), &mut dtype, &mut status);
+            assert_eq!(status, 0, "cval: {cval:?}");
+            assert_eq!(dtype, bb(want), "cval: {cval:?}");
+        }
+
+        /* an empty value is undefined, not a datatype */
+        let mut dtype: c_char = 0;
+        let mut status: c_int = 0;
+        ffdtyp_safe(cs!(c""), &mut dtype, &mut status);
+        assert_eq!(status, VALUE_UNDEFINED);
+    }
 
     #[test]
     fn test_ffmkky_safe() {
