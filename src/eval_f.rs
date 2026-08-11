@@ -67,8 +67,8 @@ use crate::aliases::rust_api::{
 use crate::cfileio::ffimport_file_safe;
 use crate::editcol::{ffdrow_safe, fficol_safe, ffirow_safe};
 use crate::eval_defs::{
-    DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, NodeValue, P_ERROR, ParseData,
-    ParseStatusVariables, ValueSort, parseInfo,
+    DataInfo, MAX_STRLEN, MAXDIMS, MAXVARNAME, Node, P_ERROR, ParseData, ParseStatusVariables,
+    ValueSort, parseInfo,
 };
 use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
@@ -94,7 +94,6 @@ use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
-use crate::region::{SAORegion, fits_free_region};
 use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -1583,16 +1582,10 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                     if !(lParse.Nodes[i]).value.data.raw().is_null() {
                         (lParse.Nodes[i]).value.data.free_buffer();
                     }
-                } else if (lParse.Nodes[node as usize]).operation == funcOp::REGFILT_FCT as c_int {
-                    i = (lParse.Nodes[node as usize]).SubNodes[0];
-                    if !(lParse.Nodes[i]).value.data.raw().is_null() {
-                        fits_free_region(Box::from_raw(
-                            (lParse.Nodes[i]).value.data.raw().cast::<SAORegion>(),
-                        ));
-                        /* the Box took ownership; drop the arm without freeing again */
-                        (lParse.Nodes[i]).value.data = NodeValue::Empty;
-                    }
                 }
+                /* REGFILT nodes used to be freed here by hand. The region now
+                lives in lParse.regions behind an Rc, so it goes when the
+                ParseData does. */
             }
             lParse.nNodes = 0;
         }

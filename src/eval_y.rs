@@ -8432,16 +8432,22 @@ fn New_REG(
                 Free_Last_Node(lParse);
                 return -(1);
             };
-            /* the region is allocated by fits_read_rgnfile; hand ownership of
-            it to the node, which frees it again in ffcprs */
-            let Rgn: *mut SAORegion = match rgn {
-                Some(rgn) => Box::into_raw(rgn),
-                None => ptr::null_mut(),
+            /* The region is shared, not owned by the node: it goes in
+            lParse.regions behind an Rc and the node keeps the index. That is
+            what lets Do_REG take a handle without the node having to hand its
+            only copy over, and it means ffcprs no longer frees anything by
+            hand -- dropping ParseData drops the regions with it. */
+            /* No region at all is a failure, not an empty region:
+            fits_in_region reads Shapes[0] unconditionally. The C stored a null
+            pointer here and dereferenced it. */
+            let Some(rgn) = rgn else {
+                fits_parser_yyerror(lParse, cs!(c"Region file contained no region"));
+                Free_Last_Node(lParse);
+                return -(1);
             };
-            (lParse.Nodes[that0_idx])
-                .value
-                .data
-                .set_buffer(BufferKind::Opaque, Rgn.cast::<c_void>());
+            lParse.regions.push(Rc::from(rgn));
+            let idx = lParse.regions.len() - 1;
+            (lParse.Nodes[that0_idx]).value.data = NodeValue::Region(idx);
             if ((lParse.Nodes)[NodeX as usize]).is_const()
                 && ((lParse.Nodes)[NodeY as usize]).is_const()
             {
@@ -15262,6 +15268,10 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
         let mut rows: c_long = 0;
 
         let theRegion = (lParse.Nodes[this_node_idx]).SubNodes[0];
+        /* A handle on the shared region. Cloning the Rc is what keeps this
+        readable while the loops below hold &mut on lParse.Nodes -- the region
+        is not in the arena, so borrowing it does not conflict. */
+        let rgn = Rc::clone(&lParse.regions[(lParse.Nodes[theRegion]).value.data.region()]);
         let theX = (lParse.Nodes[this_node_idx]).SubNodes[1];
         let theY = (lParse.Nodes[this_node_idx]).SubNodes[2];
 
@@ -15278,22 +15288,12 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
             Yval = (lParse.Nodes[theY]).value.data.dbl();
         }
         if Xvector == 0 && Yvector == 0 {
-            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
-                if fits_in_region(
-                    Xval,
-                    Yval,
-                    &*(lParse.Nodes[theRegion])
-                        .value
-                        .data
-                        .raw()
-                        .cast::<SAORegion>(),
-                ) != 0
-                {
+            (lParse.Nodes[this_node_idx]).value.data =
+                NodeValue::Logical(if fits_in_region(Xval, Yval, &rgn) != 0 {
                     1
                 } else {
                     0
-                },
-            );
+                });
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
@@ -15342,16 +15342,7 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                             continue;
                         }
                         *((lParse.Nodes[this_node_idx]).value.data.log_buf())
-                            .offset(elem as isize) = if fits_in_region(
-                            Xval,
-                            Yval,
-                            &*(lParse.Nodes[theRegion])
-                                .value
-                                .data
-                                .raw()
-                                .cast::<SAORegion>(),
-                        ) != 0
-                        {
+                            .offset(elem as isize) = if fits_in_region(Xval, Yval, &rgn) != 0 {
                             1
                         } else {
                             0

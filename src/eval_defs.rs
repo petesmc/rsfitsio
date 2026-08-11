@@ -1,3 +1,4 @@
+use alloc::rc::Rc;
 use core::ffi::c_void;
 
 use crate::c_types::{c_char, c_int, c_long};
@@ -6,6 +7,7 @@ use crate::eval_l::yyguts_t;
 /* Not sure why this is needed but it is */
 use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
+use crate::region::SAORegion;
 
 pub const MAXDIMS: c_int = 5;
 pub const MAXSUBS: c_int = 10;
@@ -91,10 +93,6 @@ pub(crate) enum BufferKind {
     Logical,
     /// An array of row pointers into one contiguous character block.
     Text,
-    /// Not an element array at all: a single owned object the engine stashes
-    /// in the node, such as the `SAORegion` built by `New_REG`. Only ever read
-    /// back through [`NodeValue::raw`].
-    Opaque,
 }
 
 /// The value carried by a [`Node`].
@@ -133,6 +131,13 @@ pub(crate) enum NodeValue {
         kind: BufferKind,
         ptr: *mut c_void,
     },
+    /// A region, by index into [`ParseData::regions`].
+    ///
+    /// The region itself is an `Rc` held there rather than in the node,
+    /// because `NodeValue` is `Copy` and an `Rc` arm would end that. The node
+    /// carrying an index instead is what lets several nodes share one region
+    /// without any of them owning it.
+    Region(usize),
 }
 
 impl core::fmt::Debug for NodeValue {
@@ -144,6 +149,7 @@ impl core::fmt::Debug for NodeValue {
             NodeValue::Logical(v) => write!(f, "Logical({v})"),
             NodeValue::Text(_) => write!(f, "Text(..)"),
             NodeValue::Buffer { kind, ptr } => write!(f, "Buffer({kind:?}, {ptr:?})"),
+            NodeValue::Region(i) => write!(f, "Region({i})"),
         }
     }
 }
@@ -225,6 +231,14 @@ impl NodeValue {
         }
     }
 
+    /// The index into [`ParseData::regions`] this node refers to.
+    pub(crate) fn region(&self) -> usize {
+        match self {
+            NodeValue::Region(i) => *i,
+            other => wrong_arm("Region", other),
+        }
+    }
+
     pub(crate) fn set_buffer(&mut self, kind: BufferKind, ptr: *mut c_void) {
         *self = NodeValue::Buffer { kind, ptr };
     }
@@ -242,7 +256,7 @@ impl NodeValue {
             NodeValue::Double(v) => (v as *const f64).cast(),
             NodeValue::Logical(v) => (v as *const c_char).cast(),
             NodeValue::Text(v) => v.as_ptr().cast(),
-            NodeValue::Empty | NodeValue::Buffer { .. } => core::ptr::null(),
+            NodeValue::Empty | NodeValue::Buffer { .. } | NodeValue::Region(_) => core::ptr::null(),
         }
     }
 
@@ -356,6 +370,8 @@ pub(crate) struct ParseData {
     pub index: c_int,
     pub is_eobuf: c_int,
     pub Nodes: Vec<Node>,
+    /// Regions read by `New_REG`, shared with the nodes that filter on them.
+    pub regions: Vec<Rc<SAORegion>>,
     pub nNodes: c_int,
     pub nNodesAlloc: c_int,
     pub resultNode: c_int,
@@ -391,6 +407,7 @@ impl ParseData {
         self.index = Default::default();
         self.is_eobuf = Default::default();
         self.Nodes = Default::default();
+        self.regions = Default::default();
         self.nNodes = Default::default();
         self.nNodesAlloc = Default::default();
         self.resultNode = Default::default();
