@@ -24,6 +24,18 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run shared_mem driver tests
+      run: |
+        ipcs -m || true
+        cargo test --features shared_mem --lib drvrsmem
+        cargo test --features shared_mem --test test_drvrsmem_xproc
+      env:
+        SHMEM_LIB_KEYBASE: 24000000
+    - name: Clean up leaked SysV shared segments
+      if: always()
+      run: |
+        ipcs -m || true
+        for id in $(ipcs -m | awk 'NR>3 {print $2}'); do ipcrm -m "$id" 2>/dev/null || true; done
     - name: Run testprog checks
       run: bash ./testprog_check.sh
 
@@ -42,6 +54,18 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run shared_mem driver tests
+      run: |
+        ipcs -m || true
+        cargo test --features shared_mem --lib drvrsmem
+        cargo test --features shared_mem --test test_drvrsmem_xproc
+      env:
+        SHMEM_LIB_KEYBASE: 24000000
+    - name: Clean up leaked SysV shared segments
+      if: always()
+      run: |
+        ipcs -m || true
+        for id in $(ipcs -m | awk 'NR>3 {print $2}'); do ipcrm -m "$id" 2>/dev/null || true; done
     - name: Run testprog checks
       run: bash ./testprog_check.sh
 
@@ -107,6 +131,18 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run shared_mem driver tests
+      run: |
+        ipcs -m || true
+        cargo test --features shared_mem --lib drvrsmem
+        cargo test --features shared_mem --test test_drvrsmem_xproc
+      env:
+        SHMEM_LIB_KEYBASE: 24000000
+    - name: Clean up leaked SysV shared segments
+      if: always()
+      run: |
+        ipcs -m || true
+        for id in $(ipcs -m | awk 'NR>3 {print $2}'); do ipcrm -m "$id" 2>/dev/null || true; done
     - name: Run testprog checks
       run: bash ./testprog_check.sh
 
@@ -125,5 +161,17 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Run shared_mem driver tests
+      run: |
+        ipcs -m || true
+        cargo test --features shared_mem --lib drvrsmem
+        cargo test --features shared_mem --test test_drvrsmem_xproc
+      env:
+        SHMEM_LIB_KEYBASE: 24000000
+    - name: Clean up leaked SysV shared segments
+      if: always()
+      run: |
+        ipcs -m || true
+        for id in $(ipcs -m | awk 'NR>3 {print $2}'); do ipcrm -m "$id" 2>/dev/null || true; done
     - name: Run testprog checks
       run: bash ./testprog_check.sh

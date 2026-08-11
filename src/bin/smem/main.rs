@@ -110,6 +110,12 @@ pub fn main() -> ExitCode {
         for id in 0..16 {
             let mut address: *mut c_char = ptr::null_mut();
 
+            // NOTE: shared_getaddr leaves each successfully-probed segment
+            // attached and locked (it deliberately omits smem_close) — see its
+            // lock/lifetime contract in src/drvrsmem.rs. This loop never frees,
+            // so it leaks one lock+attach per live segment. That matches the C
+            // `smem` tool's behaviour; this short-lived CLI exits immediately
+            // afterwards, so the OS reclaims everything.
             status = shared_getaddr(id, &mut address);
 
             if status == 0 {
