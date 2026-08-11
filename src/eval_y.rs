@@ -8230,55 +8230,55 @@ fn load_region(
     Xcol: c_int,
     Ycol: c_int,
 ) -> Option<Option<Box<SAORegion>>> {
-    unsafe {
-        let mut wcs = WCSdata::default();
-        let mut tstat: c_int = 0;
+    let mut wcs = WCSdata::default();
+    let mut tstat: c_int = 0;
 
-        /*  Now, get the WCS info, if it exists, from the indicated columns  */
-        wcs.exists = false;
-        if Xcol > 0 && Ycol > 0 {
-            let fptr = lParse.def_fptr.as_mut().unwrap();
-            ffgtcs_safe(
-                fptr,
-                Xcol,
-                Ycol,
-                &mut wcs.xrefval,
-                &mut wcs.yrefval,
-                &mut wcs.xrefpix,
-                &mut wcs.yrefpix,
-                &mut wcs.xinc,
-                &mut wcs.yinc,
-                &mut wcs.rot,
-                &mut (wcs.dtype),
-                &mut tstat,
-            );
-            /* NO_WCS_KEY means the file has no WCS, which is not an error --
-            the region is then read in pixel coordinates */
-            if tstat == NO_WCS_KEY {
-                wcs.exists = false;
-            } else if tstat != 0 {
-                lParse.status = tstat;
-                return None;
-            } else {
-                wcs.exists = true;
-            }
-        }
-
-        /*  Read in Region file  */
-
-        let fname_slice = CStr::from_ptr(fname);
-        let mut rgn: Option<Box<SAORegion>> = None;
-        fits_read_rgnfile(
-            cast_slice(fname_slice.to_bytes_with_nul()),
-            &mut wcs,
-            &mut rgn,
-            &mut lParse.status,
+    /*  Now, get the WCS info, if it exists, from the indicated columns  */
+    wcs.exists = false;
+    if Xcol > 0 && Ycol > 0 {
+        /* SAFETY: def_fptr is the open file the parser was given. */
+        let fptr = unsafe { lParse.def_fptr.as_mut() }.unwrap();
+        ffgtcs_safe(
+            fptr,
+            Xcol,
+            Ycol,
+            &mut wcs.xrefval,
+            &mut wcs.yrefval,
+            &mut wcs.xrefpix,
+            &mut wcs.yrefpix,
+            &mut wcs.xinc,
+            &mut wcs.yinc,
+            &mut wcs.rot,
+            &mut (wcs.dtype),
+            &mut tstat,
         );
-        if lParse.status != 0 {
+        /* NO_WCS_KEY means the file has no WCS, which is not an error --
+        the region is then read in pixel coordinates */
+        if tstat == NO_WCS_KEY {
+            wcs.exists = false;
+        } else if tstat != 0 {
+            lParse.status = tstat;
             return None;
+        } else {
+            wcs.exists = true;
         }
-        Some(rgn)
     }
+
+    /*  Read in Region file  */
+
+    /* SAFETY: fname is the NUL-terminated string the grammar captured. */
+    let fname_slice = unsafe { CStr::from_ptr(fname) };
+    let mut rgn: Option<Box<SAORegion>> = None;
+    fits_read_rgnfile(
+        cast_slice(fname_slice.to_bytes_with_nul()),
+        &mut wcs,
+        &mut rgn,
+        &mut lParse.status,
+    );
+    if lParse.status != 0 {
+        return None;
+    }
+    Some(rgn)
 }
 
 fn New_REG(
