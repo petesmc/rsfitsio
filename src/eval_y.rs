@@ -138,7 +138,10 @@ use crate::c_types::{
     c_char, c_double, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_void,
 };
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
-use crate::eval_defs::{CONST_OP, MAXDIMS, MAXSUBS, Node, ParseData, data_union, lval, yyscan_t};
+use crate::eval_defs::{
+    BufferKind, CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeValue, ParseData, ValueSort,
+    lval, yyscan_t,
+};
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::fitscore::ffpmsg_slice;
@@ -232,58 +235,140 @@ pub const YYSYMBOL_YYEOF: yysymbol_kind_t = 0;
 pub const YYSYMBOL_YYEMPTY: yysymbol_kind_t = -2;
 pub type yytype_int8 = c_schar;
 pub type yy_state_fast_t = c_int;
-pub type funcOp = c_uint;
-pub const ARRAY_FCT: funcOp = 1051;
-pub const AXISELEM_FCT: funcOp = 1050;
-pub const ELEMNUM_FCT: funcOp = 1049;
-pub const GTIFIND_FCT: funcOp = 1048;
-pub const GTIOVER_FCT: funcOp = 1047;
-pub const SETNULL_FCT: funcOp = 1046;
-pub const STRPOS_FCT: funcOp = 1045;
-pub const STRMID_FCT: funcOp = 1044;
-pub const POIRND_FCT: funcOp = 1043;
-pub const GASRND_FCT: funcOp = 1042;
-pub const ANGSEP_FCT: funcOp = 1041;
-pub const NONNULL_FCT: funcOp = 1040;
-pub const STDDEV_FCT: funcOp = 1039;
-pub const AVERAGE_FCT: funcOp = 1038;
-pub const MEDIAN_FCT: funcOp = 1037;
-pub const NULL_FCT: funcOp = 1036;
-pub const ROW_FCT: funcOp = 1035;
-pub const IFTHENELSE_FCT: funcOp = 1034;
-pub const REGFILT_FCT: funcOp = 1033;
-pub const GTIFILT_FCT: funcOp = 1032;
-pub const DEFNULL_FCT: funcOp = 1031;
-pub const ISNULL_FCT: funcOp = 1030;
-pub const ELPS_FCT: funcOp = 1029;
-pub const BOX_FCT: funcOp = 1028;
-pub const CIRCLE_FCT: funcOp = 1027;
-pub const NEAR_FCT: funcOp = 1026;
-pub const MAX2_FCT: funcOp = 1025;
-pub const MAX1_FCT: funcOp = 1024;
-pub const MIN2_FCT: funcOp = 1023;
-pub const MIN1_FCT: funcOp = 1022;
-pub const ROUND_FCT: funcOp = 1021;
-pub const FLOOR_FCT: funcOp = 1020;
-pub const CEIL_FCT: funcOp = 1019;
-pub const ATAN2_FCT: funcOp = 1018;
-pub const ABS_FCT: funcOp = 1017;
-pub const SQRT_FCT: funcOp = 1016;
-pub const LOG10_FCT: funcOp = 1015;
-pub const LOG_FCT: funcOp = 1014;
-pub const EXP_FCT: funcOp = 1013;
-pub const TANH_FCT: funcOp = 1012;
-pub const COSH_FCT: funcOp = 1011;
-pub const SINH_FCT: funcOp = 1010;
-pub const ATAN_FCT: funcOp = 1009;
-pub const ACOS_FCT: funcOp = 1008;
-pub const ASIN_FCT: funcOp = 1007;
-pub const TAN_FCT: funcOp = 1006;
-pub const COS_FCT: funcOp = 1005;
-pub const SIN_FCT: funcOp = 1004;
-pub const NELEM_FCT: funcOp = 1003;
-pub const SUM_FCT: funcOp = 1002;
-pub const RND_FCT: funcOp = 1001;
+
+/// The function a `Do_Func` node evaluates.
+///
+/// This was `typedef enum { rnd_fct = 1001, ... } funcOp` in eval_defs.h; the
+/// transpile flattened it to a `c_uint` alias with 51 loose constants, so any
+/// integer could be passed where a function code was wanted. The values are the
+/// C's, and they are contiguous from 1001, which [`funcOp::from_operation`]
+/// relies on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum funcOp {
+    RND_FCT = 1001,
+    SUM_FCT,
+    NELEM_FCT,
+    SIN_FCT,
+    COS_FCT,
+    TAN_FCT,
+    ASIN_FCT,
+    ACOS_FCT,
+    ATAN_FCT,
+    SINH_FCT,
+    COSH_FCT,
+    TANH_FCT,
+    EXP_FCT,
+    LOG_FCT,
+    LOG10_FCT,
+    SQRT_FCT,
+    ABS_FCT,
+    ATAN2_FCT,
+    CEIL_FCT,
+    FLOOR_FCT,
+    ROUND_FCT,
+    MIN1_FCT,
+    MIN2_FCT,
+    MAX1_FCT,
+    MAX2_FCT,
+    NEAR_FCT,
+    CIRCLE_FCT,
+    BOX_FCT,
+    ELPS_FCT,
+    ISNULL_FCT,
+    DEFNULL_FCT,
+    GTIFILT_FCT,
+    REGFILT_FCT,
+    IFTHENELSE_FCT,
+    ROW_FCT,
+    NULL_FCT,
+    MEDIAN_FCT,
+    AVERAGE_FCT,
+    STDDEV_FCT,
+    NONNULL_FCT,
+    ANGSEP_FCT,
+    GASRND_FCT,
+    POIRND_FCT,
+    STRMID_FCT,
+    STRPOS_FCT,
+    SETNULL_FCT,
+    GTIOVER_FCT,
+    GTIFIND_FCT,
+    ELEMNUM_FCT,
+    AXISELEM_FCT,
+    ARRAY_FCT,
+}
+
+impl funcOp {
+    /// Every variant, in discriminant order from `RND_FCT`.
+    const ALL: [funcOp; 51] = [
+        funcOp::RND_FCT,
+        funcOp::SUM_FCT,
+        funcOp::NELEM_FCT,
+        funcOp::SIN_FCT,
+        funcOp::COS_FCT,
+        funcOp::TAN_FCT,
+        funcOp::ASIN_FCT,
+        funcOp::ACOS_FCT,
+        funcOp::ATAN_FCT,
+        funcOp::SINH_FCT,
+        funcOp::COSH_FCT,
+        funcOp::TANH_FCT,
+        funcOp::EXP_FCT,
+        funcOp::LOG_FCT,
+        funcOp::LOG10_FCT,
+        funcOp::SQRT_FCT,
+        funcOp::ABS_FCT,
+        funcOp::ATAN2_FCT,
+        funcOp::CEIL_FCT,
+        funcOp::FLOOR_FCT,
+        funcOp::ROUND_FCT,
+        funcOp::MIN1_FCT,
+        funcOp::MIN2_FCT,
+        funcOp::MAX1_FCT,
+        funcOp::MAX2_FCT,
+        funcOp::NEAR_FCT,
+        funcOp::CIRCLE_FCT,
+        funcOp::BOX_FCT,
+        funcOp::ELPS_FCT,
+        funcOp::ISNULL_FCT,
+        funcOp::DEFNULL_FCT,
+        funcOp::GTIFILT_FCT,
+        funcOp::REGFILT_FCT,
+        funcOp::IFTHENELSE_FCT,
+        funcOp::ROW_FCT,
+        funcOp::NULL_FCT,
+        funcOp::MEDIAN_FCT,
+        funcOp::AVERAGE_FCT,
+        funcOp::STDDEV_FCT,
+        funcOp::NONNULL_FCT,
+        funcOp::ANGSEP_FCT,
+        funcOp::GASRND_FCT,
+        funcOp::POIRND_FCT,
+        funcOp::STRMID_FCT,
+        funcOp::STRPOS_FCT,
+        funcOp::SETNULL_FCT,
+        funcOp::GTIOVER_FCT,
+        funcOp::GTIFIND_FCT,
+        funcOp::ELEMNUM_FCT,
+        funcOp::AXISELEM_FCT,
+        funcOp::ARRAY_FCT,
+    ];
+
+    /// The function code stored in [`Node::operation`].
+    ///
+    /// `Do_Func` is only ever installed as a node's `DoOp` by `New_Func`, which
+    /// takes a `funcOp`, so a node reaching here always holds one. Anything
+    /// else is a bug in the node building rather than bad input.
+    pub(crate) fn from_operation(op: c_int) -> funcOp {
+        let idx = op - funcOp::RND_FCT as c_int;
+        assert!(
+            (0..funcOp::ALL.len() as c_int).contains(&idx),
+            "operation {op} is not a function code"
+        );
+        funcOp::ALL[idx as usize]
+    }
+}
 
 pub type shapeType = c_uint;
 pub const BPANDA_RGN: shapeType = 14;
@@ -329,6 +414,117 @@ const CHAR_AMPERSAND: c_int = b'&' as c_int; /* '&' */
 const CHAR_PIPE: c_int = b'|' as c_int; /* '|' */
 const CHAR_CARET: c_int = b'^' as c_int; /* '^' */
 const CHAR_TILDE: c_int = b'~' as c_int; /* '~' */
+
+/// A binary operator, as `Node::operation` stores it.
+///
+/// The `Do_BinOp_*` kernels all dispatch on the same twenty codes -- eleven
+/// bison tokens and nine ASCII characters. They are one thing pretending to be
+/// two because `operation` is a `c_int`; this names them as one.
+///
+/// Unlike [`funcOp`] the codes are not contiguous, so the conversion is a
+/// match rather than an index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Operator {
+    Or,
+    And,
+    Eq,
+    Ne,
+    Gt,
+    Lt,
+    Lte,
+    Gte,
+    Power,
+    Accum,
+    Diff,
+    Percent,
+    Ampersand,
+    Star,
+    Plus,
+    Minus,
+    Slash,
+    Caret,
+    Pipe,
+    Tilde,
+}
+
+impl Operator {
+    /// The operator stored in [`Node::operation`].
+    ///
+    /// The `Do_BinOp_*` kernels are only installed as a node's `DoOp` by
+    /// `New_BinOp`, so a node reaching one always holds an operator.
+    pub(crate) fn from_operation(op: c_int) -> Operator {
+        match op {
+            OR => Operator::Or,
+            AND => Operator::And,
+            EQ => Operator::Eq,
+            NE => Operator::Ne,
+            GT => Operator::Gt,
+            LT => Operator::Lt,
+            LTE => Operator::Lte,
+            GTE => Operator::Gte,
+            POWER => Operator::Power,
+            ACCUM => Operator::Accum,
+            DIFF => Operator::Diff,
+            CHAR_PERCENT => Operator::Percent,
+            CHAR_AMPERSAND => Operator::Ampersand,
+            CHAR_STAR => Operator::Star,
+            CHAR_PLUS => Operator::Plus,
+            CHAR_MINUS => Operator::Minus,
+            CHAR_SLASH => Operator::Slash,
+            CHAR_CARET => Operator::Caret,
+            CHAR_PIPE => Operator::Pipe,
+            CHAR_TILDE => Operator::Tilde,
+            other => panic!("operation {other} is not a binary operator"),
+        }
+    }
+}
+
+/// A unary operation, as `Node::operation` stores it.
+///
+/// `Do_Unary` handles five things: the three type conversions, negation and
+/// logical not. Two of the conversions have two codes each -- the sort token
+/// and the explicit cast the grammar writes for `(int)` and `(float)` -- which
+/// is why the C tested `case DOUBLE: case FLTCAST:` together. They are one
+/// operation with two spellings, so they are one variant here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnaryOp {
+    /// `DOUBLE` or `FLTCAST`.
+    ToDouble,
+    /// `LONG` or `INTCAST`.
+    ToLong,
+    ToBoolean,
+    /// `UMINUS`.
+    Negate,
+    /// `NOT`.
+    Not,
+}
+
+impl UnaryOp {
+    /// The unary operation stored in [`Node::operation`], if it is one.
+    ///
+    /// Unlike the binary and function conversions this returns an `Option`:
+    /// `Do_Unary`'s constant-folding switch has a `default:` that falls through
+    /// silently, so an unrecognised code is a case the C tolerates rather than
+    /// a node-building bug.
+    pub(crate) fn from_operation(op: c_int) -> Option<UnaryOp> {
+        Some(match op {
+            x if x == fits_parser_yytokentype::DOUBLE as c_int
+                || x == fits_parser_yytokentype::FLTCAST as c_int =>
+            {
+                UnaryOp::ToDouble
+            }
+            x if x == fits_parser_yytokentype::LONG as c_int
+                || x == fits_parser_yytokentype::INTCAST as c_int =>
+            {
+                UnaryOp::ToLong
+            }
+            x if x == fits_parser_yytokentype::BOOLEAN as c_int => UnaryOp::ToBoolean,
+            x if x == fits_parser_yytokentype::UMINUS as c_int => UnaryOp::Negate,
+            x if x == fits_parser_yytokentype::NOT as c_int => UnaryOp::Not,
+            _ => return None,
+        })
+    }
+}
 
 const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
 
@@ -682,16 +878,36 @@ fn New_Const(
         let mut n: c_int = 0;
         n = Alloc_Node(lParse);
         if n >= 0 {
+            /* The C did `memcpy( &(this->value.data), value, len )`, which
+            worked because a union puts its payload at offset 0. A tagged value
+            has the discriminant there instead, so copying over it would set a
+            garbage tag and land the payload at the wrong offset -- reading that
+            back as a Buffer gives a wild pointer. The arm comes from
+            returnType, and the bytes are read through it. */
+            let data = if returnType == fits_parser_yytokentype::LONG as c_int {
+                NodeValue::Long(*(value.cast::<c_long>()))
+            } else if returnType == fits_parser_yytokentype::DOUBLE as c_int {
+                NodeValue::Double(*(value.cast::<c_double>()))
+            } else if returnType == fits_parser_yytokentype::BOOLEAN as c_int {
+                NodeValue::Logical(*(value.cast::<c_char>()))
+            } else if returnType == fits_parser_yytokentype::STRING as c_int
+                || returnType == fits_parser_yytokentype::BITSTR as c_int
+            {
+                let mut text = [0 as c_char; MAX_STRLEN as usize];
+                let take = cmp::min(len as usize, text.len());
+                ptr::copy_nonoverlapping(value.cast::<c_char>(), text.as_mut_ptr(), take);
+                NodeValue::Text(text)
+            } else {
+                NodeValue::Empty
+            };
+
             let this_node = &mut lParse.Nodes[n as usize];
             this_node.operation = CONST_OP; /* Flag a constant */
             this_node.DoOp = None;
             this_node.nSubNodes = 0;
-            this_node.ntype = returnType;
-            memcpy(
-                &mut this_node.value.data as *const _ as *mut c_void,
-                value,
-                (len as c_ulong).try_into().unwrap(),
-            );
+            this_node.ntype = ValueSort::from_code(returnType)
+                .expect("New_* was given a returnType that is not a value sort");
+            this_node.value.data = data;
             this_node.value.undef = ptr::null_mut();
             this_node.value.nelem = 1;
             this_node.value.naxis = 1;
@@ -779,21 +995,19 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
 
     if (Op == fits_parser_yytokentype::DOUBLE as c_int
         || Op == fits_parser_yytokentype::FLTCAST as c_int)
-        && that.ntype == fits_parser_yytokentype::DOUBLE as c_int
+        && that.ntype == ValueSort::Double
     {
         return Node1;
     }
 
     if (Op == fits_parser_yytokentype::LONG as c_int
         || Op == fits_parser_yytokentype::INTCAST as c_int)
-        && that.ntype == fits_parser_yytokentype::LONG as c_int
+        && that.ntype == ValueSort::Long
     {
         return Node1;
     }
 
-    if Op == fits_parser_yytokentype::BOOLEAN as c_int
-        && that.ntype == fits_parser_yytokentype::BOOLEAN as c_int
-    {
+    if Op == fits_parser_yytokentype::BOOLEAN as c_int && that.ntype == ValueSort::Boolean {
         return Node1;
     }
 
@@ -807,7 +1021,8 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
         (this_node).DoOp = Some(Do_Unary);
         (this_node).nSubNodes = 1;
         (this_node).SubNodes[0] = Node1.try_into().unwrap();
-        (this_node).ntype = returnType;
+        (this_node).ntype = ValueSort::from_code(returnType)
+            .expect("New_* was given a returnType that is not a value sort");
 
         /* Reset in case .Nodes mv'd */
         (this_node).value.nelem = (that_node).value.nelem;
@@ -818,7 +1033,7 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
             i += 1;
         }
 
-        if (that_node).operation == CONST_OP {
+        if (that_node).is_const() {
             ((this_node).DoOp).expect("non-null function pointer")(lParse, n as usize);
         }
     }
@@ -850,15 +1065,15 @@ fn New_BinOp(
         (lParse.Nodes[this_node_idx]).nSubNodes = 2;
         (lParse.Nodes[this_node_idx]).SubNodes[0] = Node1.try_into().unwrap();
         (lParse.Nodes[this_node_idx]).SubNodes[1] = Node2.try_into().unwrap();
-        (lParse.Nodes[this_node_idx]).ntype = returnType;
+        (lParse.Nodes[this_node_idx]).ntype = ValueSort::from_code(returnType)
+            .expect("New_* was given a returnType that is not a value sort");
 
         constant = c_int::from(
-            (lParse.Nodes[that1_idx]).operation == CONST_OP
-                && (lParse.Nodes[that2_idx]).operation == CONST_OP,
+            (lParse.Nodes[that1_idx]).is_const() && (lParse.Nodes[that2_idx]).is_const(),
         );
 
-        if (lParse.Nodes[that1_idx]).ntype != fits_parser_yytokentype::STRING as c_int
-            && (lParse.Nodes[that1_idx]).ntype != fits_parser_yytokentype::BITSTR as c_int
+        if (lParse.Nodes[that1_idx]).ntype != ValueSort::String
+            && (lParse.Nodes[that1_idx]).ntype != ValueSort::Bits
             && Test_Dims(lParse, Node1, Node2) == 0
         {
             Free_Last_Node(lParse);
@@ -881,7 +1096,7 @@ fn New_BinOp(
         }
 
         if Op == fits_parser_yytokentype::ACCUM as c_int
-            && (lParse.Nodes[that1_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
+            && (lParse.Nodes[that1_idx]).ntype == ValueSort::Bits
         {
             /* ACCUM is rank-reducing on bit strings */
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
@@ -890,23 +1105,22 @@ fn New_BinOp(
         }
 
         /*  Both subnodes should be of same time  */
-        match (lParse.Nodes[that1_idx]).ntype.into() {
-            fits_parser_yytokentype::BITSTR => {
+        match (lParse.Nodes[that1_idx]).ntype {
+            ValueSort::Bits => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_bit);
             }
-            fits_parser_yytokentype::STRING => {
+            ValueSort::String => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_str);
             }
-            fits_parser_yytokentype::BOOLEAN => {
+            ValueSort::Boolean => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_log);
             }
-            fits_parser_yytokentype::LONG => {
+            ValueSort::Long => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_lng);
             }
-            fits_parser_yytokentype::DOUBLE => {
+            ValueSort::Double => {
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_BinOp_dbl);
             }
-            _ => {}
         }
 
         if constant != 0 {
@@ -1186,7 +1400,7 @@ fn New_FuncSize(
 
         i = constant; /* Functions with zero params are not const */
 
-        if Op as c_uint == POIRND_FCT as c_int as c_uint {
+        if Op as c_uint == funcOp::POIRND_FCT as c_int as c_uint {
             constant = 0; /* Nor is Poisson deviate */
         }
 
@@ -1205,7 +1419,8 @@ fn New_FuncSize(
         }
 
         if returnType != 0 {
-            (lParse.Nodes[n as usize]).ntype = returnType;
+            (lParse.Nodes[n as usize]).ntype = ValueSort::from_code(returnType)
+                .expect("New_* was given a returnType that is not a value sort");
             (lParse.Nodes[n as usize]).value.nelem = 1;
             (lParse.Nodes[n as usize]).value.naxis = 1;
             (lParse.Nodes[n as usize]).value.naxes[0] = 1;
@@ -1241,7 +1456,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
     unsafe {
         let mut current_block: u64;
         let mut yychar: c_int = 0;
-        static mut YYVAL_DEFAULT: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
+        static mut YYVAL_DEFAULT: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
         let mut yylval: FITS_PARSER_YYSTYPE = YYVAL_DEFAULT;
         let mut fits_parser_yynerrs: c_int = 0;
         let mut yystate: yy_state_fast_t = 0;
@@ -1251,13 +1466,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
         let mut yyss: &mut [yy_state_t] = &mut yyssa;
         let mut yyssp: usize = 0;
         let mut yyvsa: [FITS_PARSER_YYSTYPE; YYINITDEPTH] =
-            [FITS_PARSER_YYSTYPE { Node: 0 }; YYINITDEPTH];
+            [FITS_PARSER_YYSTYPE::Empty; YYINITDEPTH];
         let mut yyvs: &mut [FITS_PARSER_YYSTYPE] = &mut yyvsa;
         let mut yyvsp: usize = 0;
         let mut yyn: c_int = 0;
         let mut yyresult: c_int = 0;
         let mut yytoken: yysymbol_kind_t = YYSYMBOL_YYEMPTY;
-        let mut yyval: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
+        let mut yyval: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
         let mut yylen: c_int = 0;
         yychar = fits_parser_yytokentype::FITS_PARSER_YYEMPTY as c_int;
         's_54: loop {
@@ -1492,53 +1707,53 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         5 => {
                             /* line: expr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = 17353983478346836848;
                             }
                         }
                         6 => {
                             /* line: bexpr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = 17353983478346836848;
                             }
                         }
                         7 => {
                             /* line: sexpr '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = 17353983478346836848;
                             }
                         }
                         8 => {
                             /* line: bits '\n'  */
-                            if yyvs[yyvsp - 1].Node < 0 {
+                            if yyvs[yyvsp - 1].node() < 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Couldn't build node structure: out of memory?"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                lParse.resultNode = yyvs[yyvsp - 1].Node;
+                                lParse.resultNode = yyvs[yyvsp - 1].node();
                                 current_block = 17353983478346836848;
                             }
                         }
@@ -1549,8 +1764,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         10 => {
                             /* bvector: '{' bexpr  */
-                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
-                            if yyval.Node < 0 {
+                            yyval =
+                                FITS_PARSER_YYSTYPE::Node(New_Vector(lParse, yyvs[yyvsp].node()));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1558,41 +1774,48 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         11 => {
                             /* bvector: bvector ',' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                    lParse,
+                                    yyvs[yyvsp - 2].node(),
+                                ));
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Vector(
+                                        lParse,
+                                        yyvs[yyvsp - 2].node(),
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 2616667235040759262;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 2].node());
                                 current_block = 2616667235040759262;
                             }
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
                                     let fresh2 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh3 = *fresh2;
                                     *fresh2 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh3 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh3 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = 17353983478346836848;
                                 }
                             }
                         }
                         12 => {
                             /* vector: '{' expr  */
-                            yyval.Node = New_Vector(lParse, yyvs[yyvsp].Node);
-                            if yyval.Node < 0 {
+                            yyval =
+                                FITS_PARSER_YYSTYPE::Node(New_Vector(lParse, yyvs[yyvsp].node()));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1600,115 +1823,136 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         13 => {
                             /* vector: vector ',' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype =
-                                    ((lParse.Nodes)[yyvs[yyvsp].Node as usize]).ntype;
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype =
+                                    ((lParse.Nodes)[yyvs[yyvsp].node() as usize]).ntype;
                             }
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                    lParse,
+                                    yyvs[yyvsp - 2].node(),
+                                ));
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Vector(
+                                        lParse,
+                                        yyvs[yyvsp - 2].node(),
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 2904036176499606090;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 2].node());
                                 current_block = 2904036176499606090;
                             }
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
                                     let fresh4 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh5 = *fresh4;
                                     *fresh4 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh5 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh5 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = 17353983478346836848;
                                 }
                             }
                         }
                         14 => {
                             /* vector: vector ',' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= MAXSUBS as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                    lParse,
+                                    yyvs[yyvsp - 2].node(),
+                                ));
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Vector(
+                                        lParse,
+                                        yyvs[yyvsp - 2].node(),
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17702298541784679949;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 2].node());
                                 current_block = 17702298541784679949;
                             }
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
                                     let fresh6 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh7 = *fresh6;
                                     *fresh6 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh7 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh7 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = 17353983478346836848;
                                 }
                             }
                         }
                         15 => {
                             /* vector: bvector ',' expr  */
-                            (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype =
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype;
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).nSubNodes
+                            (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype =
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype;
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).nSubNodes
                                 >= 10 as c_int
                             {
-                                yyvs[yyvsp - 2].Node = Close_Vec(lParse, yyvs[yyvsp - 2].Node);
-                                if yyvs[yyvsp - 2].Node < 0 {
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                    lParse,
+                                    yyvs[yyvsp - 2].node(),
+                                ));
+                                if yyvs[yyvsp - 2].node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    yyval.Node = New_Vector(lParse, yyvs[yyvsp - 2].Node);
-                                    if yyval.Node < 0 {
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Vector(
+                                        lParse,
+                                        yyvs[yyvsp - 2].node(),
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 1069630499025798221;
                                     }
                                 }
                             } else {
-                                yyval.Node = yyvs[yyvsp - 2].Node;
+                                yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 2].node());
                                 current_block = 1069630499025798221;
                             }
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
                                     let fresh8 =
-                                        &mut ((lParse.Nodes)[yyval.Node as usize]).nSubNodes;
+                                        &mut ((lParse.Nodes)[yyval.node() as usize]).nSubNodes;
                                     let fresh9 = *fresh8;
                                     *fresh8 += 1;
-                                    ((lParse.Nodes)[yyval.Node as usize]).SubNodes
-                                        [fresh9 as usize] = yyvs[yyvsp].Node.try_into().unwrap();
+                                    ((lParse.Nodes)[yyval.node() as usize]).SubNodes
+                                        [fresh9 as usize] = yyvs[yyvsp].node().try_into().unwrap();
                                     current_block = 17353983478346836848;
                                 }
                             }
                         }
                         16 => {
                             /* expr: vector '}'  */
-                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                lParse,
+                                yyvs[yyvsp - 1].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1716,8 +1960,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         17 => {
                             /* bexpr: bvector '}'  */
-                            yyval.Node = Close_Vec(lParse, yyvs[yyvsp - 1].Node);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(Close_Vec(
+                                lParse,
+                                yyvs[yyvsp - 1].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1725,26 +1972,29 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         18 => {
                             /* bits: BITSTR  */
-                            yyval.Node = New_Const(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (strlen((yyvs[yyvsp].astr).as_mut_ptr()))
+                                yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
+                                (strlen(yyvs[yyvsp].text_mut_ptr()))
                                     .wrapping_add((1).try_into().unwrap())
                                     as c_long,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    strlen((yyvs[yyvsp].astr).as_mut_ptr()) as c_long;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    strlen(yyvs[yyvsp].text_mut_ptr()) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
                         19 => {
                             /* bits: BITCOL  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Column(
+                                lParse,
+                                yyvs[yyvsp].lng() as c_int,
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1752,9 +2002,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         20 => {
                             /* bits: BITCOL '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Long
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -1763,12 +2013,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Offset(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 17353983478346836848;
@@ -1777,54 +2027,60 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         21 => {
                             /* bits: bits '&' bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '&' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
-                                        > (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
+                                        .nelem
+                                        > (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
                                     } else {
-                                        (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                        (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     };
                                 current_block = 17353983478346836848;
                             }
                         }
                         22 => {
                             /* bits: bits '|' bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '|' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value).nelem
-                                        > (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    if (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
+                                        .nelem
+                                        > (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
                                     } else {
-                                        (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                        (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     };
                                 current_block = 17353983478346836848;
                             }
                         }
                         23 => {
                             /* bits: bits '+' bits  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                + (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).value.nelem
+                                + (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                 >= 256 as c_long
                             {
                                 fits_parser_yyerror(
@@ -1833,19 +2089,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::BITSTR as c_int,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                     '+' as i32,
-                                    yyvs[yyvsp].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                            + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
+                                    (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
+                                            + ((lParse.Nodes)[yyvs[yyvsp].node() as usize])
                                                 .value
                                                 .nelem;
                                     current_block = 17353983478346836848;
@@ -1854,17 +2112,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         24 => {
                             /* bits: bits '[' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1872,17 +2130,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         25 => {
                             /* bits: bits '[' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1890,17 +2148,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         26 => {
                             /* bits: bits '[' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1908,17 +2166,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         27 => {
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1926,17 +2184,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         28 => {
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1944,13 +2202,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         29 => {
                             /* bits: NOT bits  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1958,18 +2216,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         30 => {
                             /* bits: '(' bits ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 1].node());
                             current_block = 17353983478346836848;
                         }
                         31 => {
                             /* expr: LONG  */
-                            yyval.Node = New_Const(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                (&mut yyvs[yyvsp].lng as *mut c_long).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].lng() as *mut c_long).cast::<c_void>(),
                                 ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1977,13 +2235,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         32 => {
                             /* expr: DOUBLE  */
-                            yyval.Node = New_Const(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
-                                (&mut yyvs[yyvsp].dbl as *mut c_double).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].dbl() as *mut c_double).cast::<c_void>(),
                                 ::core::mem::size_of::<c_double>() as c_ulong as c_long,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -1991,8 +2249,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         33 => {
                             /* expr: COLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Column(
+                                lParse,
+                                yyvs[yyvsp].lng() as c_int,
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2000,9 +2261,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         34 => {
                             /* expr: COLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Long
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -2011,12 +2272,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Offset(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 17353983478346836848;
@@ -2025,10 +2286,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         35 => {
                             /* expr: ROWREF  */
-                            yyval.Node = New_Func(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                ROW_FCT,
+                                funcOp::ROW_FCT,
                                 0,
                                 0,
                                 0,
@@ -2037,15 +2298,15 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                                 0,
-                            );
+                            ));
                             current_block = 17353983478346836848;
                         }
                         36 => {
                             /* expr: NULLREF  */
-                            yyval.Node = New_Func(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                NULL_FCT,
+                                funcOp::NULL_FCT,
                                 0,
                                 0,
                                 0,
@@ -2054,38 +2315,40 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                                 0,
-                            );
+                            ));
                             current_block = 17353983478346836848;
                         }
                         37 => {
                             /* expr: expr '%' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '%' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2093,33 +2356,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         38 => {
                             /* expr: expr '+' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '+' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2127,33 +2392,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         39 => {
                             /* expr: expr '-' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '-' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2161,33 +2428,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         40 => {
                             /* expr: expr '*' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2195,33 +2464,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         41 => {
                             /* expr: expr '/' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '/' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2229,93 +2500,101 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         42 => {
                             /* expr: expr '&' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                != ValueSort::Long
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
+                                    yyvs[yyvsp - 2].node(),
                                     '&' as i32,
-                                    yyvs[yyvsp].Node,
-                                );
+                                    yyvs[yyvsp].node(),
+                                ));
                                 current_block = 17353983478346836848;
                             }
                         }
                         43 => {
                             /* expr: expr '|' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                != ValueSort::Long
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
+                                    yyvs[yyvsp - 2].node(),
                                     '|' as i32,
-                                    yyvs[yyvsp].Node,
-                                );
+                                    yyvs[yyvsp].node(),
+                                ));
                                 current_block = 17353983478346836848;
                             }
                         }
                         44 => {
                             /* expr: expr XOR expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                != ValueSort::Long
+                                || (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
+                                    != ValueSort::Long
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Bitwise operations with incompatible types; only (bit OP bit) and (int OP int) are allowed"));
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                    yyvs[yyvsp - 2].Node,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
+                                    yyvs[yyvsp - 2].node(),
                                     '^' as i32,
-                                    yyvs[yyvsp].Node,
-                                );
+                                    yyvs[yyvsp].node(),
+                                ));
                                 current_block = 17353983478346836848;
                             }
                         }
                         45 => {
                             /* expr: expr POWER expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::POWER as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2323,18 +2602,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         46 => {
                             /* expr: '+' expr  */
-                            yyval.Node = yyvs[yyvsp].Node;
+                            yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp].node());
                             current_block = 17353983478346836848;
                         }
                         47 => {
                             /* expr: '-' expr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 fits_parser_yytokentype::UMINUS as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2342,25 +2621,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         48 => {
                             /* expr: '(' expr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 1].node());
                             current_block = 17353983478346836848;
                         }
                         49 => {
                             /* expr: expr '*' bexpr  */
-                            yyvs[yyvsp].Node = New_Unary(
+                            yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 0,
-                                yyvs[yyvsp].Node,
-                            );
-                            yyval.Node = New_BinOp(
+                                yyvs[yyvsp].node(),
+                            ));
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2368,20 +2647,20 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         50 => {
                             /* expr: bexpr '*' expr  */
-                            yyvs[yyvsp - 2].Node = New_Unary(
+                            yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 0,
-                                yyvs[yyvsp - 2].Node,
-                            );
-                            yyval.Node = New_BinOp(
+                                yyvs[yyvsp - 2].node(),
+                            ));
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
-                                (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
-                                yyvs[yyvsp - 2].Node,
+                                (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
+                                yyvs[yyvsp - 2].node(),
                                 '*' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -2389,70 +2668,75 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         51 => {
                             /* expr: bexpr '?' expr ':' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                            ValueSort::Boolean;
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = 17353983478346836848;
                                     }
@@ -2461,70 +2745,75 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         52 => {
                             /* expr: bexpr '?' bexpr ':' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                            ValueSort::Boolean;
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = 17353983478346836848;
                                     }
@@ -2533,70 +2822,75 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         53 => {
                             /* expr: bexpr '?' expr ':' bexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype;
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype;
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype =
-                                            fits_parser_yytokentype::BOOLEAN as c_int;
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype =
+                                            ValueSort::Boolean;
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = 17353983478346836848;
                                     }
@@ -2605,23 +2899,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         54 => {
                             /* expr: FUNCTION ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 1].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 1].text()[0])
                                 < c_int::from((cs!(c"RANDOM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 1].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 1].text()[0])
                                 > c_int::from((cs!(c"RANDOM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 1].text_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
                                 /* Scalar RANDOM() */
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    RND_FCT,
+                                    funcOp::RND_FCT,
                                     0,
                                     0,
                                     0,
@@ -2630,25 +2924,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 1297461190301222800;
-                            } else if (if c_int::from(yyvs[yyvsp - 1].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 1].text()[0])
                                 < c_int::from((cs!(c"RANDOMN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 1].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 1].text()[0])
                                 > c_int::from((cs!(c"RANDOMN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 1].astr).as_mut_ptr(), c"RANDOMN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 1].text_mut_ptr(), c"RANDOMN(".as_ptr())
                             }) == 0
                             {
                                 /*Scalar RANDOMN()*/
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    GASRND_FCT,
+                                    funcOp::GASRND_FCT,
                                     0,
                                     0,
                                     0,
@@ -2657,7 +2951,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 1297461190301222800;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function() not supported"));
@@ -2666,7 +2960,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -2676,63 +2970,65 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         55 => {
                             /* expr: FUNCTION bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"SUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"SUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    SUM_FCT,
+                                    funcOp::SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 10848699504537784535;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NELEM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NELEM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Const(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                );
+                                ));
                                 current_block = 10848699504537784535;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                             {
                                 let mut zero: c_long = 0;
@@ -2743,13 +3039,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 10848699504537784535;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(bool) not supported"));
@@ -2758,7 +3054,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -2768,22 +3064,24 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         56 => {
                             /* expr: FUNCTION bexpr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"AXISELEM"))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"AXISELEM"))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"AXISELEM(".as_ptr())
                             }) == 0
                             {
                                 /* AXISELEM(V,n) */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -2791,65 +3089,68 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
                                     current_block = 4830776507462815627;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 13755523488868872559;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                        != ValueSort::Long
                                     {
-                                        yyvs[yyvsp - 1].Node = New_Unary(
+                                        yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
-                                        );
+                                            yyvs[yyvsp - 1].node(),
+                                        ));
                                     }
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        AXISELEM_FCT,
+                                        funcOp::AXISELEM_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                            ValueSort::Long;
                                         current_block = 13755523488868872559;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"NAXES("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"NAXES("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
                                 /* NAXES(V,n) */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -2857,78 +3158,83 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
                                     current_block = 4830776507462815627;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     /* if V is constant, return 1 in every case */
                                     let mut one_0: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 13755523488868872559;
                                 } else {
                                     /* determine now the dimension of the expression */
                                     let mut iaxis: c_long = 0;
                                     let mut naxis: c_int = 0;
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                        != ValueSort::Long
                                     {
-                                        yyvs[yyvsp - 1].Node = New_Unary(
+                                        yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
-                                        );
+                                            yyvs[yyvsp - 1].node(),
+                                        ));
                                     }
                                     /* Since it is already constant, we can extract long value directly */
-                                    iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    iaxis = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
                                         .data
-                                        .lng;
-                                    naxis =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
+                                        .lng();
+                                    naxis = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .naxis;
                                     if iaxis == 0 {
                                         iaxis = c_long::from(naxis); /* NAXIS(V,0) = NAXIS */
                                     } else if iaxis <= c_long::from(naxis) {
                                         /* NAXIS(V,n) = NAXISn */
-                                        iaxis = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        iaxis = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .naxes
                                             [(iaxis - 1) as usize];
                                     } else {
                                         iaxis = 1; /* Out of bounds use 1 */
                                     }
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut iaxis as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 13755523488868872559;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"ARRAY("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"ARRAY("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
                                 /* NAXES(bexpr,n) */
-                                yyval.Node =
-                                    New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
-                                if yyval.Node < 0 {
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Array(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 13755523488868872559;
@@ -2943,7 +3249,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -2953,52 +3259,54 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         57 => {
                             /* expr: FUNCTION sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NELEM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NELEM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Const(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                );
+                                ));
                                 current_block = 15752106442776732052;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NVALID("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NVALID("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    NONNULL_FCT,
+                                    funcOp::NONNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 15752106442776732052;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(str) not supported"));
@@ -3007,7 +3315,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -3017,115 +3325,121 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         58 => {
                             /* expr: FUNCTION bits ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NELEM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NELEM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Const(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                );
+                                ));
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NVALID("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NVALID("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
                                 /* Bit arrays do not have NULL */
-                                yyval.Node = New_Const(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                );
+                                ));
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"SUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"SUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    SUM_FCT,
+                                    funcOp::SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"MIN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"MIN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
-                                    MIN1_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
+                                    funcOp::MIN1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 /* Note: $2 is a vector so the result can never
                                 be a constant.  Therefore it will never be set
                                 inside New_Func(), and it is safe to set SIZE() */
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
                             {
                                 let mut zero_0: c_long = 0;
@@ -3136,43 +3450,45 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 494012601817399562;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"MAX("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"MAX("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
-                                    MAX1_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
+                                    funcOp::MAX1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 /* Note: $2 is a vector so the result can never
                                 be a constant.  Therefore it will never be set
                                 inside New_Func(), and it is safe to set SIZE() */
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 494012601817399562;
                             } else {
                                 fits_parser_yyerror(lParse, cs!(c"Function(bits) not supported"));
@@ -3181,7 +3497,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -3191,170 +3507,176 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         59 => {
                             /* expr: FUNCTION expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"SUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"SUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
-                                    SUM_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(),
+                                    funcOp::SUM_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"AVERAGE("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"AVERAGE("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"AVERAGE(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"AVERAGE(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    AVERAGE_FCT,
+                                    funcOp::AVERAGE_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"STDDEV("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"STDDEV("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"STDDEV(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"STDDEV(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    STDDEV_FCT,
+                                    funcOp::STDDEV_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"MEDIAN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"MEDIAN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MEDIAN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MEDIAN(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
-                                    MEDIAN_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(),
+                                    funcOp::MEDIAN_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NELEM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NELEM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Const(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         as *const c_long)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NVALID("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NVALID("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    NONNULL_FCT,
+                                    funcOp::NONNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    == fits_parser_yytokentype::LONG as c_int
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    == ValueSort::Long
                             {
                                 let mut zero_1: c_long = 0;
 
@@ -3367,27 +3689,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ACCUM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
                             }) == 0
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    == fits_parser_yytokentype::DOUBLE as c_int
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    == ValueSort::Double
                             {
                                 let mut zero_2: c_double = 0.0;
                                 let new_node = New_Const(
@@ -3397,27 +3719,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"SEQDIFF("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"SEQDIFF("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SEQDIFF(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
                             }) == 0
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    == fits_parser_yytokentype::LONG as c_int
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    == ValueSort::Long
                             {
                                 let mut zero_3: c_long = 0;
                                 let new_node = New_Const(
@@ -3427,27 +3749,27 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"SEQDIFF("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"SEQDIFF("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SEQDIFF(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
                             }) == 0
-                                && ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    == fits_parser_yytokentype::DOUBLE as c_int
+                                && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    == ValueSort::Double
                             {
                                 let mut zero_4: c_double = 0.0;
                                 let new_node = New_Const(
@@ -3457,238 +3779,244 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                                 );
 
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
                                     new_node,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ABS("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ABS("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ABS(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ABS(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ABS_FCT,
+                                    funcOp::ABS_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"MIN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"MIN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
-                                    MIN1_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
+                                    funcOp::MIN1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"MAX("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"MAX("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype, /* Force 1D result */
-                                    MAX1_FCT,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .ntype
+                                        .code(), /* Force 1D result */
+                                    funcOp::MAX1_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
+                                ));
                                 current_block = 7600445499126923600;
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"RANDOM("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"RANDOM("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"RANDOM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOM(".as_ptr())
                             }) == 0
                             {
                                 /* Vector RANDOM() */
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    RND_FCT,
+                                    funcOp::RND_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                        fits_parser_yytokentype::DOUBLE as c_int;
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                        ValueSort::Double;
                                     current_block = 7600445499126923600;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"RANDOMN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"RANDOMN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"RANDOMN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOMN(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    GASRND_FCT,
+                                    funcOp::GASRND_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                        fits_parser_yytokentype::DOUBLE as c_int;
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                        ValueSort::Double;
                                     current_block = 7600445499126923600;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ELEMENTNUM"))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ELEMENTNUM"))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ELEMENTNUM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ELEMENTNUM(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     == CONST_OP
                                 {
                                     let mut one_1: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one_1 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
                                 } else {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ELEMNUM_FCT,
+                                        funcOp::ELEMNUM_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                            ValueSort::Long;
                                         current_block = 7600445499126923600;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"NAXIS("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"NAXIS("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"NAXIS(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NAXIS(".as_ptr())
                             }) == 0
                             {
                                 /* NAXIS(V) */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     == CONST_OP
                                 {
                                     /* if V is constant, return 1 in every case */
                                     let mut one_2: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one_2 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
                                 } else {
                                     let mut naxis_0: c_long = c_long::from(
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.naxis,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .value
+                                            .naxis,
                                     );
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut naxis_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 7600445499126923600;
@@ -3696,504 +4024,491 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 }
                             } else {
                                 /*  These all take DOUBLE arguments  */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 1].Node = New_Unary(
+                                    yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
                                 }
-                                if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"SIN("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"SIN("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SIN(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SIN(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SIN_FCT,
+                                        funcOp::SIN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"COS("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"COS("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"COS(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"COS(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        COS_FCT,
+                                        funcOp::COS_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"TAN("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"TAN("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"TAN(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"TAN(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        TAN_FCT,
+                                        funcOp::TAN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"ARCSIN"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"ARCSIN"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCSIN(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCSIN(".as_ptr())
                                 }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ASIN"))[0])
                                     {
                                         -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         > c_int::from((cs!(c"ASIN"))[0])
                                     {
                                         1
                                     } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ASIN(".as_ptr(),
-                                        )
+                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ASIN(".as_ptr())
                                     }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ASIN_FCT,
+                                        funcOp::ASIN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"ARCCOS"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"ARCCOS"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCCOS(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCCOS(".as_ptr())
                                 }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ACOS"))[0])
                                     {
                                         -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         > c_int::from((cs!(c"ACOS"))[0])
                                     {
                                         1
                                     } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ACOS(".as_ptr(),
-                                        )
+                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACOS(".as_ptr())
                                     }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ACOS_FCT,
+                                        funcOp::ACOS_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"ARCTAN"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"ARCTAN"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ARCTAN(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCTAN(".as_ptr())
                                 }) == 0
-                                    || (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ATAN"))[0])
                                     {
                                         -(1)
-                                    } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                    } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         > c_int::from((cs!(c"ATAN"))[0])
                                     {
                                         1
                                     } else {
-                                        strcmp(
-                                            (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                            c"ATAN(".as_ptr(),
-                                        )
+                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ATAN(".as_ptr())
                                     }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ATAN_FCT,
+                                        funcOp::ATAN_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"SINH"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"SINH"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SINH(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SINH(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SINH_FCT,
+                                        funcOp::SINH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"COSH"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"COSH"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"COSH(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"COSH(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        COSH_FCT,
+                                        funcOp::COSH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"TANH"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"TANH"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"TANH(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"TANH(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        TANH_FCT,
+                                        funcOp::TANH_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"EXP("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"EXP("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"EXP(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"EXP(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        EXP_FCT,
+                                        funcOp::EXP_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"LOG("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"LOG("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"LOG(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"LOG(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        LOG_FCT,
+                                        funcOp::LOG_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"LOG10"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"LOG10"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"LOG10(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"LOG10(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        LOG10_FCT,
+                                        funcOp::LOG10_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"SQRT"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"SQRT"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"SQRT(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SQRT(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SQRT_FCT,
+                                        funcOp::SQRT_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"ROUND"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"ROUND"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ROUND(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ROUND(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ROUND_FCT,
+                                        funcOp::ROUND_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"FLOOR"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"FLOOR"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"FLOOR(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"FLOOR(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        FLOOR_FCT,
+                                        funcOp::FLOOR_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"CEIL"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"CEIL"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"CEIL(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"CEIL(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        CEIL_FCT,
+                                        funcOp::CEIL_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 7600445499126923600;
-                                } else if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     < c_int::from((cs!(c"RANDOMP"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                     > c_int::from((cs!(c"RANDOMP"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp(
-                                        (yyvs[yyvsp - 2].astr).as_mut_ptr(),
-                                        c"RANDOMP(".as_ptr(),
-                                    )
+                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOMP(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        POIRND_FCT,
+                                        funcOp::POIRND_FCT,
                                         1,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                        fits_parser_yytokentype::LONG as c_int;
+                                    ));
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype = ValueSort::Long;
                                     current_block = 7600445499126923600;
                                 } else {
                                     fits_parser_yyerror(
@@ -4206,7 +4521,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             match current_block {
                                 4830776507462815627 => {}
                                 _ => {
-                                    if yyval.Node < 0 {
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -4216,32 +4531,32 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         60 => {
                             /* expr: IFUNCTION sexpr ',' sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"STRSTR("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"STRSTR("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"STRSTR(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"STRSTR(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    STRPOS_FCT,
+                                    funcOp::STRPOS_FCT,
                                     2,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 12473999534294722905;
@@ -4258,56 +4573,68 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         61 => {
                             /* expr: FUNCTION expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .value
+                                    .nelem
+                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                        > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
-                                        yyvs[yyvsp - 1].Node = New_Unary(
+                                        yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
-                                            yyvs[yyvsp - 1].Node,
-                                        );
-                                    } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                            yyvs[yyvsp - 1].node(),
+                                        ));
+                                    } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .ntype
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
-                                        yyvs[yyvsp - 3].Node = New_Unary(
+                                        yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
-                                            yyvs[yyvsp - 3].Node,
-                                        );
+                                            yyvs[yyvsp - 3].node(),
+                                        ));
                                     }
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        DEFNULL_FCT,
+                                        funcOp::DEFNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 9966817879908499150;
@@ -4319,65 +4646,65 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"ARCTAN2("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"ARCTAN2("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARCTAN2(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARCTAN2(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 3].Node = New_Unary(
+                                    yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
-                                    );
+                                        yyvs[yyvsp - 3].node(),
+                                    ));
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 1].Node = New_Unary(
+                                    yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ATAN2_FCT,
+                                        funcOp::ATAN2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = 9966817879908499150;
                                     }
@@ -4388,64 +4715,68 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"MIN("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"MIN("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"MIN(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
-                                    yyvs[yyvsp - 1].Node = New_Unary(
+                                    yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
-                                    yyvs[yyvsp - 3].Node = New_Unary(
+                                    yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
-                                        yyvs[yyvsp - 3].Node,
-                                    );
+                                        yyvs[yyvsp - 3].node(),
+                                    ));
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        MIN2_FCT,
+                                        funcOp::MIN2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = 9966817879908499150;
                                     }
@@ -4456,64 +4787,68 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"MAX("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"MAX("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"MAX(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    > ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
-                                    yyvs[yyvsp - 1].Node = New_Unary(
+                                    yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                 {
-                                    yyvs[yyvsp - 3].Node = New_Unary(
+                                    yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                        ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                            .ntype
+                                            .code(),
                                         0,
-                                        yyvs[yyvsp - 3].Node,
-                                    );
+                                        yyvs[yyvsp - 3].node(),
+                                    ));
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 3].node(), yyvs[yyvsp - 1].node())
                                     != 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        MAX2_FCT,
+                                        funcOp::MAX2_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = 9966817879908499150;
                                     }
@@ -4524,21 +4859,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     );
                                     current_block = 4830776507462815627;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"SETNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"SETNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"SETNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"SETNULL(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -4548,47 +4885,51 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     current_block = 4830776507462815627;
                                 } else {
                                     /* Make sure first arg is same type as second arg */
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                        != ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                        != ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     {
-                                        yyvs[yyvsp - 3].Node = New_Unary(
+                                        yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype,
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                                .ntype
+                                                .code(),
                                             0,
-                                            yyvs[yyvsp - 3].Node,
-                                        );
+                                            yyvs[yyvsp - 3].node(),
+                                        ));
                                     }
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        SETNULL_FCT,
+                                        funcOp::SETNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 1].Node,
-                                        yyvs[yyvsp - 3].Node,
+                                        yyvs[yyvsp - 1].node(),
+                                        yyvs[yyvsp - 3].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
+                                    ));
                                     current_block = 9966817879908499150;
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"AXISELEM"))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"AXISELEM"))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"AXISELEM(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"AXISELEM(".as_ptr())
                             }) == 0
                             {
                                 /* AXISELEM(V,n) */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -4596,65 +4937,68 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"AXISELEM second argument must be a scalar constant"),
                                     );
                                     current_block = 4830776507462815627;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     let mut one_3: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one_3 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 9966817879908499150;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                        != ValueSort::Long
                                     {
-                                        yyvs[yyvsp - 1].Node = New_Unary(
+                                        yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
-                                        );
+                                            yyvs[yyvsp - 1].node(),
+                                        ));
                                     }
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        AXISELEM_FCT,
+                                        funcOp::AXISELEM_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                            fits_parser_yytokentype::LONG as c_int;
+                                        ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                            ValueSort::Long;
                                         current_block = 9966817879908499150;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"NAXES("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"NAXES("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"NAXES(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"NAXES(".as_ptr())
                             }) == 0
                             {
                                 /* NAXES(V,n) */
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(
@@ -4662,78 +5006,83 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         cs!(c"NAXES second argument must be a scalar constant"),
                                     );
                                     current_block = 4830776507462815627;
-                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).operation
+                                } else if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .operation
                                     == CONST_OP
                                 {
                                     /* if V is constant, return 1 in every case */
                                     let mut one_4: c_long = 1;
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut one_4 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
+                                    ));
                                     current_block = 9966817879908499150;
                                 } else {
                                     /* determine now the dimension of the expression */
                                     let mut iaxis_0: c_long = 0;
                                     let mut naxis_1: c_int = 0;
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                        != ValueSort::Long
                                     {
-                                        yyvs[yyvsp - 1].Node = New_Unary(
+                                        yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
-                                            yyvs[yyvsp - 1].Node,
-                                        );
+                                            yyvs[yyvsp - 1].node(),
+                                        ));
                                     }
                                     /* Since it is already constant, we can extract long value directly */
-                                    iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
                                         .data
-                                        .lng;
-                                    naxis_1 =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.naxis;
+                                        .lng();
+                                    naxis_1 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .naxis;
                                     if iaxis_0 == 0 {
                                         iaxis_0 = c_long::from(naxis_1); /* NAXIS(V,0) = NAXIS */
                                     } else if iaxis_0 <= c_long::from(naxis_1) {
                                         /* NAXIS(V,n) = NAXISn */
-                                        iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        iaxis_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .naxes
                                             [(iaxis_0 - 1) as usize];
                                     } else {
                                         iaxis_0 = 1; /* Out of bounds use 1 */
                                     }
-                                    yyval.Node = New_Const(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
                                         (&mut iaxis_0 as *mut c_long).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 9966817879908499150;
                                     }
                                 }
-                            } else if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"ARRAY("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"ARRAY("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"ARRAY(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARRAY(".as_ptr())
                             }) == 0
                             {
                                 /* NAXES(expr,n) */
-                                yyval.Node =
-                                    New_Array(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node);
-                                if yyval.Node < 0 {
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Array(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 9966817879908499150;
@@ -4754,107 +5103,113 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         62 => {
                             /* expr: FUNCTION expr ',' expr ',' expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 8].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 8].text()[0])
                                 < c_int::from((cs!(c"ANGSEP("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 8].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 8].text()[0])
                                 > c_int::from((cs!(c"ANGSEP("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 8].astr).as_mut_ptr(), c"ANGSEP(".as_ptr())
+                                strcmp(yyvs[yyvsp - 8].text_mut_ptr(), c"ANGSEP(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 7].Node = New_Unary(
+                                    yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 7].Node,
-                                    );
+                                        yyvs[yyvsp - 7].node(),
+                                    ));
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 5].Node = New_Unary(
+                                    yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 5].Node,
-                                    );
+                                        yyvs[yyvsp - 5].node(),
+                                    ));
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 3].Node = New_Unary(
+                                    yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 3].Node,
-                                    );
+                                        yyvs[yyvsp - 3].node(),
+                                    ));
                                 }
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                    != fits_parser_yytokentype::DOUBLE as c_int
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                    != ValueSort::Double
                                 {
-                                    yyvs[yyvsp - 1].Node = New_Unary(
+                                    yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
                                 }
-                                if Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
+                                if Test_Dims(lParse, yyvs[yyvsp - 7].node(), yyvs[yyvsp - 5].node())
                                     != 0
-                                    && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                        != 0
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                    ) != 0
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        ANGSEP_FCT,
+                                        funcOp::ANGSEP_FCT,
                                         4 as c_int,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                         }
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                         }
-                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                        if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                         }
                                         current_block = 17353983478346836848;
                                     }
@@ -4875,16 +5230,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         63 => {
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIOVER_FCT,
-                                (yyvs[yyvsp - 5].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                funcOp::GTIOVER_FCT,
+                                yyvs[yyvsp - 5].text_mut_ptr(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4892,16 +5247,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         64 => {
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ',' STRING ',' STRING ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIOVER_FCT,
-                                (yyvs[yyvsp - 9].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                                funcOp::GTIOVER_FCT,
+                                yyvs[yyvsp - 9].text_mut_ptr(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].text_mut_ptr(),
+                                yyvs[yyvsp - 1].text_mut_ptr(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4909,17 +5264,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         65 => {
                             /* expr: expr '[' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4927,17 +5282,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         66 => {
                             /* expr: expr '[' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4945,17 +5300,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         67 => {
                             /* expr: expr '[' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4963,17 +5318,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         68 => {
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4981,17 +5336,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         69 => {
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -4999,13 +5354,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         70 => {
                             /* expr: INTCAST expr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5013,13 +5368,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         71 => {
                             /* expr: INTCAST bexpr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5027,13 +5382,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         72 => {
                             /* expr: FLTCAST expr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5041,13 +5396,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         73 => {
                             /* expr: FLTCAST bexpr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5055,13 +5410,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         74 => {
                             /* bexpr: BOOLEAN  */
-                            yyval.Node = New_Const(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                (&mut yyvs[yyvsp].log as *mut c_char).cast::<c_void>(),
+                                (&mut yyvs[yyvsp].log() as *mut c_char).cast::<c_void>(),
                                 ::core::mem::size_of::<c_char>() as c_ulong as c_long,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5069,8 +5424,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         75 => {
                             /* bexpr: BCOLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Column(
+                                lParse,
+                                yyvs[yyvsp].lng() as c_int,
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5078,9 +5436,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         76 => {
                             /* bexpr: BCOLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Long
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -5089,12 +5447,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Offset(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 17353983478346836848;
@@ -5103,129 +5461,131 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         77 => {
                             /* bexpr: bits EQ bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         78 => {
                             /* bexpr: bits NE bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         79 => {
                             /* bexpr: bits LT bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         80 => {
                             /* bexpr: bits LTE bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         81 => {
                             /* bexpr: bits GT bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         82 => {
                             /* bexpr: bits GTE bits  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         83 => {
                             /* bexpr: expr GT expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5233,33 +5593,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         84 => {
                             /* bexpr: expr LT expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5267,33 +5629,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         85 => {
                             /* bexpr: expr GTE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5301,33 +5665,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         86 => {
                             /* bexpr: expr LTE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5335,33 +5701,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         87 => {
                             /* bexpr: expr '~' expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 '~' as i32,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5369,33 +5737,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         88 => {
                             /* bexpr: expr EQ expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5403,33 +5773,35 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         89 => {
                             /* bexpr: expr NE expr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5437,110 +5809,110 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         90 => {
                             /* bexpr: sexpr EQ sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         91 => {
                             /* bexpr: sexpr NE sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         92 => {
                             /* bexpr: sexpr GT sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         93 => {
                             /* bexpr: sexpr GTE sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         94 => {
                             /* bexpr: sexpr LT sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         95 => {
                             /* bexpr: sexpr LTE sexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem = 1;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem = 1;
                                 current_block = 17353983478346836848;
                             }
                         }
                         96 => {
                             /* bexpr: bexpr AND bexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5548,14 +5920,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         97 => {
                             /* bexpr: bexpr OR bexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::OR as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5563,14 +5935,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         98 => {
                             /* bexpr: bexpr EQ bexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5578,14 +5950,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         99 => {
                             /* bexpr: bexpr NE bexpr  */
-                            yyval.Node = New_BinOp(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5593,85 +5965,93 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         100 => {
                             /* bexpr: expr '=' expr ':' expr  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
+                                    yyvs[yyvsp - 2].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 4].Node = New_Unary(
+                                yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp - 4].Node,
-                                );
+                                    yyvs[yyvsp - 4].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 4].Node = New_Unary(
+                                yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 4].Node,
-                                );
+                                    yyvs[yyvsp - 4].node(),
+                                ));
                             }
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).ntype
-                                > (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype
+                                > (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp].Node = New_Unary(
+                                yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype,
+                                    ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .ntype
+                                        .code(),
                                     0,
-                                    yyvs[yyvsp].Node,
-                                );
-                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).ntype
-                                < (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype
+                                    yyvs[yyvsp].node(),
+                                ));
+                            } else if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).ntype
+                                < (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype
                             {
-                                yyvs[yyvsp - 2].Node = New_Unary(
+                                yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
-                                    (lParse.Nodes[yyvs[yyvsp].Node as usize]).ntype,
+                                    (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
-                                    yyvs[yyvsp - 2].Node,
-                                );
+                                    yyvs[yyvsp - 2].node(),
+                                ));
                             }
-                            yyvs[yyvsp - 2].Node = New_BinOp(
+                            yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp - 4].Node,
-                            );
-                            yyvs[yyvsp].Node = New_BinOp(
+                                yyvs[yyvsp - 4].node(),
+                            ));
+                            yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 4].Node,
+                                yyvs[yyvsp - 4].node(),
                                 fits_parser_yytokentype::LTE as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            yyval.Node = New_BinOp(
+                                yyvs[yyvsp].node(),
+                            ));
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                yyvs[yyvsp - 2].Node,
+                                yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -5679,47 +6059,50 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         101 => {
                             /* bexpr: bexpr '?' bexpr ':' bexpr  */
-                            if Test_Dims(lParse, yyvs[yyvsp - 2].Node, yyvs[yyvsp].Node) == 0 {
+                            if Test_Dims(lParse, yyvs[yyvsp - 2].node(), yyvs[yyvsp].node()) == 0 {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Incompatible dimensions in '?:' arguments"),
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
-                                    if Test_Dims(lParse, yyvs[yyvsp - 4].Node, yyval.Node) == 0 {
+                                    if Test_Dims(lParse, yyvs[yyvsp - 4].node(), yyval.node()) == 0
+                                    {
                                         fits_parser_yyerror(
                                             lParse,
                                             cs!(c"Incompatible dimensions in '?:' condition"),
                                         );
                                         current_block = 4830776507462815627;
                                     } else {
-                                        if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize])
+                                        if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                            < ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                                 .value
                                                 .nelem
                                         {
-                                            Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 4].Node);
+                                            Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 4].node());
                                         }
                                         current_block = 17353983478346836848;
                                     }
@@ -5728,37 +6111,37 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         102 => {
                             /* bexpr: BFUNCTION expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     /* Use expression's size, but return BOOLEAN */
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                        fits_parser_yytokentype::BOOLEAN as c_int;
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                        ValueSort::Boolean;
                                     current_block = 17353983478346836848;
                                 }
                             } else {
@@ -5771,37 +6154,37 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         103 => {
                             /* bexpr: BFUNCTION bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     0,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     /* Use expression's size, but return BOOLEAN */
-                                    ((lParse.Nodes)[yyval.Node as usize]).ntype =
-                                        fits_parser_yytokentype::BOOLEAN as c_int;
+                                    ((lParse.Nodes)[yyval.node() as usize]).ntype =
+                                        ValueSort::Boolean;
                                     current_block = 17353983478346836848;
                                 }
                             } else {
@@ -5814,32 +6197,32 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         104 => {
                             /* bexpr: BFUNCTION sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 < c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 2].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 2].text()[0])
                                 > c_int::from((cs!(c"ISNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 2].astr).as_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    ISNULL_FCT,
+                                    funcOp::ISNULL_FCT,
                                     1,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 17353983478346836848;
@@ -5854,37 +6237,44 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         105 => {
                             /* bexpr: FUNCTION bexpr ',' bexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
                             }) == 0
                             {
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                    && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                        != 0
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                    .value
+                                    .nelem
+                                    >= ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                    && Test_Dims(
+                                        lParse,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ) != 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         0,
-                                        DEFNULL_FCT,
+                                        funcOp::DEFNULL_FCT,
                                         2,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
                                         0,
                                         0,
                                         0,
                                         0,
                                         0,
-                                    );
-                                    if yyval.Node < 0 {
+                                    ));
+                                    if yyval.node() < 0 {
                                         current_block = 4830776507462815627;
                                     } else {
                                         current_block = 17353983478346836848;
@@ -5906,93 +6296,101 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         106 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 5].Node = New_Unary(
+                                yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
-                                );
+                                    yyvs[yyvsp - 5].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 3].Node = New_Unary(
+                                yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
-                                );
+                                    yyvs[yyvsp - 3].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 1].Node = New_Unary(
+                                yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
-                                );
+                                    yyvs[yyvsp - 1].node(),
+                                ));
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node) != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(lParse, yyvs[yyvsp - 5].node(), yyvs[yyvsp - 3].node())
+                                != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Dimensions of NEAR arguments are not compatible"),
                                 );
                                 current_block = 4830776507462815627;
-                            } else if (if c_int::from(yyvs[yyvsp - 6].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 6].text()[0])
                                 < c_int::from((cs!(c"NEAR("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 6].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 6].text()[0])
                                 > c_int::from((cs!(c"NEAR("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 6].astr).as_mut_ptr(), c"NEAR(".as_ptr())
+                                strcmp(yyvs[yyvsp - 6].text_mut_ptr(), c"NEAR(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    NEAR_FCT,
+                                    funcOp::NEAR_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 5].Node,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                    if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                     }
                                     current_block = 17353983478346836848;
                                 }
@@ -6003,131 +6401,149 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         107 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 9].Node = New_Unary(
+                                yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 9].Node,
-                                );
+                                    yyvs[yyvsp - 9].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 7].Node = New_Unary(
+                                yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 7].Node,
-                                );
+                                    yyvs[yyvsp - 7].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 5].Node = New_Unary(
+                                yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
-                                );
+                                    yyvs[yyvsp - 5].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 3].Node = New_Unary(
+                                yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
-                                );
+                                    yyvs[yyvsp - 3].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 1].Node = New_Unary(
+                                yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
-                                );
+                                    yyvs[yyvsp - 1].node(),
+                                ));
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 9].Node, yyvs[yyvsp - 7].Node) != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(lParse, yyvs[yyvsp - 9].node(), yyvs[yyvsp - 7].node())
+                                != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Dimensions of CIRCLE arguments are not compatible"),
                                 );
                                 current_block = 4830776507462815627;
-                            } else if (if c_int::from(yyvs[yyvsp - 10].astr[0])
+                            } else if (if c_int::from(yyvs[yyvsp - 10].text()[0])
                                 < c_int::from((cs!(c"CIRCLE("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 10].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 10].text()[0])
                                 > c_int::from((cs!(c"CIRCLE("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 10].astr).as_mut_ptr(), c"CIRCLE(".as_ptr())
+                                strcmp(yyvs[yyvsp - 10].text_mut_ptr(), c"CIRCLE(".as_ptr())
                             }) == 0
                             {
-                                yyval.Node = New_Func(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
-                                    CIRCLE_FCT,
+                                    funcOp::CIRCLE_FCT,
                                     5 as c_int,
-                                    yyvs[yyvsp - 9].Node,
-                                    yyvs[yyvsp - 7].Node,
-                                    yyvs[yyvsp - 5].Node,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 9].node(),
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                    if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 9].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 9].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 7].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 7].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 5].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 3].node());
                                     }
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
-                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
+                                        < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp - 1].node());
                                     }
                                     current_block = 17353983478346836848;
                                 }
@@ -6138,146 +6554,161 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         108 => {
                             /* bexpr: BFUNCTION expr ',' expr ',' expr ',' expr ',' expr ',' expr ',' expr ')'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 13].Node = New_Unary(
+                                yyvs[yyvsp - 13] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 13].Node,
-                                );
+                                    yyvs[yyvsp - 13].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 11].Node = New_Unary(
+                                yyvs[yyvsp - 11] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 11].Node,
-                                );
+                                    yyvs[yyvsp - 11].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 9].Node = New_Unary(
+                                yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 9].Node,
-                                );
+                                    yyvs[yyvsp - 9].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 7].Node = New_Unary(
+                                yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 7].Node,
-                                );
+                                    yyvs[yyvsp - 7].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 5].Node = New_Unary(
+                                yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 5].Node,
-                                );
+                                    yyvs[yyvsp - 5].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 3].Node = New_Unary(
+                                yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 3].Node,
-                                );
+                                    yyvs[yyvsp - 3].node(),
+                                ));
                             }
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::DOUBLE as c_int
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Double
                             {
-                                yyvs[yyvsp - 1].Node = New_Unary(
+                                yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
-                                    yyvs[yyvsp - 1].Node,
-                                );
+                                    yyvs[yyvsp - 1].node(),
+                                ));
                             }
-                            if !(Test_Dims(lParse, yyvs[yyvsp - 13].Node, yyvs[yyvsp - 11].Node)
-                                != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 11].Node, yyvs[yyvsp - 9].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 9].Node, yyvs[yyvsp - 7].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 7].Node, yyvs[yyvsp - 5].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 5].Node, yyvs[yyvsp - 3].Node)
-                                    != 0
-                                && Test_Dims(lParse, yyvs[yyvsp - 3].Node, yyvs[yyvsp - 1].Node)
-                                    != 0)
+                            if !(Test_Dims(
+                                lParse,
+                                yyvs[yyvsp - 13].node(),
+                                yyvs[yyvsp - 11].node(),
+                            ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 11].node(),
+                                    yyvs[yyvsp - 9].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 9].node(),
+                                    yyvs[yyvsp - 7].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 7].node(),
+                                    yyvs[yyvsp - 5].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 5].node(),
+                                    yyvs[yyvsp - 3].node(),
+                                ) != 0
+                                && Test_Dims(
+                                    lParse,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
+                                ) != 0)
                             {
                                 fits_parser_yyerror(lParse, cs!(c"Dimensions of BOX or ELLIPSE arguments are not compatible"));
                                 current_block = 4830776507462815627;
                             } else {
-                                if (if c_int::from(yyvs[yyvsp - 14].astr[0])
+                                if (if c_int::from(yyvs[yyvsp - 14].text()[0])
                                     < c_int::from((cs!(c"BOX("))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 14].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 14].text()[0])
                                     > c_int::from((cs!(c"BOX("))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp((yyvs[yyvsp - 14].astr).as_mut_ptr(), c"BOX(".as_ptr())
+                                    strcmp(yyvs[yyvsp - 14].text_mut_ptr(), c"BOX(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
-                                        BOX_FCT,
+                                        funcOp::BOX_FCT,
                                         7 as c_int,
-                                        yyvs[yyvsp - 13].Node,
-                                        yyvs[yyvsp - 11].Node,
-                                        yyvs[yyvsp - 9].Node,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
+                                        yyvs[yyvsp - 13].node(),
+                                        yyvs[yyvsp - 11].node(),
+                                        yyvs[yyvsp - 9].node(),
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
                                     current_block = 3023179740610631044;
-                                } else if (if c_int::from(yyvs[yyvsp - 14].astr[0])
+                                } else if (if c_int::from(yyvs[yyvsp - 14].text()[0])
                                     < c_int::from((cs!(c"ELLIPSE"))[0])
                                 {
                                     -(1)
-                                } else if c_int::from(yyvs[yyvsp - 14].astr[0])
+                                } else if c_int::from(yyvs[yyvsp - 14].text()[0])
                                     > c_int::from((cs!(c"ELLIPSE"))[0])
                                 {
                                     1
                                 } else {
-                                    strcmp(
-                                        (yyvs[yyvsp - 14].astr).as_mut_ptr(),
-                                        c"ELLIPSE(".as_ptr(),
-                                    )
+                                    strcmp(yyvs[yyvsp - 14].text_mut_ptr(), c"ELLIPSE(".as_ptr())
                                 }) == 0
                                 {
-                                    yyval.Node = New_Func(
+                                    yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
-                                        ELPS_FCT,
+                                        funcOp::ELPS_FCT,
                                         7 as c_int,
-                                        yyvs[yyvsp - 13].Node,
-                                        yyvs[yyvsp - 11].Node,
-                                        yyvs[yyvsp - 9].Node,
-                                        yyvs[yyvsp - 7].Node,
-                                        yyvs[yyvsp - 5].Node,
-                                        yyvs[yyvsp - 3].Node,
-                                        yyvs[yyvsp - 1].Node,
-                                    );
+                                        yyvs[yyvsp - 13].node(),
+                                        yyvs[yyvsp - 11].node(),
+                                        yyvs[yyvsp - 9].node(),
+                                        yyvs[yyvsp - 7].node(),
+                                        yyvs[yyvsp - 5].node(),
+                                        yyvs[yyvsp - 3].node(),
+                                        yyvs[yyvsp - 1].node(),
+                                    ));
                                     current_block = 3023179740610631044;
                                 } else {
                                     fits_parser_yyerror(
@@ -6289,77 +6720,97 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 match current_block {
                                     4830776507462815627 => {}
                                     _ => {
-                                        if yyval.Node < 0 {
+                                        if yyval.node() < 0 {
                                             current_block = 4830776507462815627;
                                         } else {
-                                            if (((lParse.Nodes)[yyval.Node as usize]).value).nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize])
+                                            if (((lParse.Nodes)[yyval.node() as usize]).value).nelem
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize])
                                                     .value
                                                     .nelem
                                             {
                                                 Copy_Dims(
                                                     lParse,
-                                                    yyval.Node,
-                                                    yyvs[yyvsp - 13].Node,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 13].node(),
                                                 );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 13].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 13].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize])
                                                     .value
                                                     .nelem
                                             {
                                                 Copy_Dims(
                                                     lParse,
-                                                    yyval.Node,
-                                                    yyvs[yyvsp - 11].Node,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 11].node(),
                                                 );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 11].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 11].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 9].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 9].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 9].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 9].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 7].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 7].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 7].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 5].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 5].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 3].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 3].node(),
+                                                );
                                             }
-                                            if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                            if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                 .value
                                                 .nelem
-                                                < ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                                < ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                     .value
                                                     .nelem
                                             {
-                                                Copy_Dims(lParse, yyval.Node, yyvs[yyvsp - 1].Node);
+                                                Copy_Dims(
+                                                    lParse,
+                                                    yyval.node(),
+                                                    yyvs[yyvsp - 1].node(),
+                                                );
                                             }
                                             current_block = 17353983478346836848;
                                         }
@@ -6370,16 +6821,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         109 => {
                             /* bexpr: GTIFILTER ')'  */
                             /* Use defaults for all elements */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
+                                funcOp::GTIFILT_FCT,
                                 (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6388,16 +6839,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         110 => {
                             /* bexpr: GTIFILTER STRING ')'  */
                             /* Use defaults for all except filename */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                funcOp::GTIFILT_FCT,
+                                yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6405,16 +6856,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         111 => {
                             /* bexpr: GTIFILTER STRING ',' expr ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 1].Node,
+                                funcOp::GTIFILT_FCT,
+                                yyvs[yyvsp - 3].text_mut_ptr(),
+                                yyvs[yyvsp - 1].node(),
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6422,16 +6873,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         112 => {
                             /* bexpr: GTIFILTER STRING ',' expr ',' STRING ',' STRING ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFILT_FCT,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
+                                funcOp::GTIFILT_FCT,
+                                yyvs[yyvsp - 7].text_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
                                 -99,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 3].text_mut_ptr(),
+                                yyvs[yyvsp - 1].text_mut_ptr(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6441,16 +6892,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         113 => {
                             /* bexpr: GTIFIND ')'  */
                             /* Use defaults for all elements */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
+                                funcOp::GTIFIND_FCT,
                                 (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6458,16 +6909,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         114 => {
                             /* bexpr: GTIFIND STRING ')'  *//* Use defaults for all except filename */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                funcOp::GTIFIND_FCT,
+                                yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6475,16 +6926,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         115 => {
                             /* bexpr: GTIFIND STRING ',' expr ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 1].Node,
+                                funcOp::GTIFIND_FCT,
+                                yyvs[yyvsp - 3].text_mut_ptr(),
+                                yyvs[yyvsp - 1].node(),
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
                                 c"*STOP*".as_ptr() as *mut c_char,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6492,16 +6943,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         116 => {
                             /* bexpr: GTIFIND STRING ',' expr ',' STRING ',' STRING ')'  */
-                            yyval.Node = New_GTI(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
-                                GTIFIND_FCT,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
+                                funcOp::GTIFIND_FCT,
+                                yyvs[yyvsp - 7].text_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
                                 -99,
-                                (yyvs[yyvsp - 3].astr).as_mut_ptr(),
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 3].text_mut_ptr(),
+                                yyvs[yyvsp - 1].text_mut_ptr(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6510,14 +6961,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         117 => {
                             /* bexpr: REGFILTER STRING ')'  *//* Use defaults for all except filename */
                             let mut dummy = [0];
-                            yyval.Node = New_REG(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
+                                yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
                                 dummy.as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6526,14 +6977,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         118 => {
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ')'  */
                             let mut dummy = [0];
-                            yyval.Node = New_REG(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 5].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].text_mut_ptr(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 dummy.as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6541,14 +6992,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         119 => {
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ',' STRING ')'  */
-                            yyval.Node = New_REG(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
-                                (yyvs[yyvsp - 7].astr).as_mut_ptr(),
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                (yyvs[yyvsp - 1].astr).as_mut_ptr(),
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 7].text_mut_ptr(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].text_mut_ptr(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6556,17 +7007,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         120 => {
                             /* bexpr: bexpr '[' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 3].Node,
+                                yyvs[yyvsp - 3].node(),
                                 1,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6574,17 +7025,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         121 => {
                             /* bexpr: bexpr '[' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 5].Node,
+                                yyvs[yyvsp - 5].node(),
                                 2,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6592,17 +7043,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         122 => {
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 7].Node,
+                                yyvs[yyvsp - 7].node(),
                                 3 as c_int,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6610,17 +7061,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         123 => {
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 9].Node,
+                                yyvs[yyvsp - 9].node(),
                                 4 as c_int,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
                                 0,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6628,17 +7079,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         124 => {
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
-                            yyval.Node = New_Deref(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
-                                yyvs[yyvsp - 11].Node,
+                                yyvs[yyvsp - 11].node(),
                                 5 as c_int,
-                                yyvs[yyvsp - 9].Node,
-                                yyvs[yyvsp - 7].Node,
-                                yyvs[yyvsp - 5].Node,
-                                yyvs[yyvsp - 3].Node,
-                                yyvs[yyvsp - 1].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp - 9].node(),
+                                yyvs[yyvsp - 7].node(),
+                                yyvs[yyvsp - 5].node(),
+                                yyvs[yyvsp - 3].node(),
+                                yyvs[yyvsp - 1].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6646,13 +7097,13 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         125 => {
                             /* bexpr: NOT bexpr  */
-                            yyval.Node = New_Unary(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
-                                yyvs[yyvsp].Node,
-                            );
-                            if yyval.Node < 0 {
+                                yyvs[yyvsp].node(),
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6660,31 +7111,34 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         126 => {
                             /* bexpr: '(' bexpr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 1].node());
                             current_block = 17353983478346836848;
                         }
                         127 => {
                             /* sexpr: STRING  */
-                            yyval.Node = New_Const(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
-                                (yyvs[yyvsp].astr).as_mut_ptr().cast::<c_void>(),
-                                (strlen((yyvs[yyvsp].astr).as_mut_ptr()))
+                                yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
+                                (strlen(yyvs[yyvsp].text_mut_ptr()))
                                     .wrapping_add((1).try_into().unwrap())
                                     as c_long,
-                            );
-                            if yyval.Node < 0 {
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
-                                (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                    strlen((yyvs[yyvsp].astr).as_mut_ptr()) as c_long;
+                                (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                    strlen(yyvs[yyvsp].text_mut_ptr()) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
                         128 => {
                             /* sexpr: SCOLUMN  */
-                            yyval.Node = New_Column(lParse, yyvs[yyvsp].lng as c_int);
-                            if yyval.Node < 0 {
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Column(
+                                lParse,
+                                yyvs[yyvsp].lng() as c_int,
+                            ));
+                            if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
                             } else {
                                 current_block = 17353983478346836848;
@@ -6692,9 +7146,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         129 => {
                             /* sexpr: SCOLUMN '{' expr '}'  */
-                            if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                != fits_parser_yytokentype::LONG as c_int
-                                || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                            if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                != ValueSort::Long
+                                || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                     != CONST_OP
                             {
                                 fits_parser_yyerror(
@@ -6703,12 +7157,12 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_Offset(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_Offset(
                                     lParse,
-                                    yyvs[yyvsp - 3].lng as c_int,
-                                    yyvs[yyvsp - 1].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp - 3].lng() as c_int,
+                                    yyvs[yyvsp - 1].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
                                     current_block = 17353983478346836848;
@@ -6717,10 +7171,10 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         130 => {
                             /* sexpr: SNULLREF  */
-                            yyval.Node = New_Func(
+                            yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
-                                NULL_FCT,
+                                funcOp::NULL_FCT,
                                 0,
                                 0,
                                 0,
@@ -6729,18 +7183,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 0,
                                 0,
                                 0,
-                            );
+                            ));
                             current_block = 17353983478346836848;
                         }
                         131 => {
                             /* sexpr: '(' sexpr ')'  */
-                            yyval.Node = yyvs[yyvsp - 1].Node;
+                            yyval = FITS_PARSER_YYSTYPE::Node(yyvs[yyvsp - 1].node());
                             current_block = 17353983478346836848;
                         }
                         132 => {
                             /* sexpr: sexpr '+' sexpr  */
-                            if (lParse.Nodes[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                + (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                            if (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).value.nelem
+                                + (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                 >= 256 as c_long
                             {
                                 fits_parser_yyerror(
@@ -6749,19 +7203,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 );
                                 current_block = 4830776507462815627;
                             } else {
-                                yyval.Node = New_BinOp(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
                                     fits_parser_yytokentype::STRING as c_int,
-                                    yyvs[yyvsp - 2].Node,
+                                    yyvs[yyvsp - 2].node(),
                                     '+' as i32,
-                                    yyvs[yyvsp].Node,
-                                );
-                                if yyval.Node < 0 {
+                                    yyvs[yyvsp].node(),
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                            + ((lParse.Nodes)[yyvs[yyvsp].Node as usize])
+                                    (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                        ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                            .value
+                                            .nelem
+                                            + ((lParse.Nodes)[yyvs[yyvsp].node() as usize])
                                                 .value
                                                 .nelem;
                                     current_block = 17353983478346836848;
@@ -6771,7 +7227,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         133 => {
                             /* sexpr: bexpr '?' sexpr ':' sexpr  */
                             let mut outSize: c_int = 0;
-                            if ((lParse.Nodes)[yyvs[yyvsp - 4].Node as usize]).value.nelem != 1 {
+                            if ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
+                                .value
+                                .nelem
+                                != 1
+                            {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Cannot have a vector string column"),
@@ -6782,36 +7242,38 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 scalar, we must precalculate the output size, in
                                 order to avoid an overflow. */
 
-                                outSize = (((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value)
+                                outSize = (((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize]).value)
                                     .nelem as c_int;
-                                if (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                if (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     > c_long::from(outSize)
                                 {
                                     outSize =
-                                        ((lParse.Nodes)[yyvs[yyvsp].Node as usize]).value.nelem
+                                        ((lParse.Nodes)[yyvs[yyvsp].node() as usize]).value.nelem
                                             as c_int;
                                 }
-                                yyval.Node = New_FuncSize(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
                                     0,
-                                    IFTHENELSE_FCT,
+                                    funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
-                                    yyvs[yyvsp - 2].Node,
-                                    yyvs[yyvsp].Node,
-                                    yyvs[yyvsp - 4].Node,
+                                    yyvs[yyvsp - 2].node(),
+                                    yyvs[yyvsp].node(),
+                                    yyvs[yyvsp - 4].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     outSize,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].Node as usize]).value.nelem
-                                        < (lParse.Nodes[yyvs[yyvsp].Node as usize]).value.nelem
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
+                                        .value
+                                        .nelem
+                                        < (lParse.Nodes[yyvs[yyvsp].node() as usize]).value.nelem
                                     {
-                                        Copy_Dims(lParse, yyval.Node, yyvs[yyvsp].Node);
+                                        Copy_Dims(lParse, yyval.node(), yyvs[yyvsp].node());
                                     }
                                     current_block = 17353983478346836848;
                                 }
@@ -6819,16 +7281,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         134 => {
                             /* sexpr: FUNCTION sexpr ',' sexpr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 < c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 4].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 4].text()[0])
                                 > c_int::from((cs!(c"DEFNULL("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 4].astr).as_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
                             }) == 0
                             {
                                 /* Since the output can be calculated now, as a constant
@@ -6836,40 +7298,45 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 order to avoid an overflow. */
 
                                 let mut outSize_0: c_int = 0;
-                                outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                     .value
                                     .nelem as c_int;
-                                if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    .value
+                                    .nelem
                                     > c_long::from(outSize_0)
                                 {
-                                    outSize_0 =
-                                        ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                            as c_int;
+                                    outSize_0 = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                        as c_int;
                                 }
-                                yyval.Node = New_FuncSize(
+                                yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
                                     0,
-                                    DEFNULL_FCT,
+                                    funcOp::DEFNULL_FCT,
                                     2,
-                                    yyvs[yyvsp - 3].Node,
-                                    yyvs[yyvsp - 1].Node,
+                                    yyvs[yyvsp - 3].node(),
+                                    yyvs[yyvsp - 1].node(),
                                     0,
                                     0,
                                     0,
                                     0,
                                     0,
                                     outSize_0,
-                                );
-                                if yyval.Node < 0 {
+                                ));
+                                if yyval.node() < 0 {
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
-                                        > ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize])
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
+                                        > ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .value
                                             .nelem
                                     {
-                                        (((lParse.Nodes)[yyval.Node as usize]).value).nelem =
-                                            ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                        (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
+                                            ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .value
                                                 .nelem;
                                     }
@@ -6885,43 +7352,47 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         135 => {
                             /* sexpr: FUNCTION sexpr ',' expr ',' expr ')'  */
-                            if (if c_int::from(yyvs[yyvsp - 6].astr[0])
+                            if (if c_int::from(yyvs[yyvsp - 6].text()[0])
                                 < c_int::from((cs!(c"STRMID("))[0])
                             {
                                 -(1)
-                            } else if c_int::from(yyvs[yyvsp - 6].astr[0])
+                            } else if c_int::from(yyvs[yyvsp - 6].text()[0])
                                 > c_int::from((cs!(c"STRMID("))[0])
                             {
                                 1
                             } else {
-                                strcmp((yyvs[yyvsp - 6].astr).as_mut_ptr(), c"STRMID(".as_ptr())
+                                strcmp(yyvs[yyvsp - 6].text_mut_ptr(), c"STRMID(".as_ptr())
                             }) == 0
                             {
                                 let mut len: c_int = 0;
-                                if ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).ntype
-                                    != fits_parser_yytokentype::LONG as c_int
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].Node as usize]).value.nelem
+                                if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
+                                    != ValueSort::Long
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).ntype
-                                        != fits_parser_yytokentype::LONG as c_int
-                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).value.nelem
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
+                                        != ValueSort::Long
+                                    || ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                        .value
+                                        .nelem
                                         != 1
                                 {
                                     fits_parser_yyerror(lParse, cs!(c"When using STRMID(S,P,N), P and N must be integers (and not vector columns)"));
                                     current_block = 4830776507462815627;
                                 } else {
-                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize]).operation
+                                    if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
                                         == CONST_OP
                                     {
                                         /* Constant value: use that directly */
-                                        len = ((lParse.Nodes)[yyvs[yyvsp - 1].Node as usize])
+                                        len = ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .value
                                             .data
-                                            .lng
+                                            .lng()
                                             as c_int;
                                     } else {
                                         /* Variable value: use the maximum possible (from $2) */
-                                        len = ((lParse.Nodes)[yyvs[yyvsp - 5].Node as usize])
+                                        len = ((lParse.Nodes)[yyvs[yyvsp - 5].node() as usize])
                                             .value
                                             .nelem
                                             as c_int;
@@ -6933,21 +7404,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                         );
                                         current_block = 4830776507462815627;
                                     } else {
-                                        yyval.Node = New_FuncSize(
+                                        yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                             lParse,
                                             0,
-                                            STRMID_FCT,
+                                            funcOp::STRMID_FCT,
                                             3 as c_int,
-                                            yyvs[yyvsp - 5].Node,
-                                            yyvs[yyvsp - 3].Node,
-                                            yyvs[yyvsp - 1].Node,
+                                            yyvs[yyvsp - 5].node(),
+                                            yyvs[yyvsp - 3].node(),
+                                            yyvs[yyvsp - 1].node(),
                                             0,
                                             0,
                                             0,
                                             0,
                                             len,
-                                        );
-                                        if yyval.Node < 0 {
+                                        ));
+                                        if yyval.node() < 0 {
                                             current_block = 4830776507462815627;
                                         } else {
                                             current_block = 17353983478346836848;
@@ -7144,7 +7615,7 @@ fn New_Deref(
 
     let theVar = Var;
 
-    if (lParse.Nodes[theVar]).operation == CONST_OP || (lParse.Nodes[theVar]).value.nelem == 1 {
+    if (lParse.Nodes[theVar]).is_const() || (lParse.Nodes[theVar]).value.nelem == 1 {
         fits_parser_yyerror(lParse, cs!(c"Cannot index a scalar value"));
         return -(1);
     }
@@ -7170,12 +7641,11 @@ fn New_Deref(
         theDim[3] = Dim4;
         theDim[4] = Dim5;
 
-        constant = c_int::from((lParse.Nodes[theVar]).operation == CONST_OP);
+        constant = c_int::from((lParse.Nodes[theVar]).is_const());
         idx = 0;
         while idx < nDim {
-            constant = c_int::from(
-                constant != 0 && (lParse.Nodes[theDim[idx as usize]]).operation == CONST_OP,
-            );
+            constant =
+                c_int::from(constant != 0 && (lParse.Nodes[theDim[idx as usize]]).is_const());
             idx += 1;
         }
         idx = 0;
@@ -7184,9 +7654,7 @@ fn New_Deref(
                 Free_Last_Node(lParse);
                 fits_parser_yyerror(lParse, cs!(c"Cannot use an array as an index value"));
                 return -(1);
-            } else if (lParse.Nodes[theDim[idx as usize]]).ntype
-                != fits_parser_yytokentype::LONG as c_int
-            {
+            } else if (lParse.Nodes[theDim[idx as usize]]).ntype != ValueSort::Long {
                 Free_Last_Node(lParse);
                 fits_parser_yyerror(lParse, cs!(c"Index value must be an integer type"));
                 return -(1);
@@ -7234,24 +7702,128 @@ fn New_Deref(
     n
 }
 
-fn New_GTI(
+/// Read a GTI's START/STOP columns into storage of its own.
+///
+/// The C read them straight into the node's malloc'd buffer, tested the
+/// ordering through raw pointers into it, and applied TIMEZERO the same way.
+/// Here the intervals are a `Vec` that owns itself and the tests are indexed,
+/// so nothing in the reading depends on a node existing yet.
+///
+/// Returns the intervals -- starts then stops, the layout `Do_GTI` expects --
+/// and whether they are fully time-ordered, or `None` with `lParse.status` set.
+#[allow(clippy::too_many_arguments)]
+fn read_gti_intervals(
+    lParse: &mut ParseData,
+    fptr: &mut fitsfile,
+    startCol: c_int,
+    stopCol: c_int,
+    nrows: c_long,
+    timeZeroI: &[c_double; 2],
+    timeZeroF: &[c_double; 2],
+    must_be_ordered: bool,
+) -> Option<(Vec<c_double>, bool)> {
+    let n = nrows.max(0) as usize;
+    let mut times = vec![0.0 as c_double; 2 * n];
+    let mut anynul: c_int = 0;
+    let (starts, stops) = times.split_at_mut(n);
+    ffgcvd_safe(
+        fptr,
+        startCol,
+        1,
+        1,
+        nrows as LONGLONG,
+        0.0,
+        starts,
+        Some(&mut anynul),
+        &mut lParse.status,
+    );
+    ffgcvd_safe(
+        fptr,
+        stopCol,
+        1,
+        1,
+        nrows as LONGLONG,
+        0.0,
+        stops,
+        Some(&mut anynul),
+        &mut lParse.status,
+    );
+    if lParse.status != 0 {
+        return None;
+    }
+
+    /*  Test for fully time-ordered GTI... both START && STOP  */
+    let mut ordered = true;
+    let mut i = nrows as c_int;
+    loop {
+        /* C: while( --j ) -- the body never runs with j == 0, so times[n+j-1]
+        is always in bounds */
+        i -= 1;
+        if i == 0 {
+            break;
+        }
+        let j = i as usize;
+        /* one buffer, so START{j} is times[j] and STOP{j} is times[n + j] */
+        if times[j] > times[n + j] || times[j] < times[n + j - 1] {
+            ordered = false;
+            break;
+        }
+    }
+
+    /* GTIOVERLAP() requires ordered GTI */
+    if !ordered && must_be_ordered {
+        let mut errmsg: [c_char; 120] = [0; 120];
+        int_snprintf!(
+            &mut errmsg,
+            120,
+            "Input GTI must be time-ordered for GTIOVERLAP (row {})",
+            i + 1,
+        );
+        fits_parser_yyerror(lParse, &errmsg);
+        return None;
+    }
+
+    /*  Handle TIMEZERO offset, if any  */
+    let dt = timeZeroI[1] - timeZeroI[0] + (timeZeroF[1] - timeZeroF[0]);
+    let mut timeSpan = times[2 * n - 1] - times[0];
+    if timeSpan == 0.0 {
+        timeSpan = 1.0;
+    }
+    if fabs(dt / timeSpan) > 1e-12f64 {
+        for t in times.iter_mut() {
+            *t += dt;
+        }
+    }
+    Some((times, ordered))
+}
+
+/// A GTI's row count, and its intervals when it has any.
+///
+/// The intervals are the starts followed by the stops, with a flag saying
+/// whether they are fully time-ordered.
+type GtiData = (c_long, Option<(Vec<c_double>, bool)>);
+
+/// Open a GTI file, find its START/STOP columns and read the intervals.
+///
+/// Everything `New_GTI` does to the file, with no node in sight: the caller
+/// gets the row count and the intervals back and decides what to build from
+/// them. Splitting it out is only possible because the file work was first
+/// gathered into one run -- it used to sit either side of the node building.
+///
+/// Returns `None` with `lParse.status` set on failure, and `nrows == 0` with
+/// no intervals for an empty GTI.
+fn load_gti(
     lParse: &mut ParseData,
     Op: funcOp,
     mut fname: *mut c_char,
-    mut Node1: c_int,
-    mut Node2: c_int,
     start: *mut c_char,
     stop: *mut c_char,
-) -> c_int {
+) -> Option<GtiData> {
     unsafe {
         let mut fptr: *mut fitsfile = core::ptr::null_mut();
-        let this_node_idx: usize;
-        let mut type_0: c_int = 0;
         let mut i: c_int = 0;
-        let mut n: c_int = 0;
         let mut startCol: c_int = 0;
         let mut stopCol: c_int = 0;
-        let mut Node0: c_int = 0;
         let mut hdutype: c_int = 0;
         let mut hdunum: c_int = 0;
         let mut evthdu: c_int = 0;
@@ -7263,50 +7835,8 @@ fn New_GTI(
         let mut nrows: c_long = 0;
         let mut timeZeroI: [c_double; 2] = [0.; 2];
         let mut timeZeroF: [c_double; 2] = [0.; 2];
-        let mut dt: c_double = 0.0;
-        let mut timeSpan: c_double = 0.0;
         let mut xcol: [c_char; 20] = [0; 20];
         let mut xexpr: [c_char; 20] = [0; 20];
-        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
-
-        if (Op as c_uint == GTIFILT_FCT as c_int as c_uint
-            || Op as c_uint == GTIFIND_FCT as c_int as c_uint)
-            && Node1 == -99
-        {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
-            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                Node1 = New_Column(lParse, colVal.lng as c_int);
-            } else {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
-                );
-                return -(1);
-            }
-        }
-
-        if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
-            if Node1 == -99 || Node2 == -99 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
-                );
-                return -(1);
-            }
-            /* Also case TIME_STOP to double precision */
-            Node2 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node2);
-            if Node2 < 0 {
-                return -(1);
-            }
-        }
-
-        /* Type cast TIME to double precision */
-        Node1 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node1);
-        Node0 = Alloc_Node(lParse); /* This will hold the START/STOP times */
-
-        if Node1 < 0 || Node0 < 0 {
-            return -(1);
-        }
 
         /*  Record current HDU number in case we need to move within this file  */
 
@@ -7374,11 +7904,11 @@ fn New_GTI(
                             lParse,
                             cs!(c"Cannot use primary array for GTI filter"),
                         );
-                        return -(1);
+                        return None;
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"File extension specifier lacks closing ']'"));
-                    return -(1);
+                    return None;
                 }
             }
             b'+' => {
@@ -7392,7 +7922,7 @@ fn New_GTI(
                         lParse,
                         cs!(c"Cannot use primary array for GTI filter / GTIFIND"),
                     );
-                    return -(1);
+                    return None;
                 }
             }
             _ => {
@@ -7415,7 +7945,7 @@ fn New_GTI(
         }
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  If at primary, search for GTI extension  */
@@ -7442,7 +7972,7 @@ fn New_GTI(
                 if lParse.status == 107 as c_int {
                     fits_parser_yyerror(lParse, cs!(c"GTI extension not found in this file"));
                 }
-                return -(1);
+                return None;
             }
         }
 
@@ -7465,7 +7995,7 @@ fn New_GTI(
         );
 
         if lParse.status != 0 {
-            return -(1);
+            return None;
         }
 
         /*  Look for TIMEZERO keywords in GTI extension  */
@@ -7482,23 +8012,132 @@ fn New_GTI(
         } else {
             timeZeroF[1] = 0.0;
         }
+        /*  Read in START/STOP times  */
+
+        /* Done before any node is built, so that everything from here back to
+        resolving the TIME column touches only the file -- which is what lets
+        the navigation be lifted out on its own. */
+        if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
+            return None;
+        }
+        let gti = if nrows != 0 {
+            Some(read_gti_intervals(
+                lParse,
+                fptr,
+                startCol,
+                stopCol,
+                nrows,
+                &timeZeroI,
+                &timeZeroF,
+                Op == funcOp::GTIOVER_FCT,
+            )?)
+        } else {
+            None
+        };
+
+        /*  Restore the original HDU, or close the file we opened  */
+        if samefile != 0 {
+            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
+        } else {
+            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
+        }
+
+        Some((nrows, gti))
+    }
+}
+
+fn New_GTI(
+    lParse: &mut ParseData,
+    Op: funcOp,
+    fname: *mut c_char,
+    mut Node1: c_int,
+    mut Node2: c_int,
+    start: *mut c_char,
+    stop: *mut c_char,
+) -> c_int {
+    unsafe {
+        let fptr: *mut fitsfile = core::ptr::null_mut();
+        let this_node_idx: usize;
+        let mut type_0: c_int = 0;
+        let mut i: c_int = 0;
+        let mut n: c_int = 0;
+        let startCol: c_int = 0;
+        let stopCol: c_int = 0;
+        let mut Node0: c_int = 0;
+        let hdutype: c_int = 0;
+        let hdunum: c_int = 0;
+        let evthdu: c_int = 0;
+        let samefile: c_int = 0;
+        let extvers: c_int = 0;
+        let movetotype: c_int = 0;
+        let tstat: c_int = 0;
+        let extname: [c_char; 100] = [0; 100];
+        let nrows: c_long = 0;
+        let timeZeroI: [c_double; 2] = [0.; 2];
+        let timeZeroF: [c_double; 2] = [0.; 2];
+        let xcol: [c_char; 20] = [0; 20];
+        let xexpr: [c_char; 20] = [0; 20];
+        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
+
+        if (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
+            || Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint)
+            && Node1 == -99
+        {
+            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
+            if type_0 == fits_parser_yytokentype::COLUMN as c_int {
+                Node1 = New_Column(lParse, colVal.lng() as c_int);
+            } else {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"Could not build TIME column for GTIFILTER/GTIFIND"),
+                );
+                return -(1);
+            }
+        }
+
+        if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
+            if Node1 == -99 || Node2 == -99 {
+                fits_parser_yyerror(
+                    lParse,
+                    cs!(c"startExpr and stopExpr values must be defined for GTIOVERLAP"),
+                );
+                return -(1);
+            }
+            /* Also case TIME_STOP to double precision */
+            Node2 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node2);
+            if Node2 < 0 {
+                return -(1);
+            }
+        }
+
+        /* Type cast TIME to double precision */
+        Node1 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node1);
+        Node0 = Alloc_Node(lParse); /* This will hold the START/STOP times */
+
+        if Node1 < 0 || Node0 < 0 {
+            return -(1);
+        }
+
+        let Some((nrows, gti)) = load_gti(lParse, Op, fname, start, stop) else {
+            return -(1);
+        };
         n = Alloc_Node(lParse);
         if n >= 0 {
             this_node_idx = n as usize;
             (lParse.Nodes[this_node_idx]).SubNodes[1] = Node1.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).operation = Op as c_int;
-            if Op as c_uint == GTIFILT_FCT as c_int as c_uint {
+            if Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
-            } else if Op as c_uint == GTIFIND_FCT as c_int as c_uint {
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Boolean;
+            } else if Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 2;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::LONG as c_int;
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Long;
             } else {
                 (lParse.Nodes[this_node_idx]).nSubNodes = 3 as c_int;
                 (lParse.Nodes[this_node_idx]).DoOp = Some(Do_GTI_Over);
-                (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::DOUBLE as c_int;
+                (lParse.Nodes[this_node_idx]).ntype = ValueSort::Double;
             }
 
             let that1_idx = Node1 as usize;
@@ -7510,7 +8149,7 @@ fn New_GTI(
                     (lParse.Nodes[that1_idx]).value.naxes[i as usize];
                 i += 1;
             }
-            if Op as c_uint == GTIOVER_FCT as c_int as c_uint {
+            if Op as c_uint == funcOp::GTIOVER_FCT as c_int as c_uint {
                 (lParse.Nodes[this_node_idx]).SubNodes[2] = Node2.try_into().unwrap();
                 let that2_idx = Node2 as usize;
                 if (lParse.Nodes[that1_idx]).value.nelem != (lParse.Nodes[that2_idx]).value.nelem {
@@ -7528,121 +8167,42 @@ fn New_GTI(
             let that0_idx = Node0 as usize;
             (lParse.Nodes[that0_idx]).operation = CONST_OP;
             (lParse.Nodes[that0_idx]).DoOp = None;
-            (lParse.Nodes[that0_idx]).value.data.ptr = core::ptr::null_mut::<c_void>();
-
-            /*  Read in START/STOP times  */
-
-            if ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, &mut lParse.status) != 0 {
-                return -(1);
-            }
+            (lParse.Nodes[that0_idx]).value.data = NodeValue::Empty;
 
             (lParse.Nodes[that0_idx]).value.nelem = nrows;
-            if nrows != 0 {
-                let mut startptr: *mut c_double = core::ptr::null_mut::<c_double>();
-                let mut stopptr: *mut c_double = core::ptr::null_mut::<c_double>();
+            if let Some((times, ordered)) = gti {
+                (lParse.Nodes[that0_idx]).gtiOrdered = ordered;
 
-                /* We are allocating storage for both START and STOP with one pointer
-                and stop is stored at dblptr+nrows, we will use aliases below to
-                make this easier to read */
-                (lParse.Nodes[that0_idx]).value.data.dblptr = malloc(
+                /* Hand the intervals to the node in the layout Do_GTI reads:
+                the starts, then the stops. The node's buffer is still a raw
+                allocation, so this is a copy out of the Vec rather than
+                giving it away. */
+                let gtibuf = malloc(
                     ((2 as c_long * nrows) as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
                         .try_into()
                         .unwrap(),
-                )
-                .cast::<c_double>();
-                if ((lParse.Nodes[that0_idx]).value.data.dblptr).is_null() {
+                );
+                if gtibuf.is_null() {
                     lParse.status = MEMORY_ALLOCATION;
                     return -(1);
                 }
-                startptr = (lParse.Nodes[that0_idx]).value.data.dblptr;
-                stopptr = ((lParse.Nodes[that0_idx]).value.data.dblptr).offset(nrows as isize);
-                ffgcvd_safe(
-                    fptr,
-                    startCol,
-                    1,
-                    1,
-                    nrows as LONGLONG,
-                    0.0,
-                    core::slice::from_raw_parts_mut(startptr, nrows as usize),
-                    Some(&mut i),
-                    &mut lParse.status,
+                core::ptr::copy_nonoverlapping(
+                    times.as_ptr(),
+                    gtibuf.cast::<c_double>(),
+                    times.len(),
                 );
-                ffgcvd_safe(
-                    fptr,
-                    stopCol,
-                    1,
-                    1,
-                    nrows as LONGLONG,
-                    0.0,
-                    core::slice::from_raw_parts_mut(stopptr, nrows as usize),
-                    Some(&mut i),
-                    &mut lParse.status,
-                );
-                if lParse.status != 0 {
-                    free((lParse.Nodes[that0_idx]).value.data.dblptr.cast::<c_void>());
-                    return -(1);
-                }
-
-                /*  Test for fully time-ordered GTI... both START && STOP  */
-                (lParse.Nodes[that0_idx]).ntype = 1; /*  Assume yes  */
-                i = nrows as c_int;
-                loop {
-                    /* the following are failure conditions for GTI ordering */
-
-                    /* C: while( --j ) - the body never runs with j == 0, so
-                    stopptr[j-1] is always in bounds */
-                    i -= 1;
-                    if i == 0 {
-                        break;
-                    }
-
-                    if !(*startptr.offset(i as isize) > *stopptr.offset(i as isize) /* START{j} > STOP{j} */
-                        || *startptr.offset(i as isize) < *stopptr.offset((i - 1) as isize))
-                    /* START{j} < STOP{j-1} */
-                    {
-                        continue;
-                    }
-                    (lParse.Nodes[that0_idx]).ntype = 0;
-                    break;
-                }
-
-                /* GTIOVERLAP() requires ordered GTI */
-                if (lParse.Nodes[that0_idx]).ntype != 1
-                    && Op as c_uint == GTIOVER_FCT as c_int as c_uint
-                {
-                    let mut errmsg: [c_char; 120] = [0; 120];
-                    int_snprintf!(
-                        &mut errmsg,
-                        120,
-                        "Input GTI must be time-ordered for GTIOVERLAP (row {})",
-                        i + 1,
-                    );
-                    fits_parser_yyerror(lParse, &errmsg);
-                    return -(1);
-                }
-
-                /*  Handle TIMEZERO offset, if any  */
-                dt = timeZeroI[1] - timeZeroI[0] + (timeZeroF[1] - timeZeroF[0]);
-                timeSpan = *stopptr.offset((nrows - 1) as isize) - *startptr.offset(0);
-                if timeSpan == 0.0 {
-                    timeSpan = 1.0;
-                }
-                if fabs(dt / timeSpan) > 1e-12f64 {
-                    i = 0;
-                    while c_long::from(i) < nrows {
-                        *startptr.offset(i as isize) += dt;
-                        *stopptr.offset(i as isize) += dt;
-                        i += 1;
-                    }
-                }
+                (lParse.Nodes[that0_idx])
+                    .value
+                    .data
+                    .set_buffer(BufferKind::Double, gtibuf);
             }
 
             /* If Node1 is constant (gtifilt_fct) or
             Node1 and Node2 are constant (gtiover_fct), then evaluate now */
-            if ((lParse.Nodes)[Node1 as usize]).operation == CONST_OP
-                && (Op as c_uint == GTIFILT_FCT as c_int as c_uint
-                    || ((lParse.Nodes)[Node2 as usize]).operation == CONST_OP)
+            if ((lParse.Nodes)[Node1 as usize]).is_const()
+                && (Op as c_uint == funcOp::GTIFILT_FCT as c_int as c_uint
+                    || ((lParse.Nodes)[Node2 as usize]).is_const())
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
@@ -7651,13 +8211,74 @@ fn New_GTI(
             }
         }
 
-        if samefile != 0 {
-            ffmahd_safe(fptr, evthdu, Some(&mut hdutype), &mut lParse.status);
-        } else {
-            ffclos_safe(Box::from_raw(fptr), &mut lParse.status);
-        }
         n
     }
+}
+
+/// Read a region file, in the coordinate system the X and Y columns describe.
+///
+/// The WCS lookup and the region parse, split out of `New_REG`. It takes the
+/// two column *numbers* rather than the nodes they came from, which is the
+/// only thing that tied this part to the arena: `Locate_Col` walks the X and Y
+/// nodes to find those numbers, and only the numbers reach the WCS lookup.
+///
+/// Returns `None` with `lParse.status` set on failure. `Some(None)` is a
+/// region file that parsed to nothing.
+fn load_region(
+    lParse: &mut ParseData,
+    fname: *mut c_char,
+    Xcol: c_int,
+    Ycol: c_int,
+) -> Option<Option<Box<SAORegion>>> {
+    let mut wcs = WCSdata::default();
+    let mut tstat: c_int = 0;
+
+    /*  Now, get the WCS info, if it exists, from the indicated columns  */
+    wcs.exists = false;
+    if Xcol > 0 && Ycol > 0 {
+        /* SAFETY: def_fptr is the open file the parser was given. */
+        let fptr = unsafe { lParse.def_fptr.as_mut() }.unwrap();
+        ffgtcs_safe(
+            fptr,
+            Xcol,
+            Ycol,
+            &mut wcs.xrefval,
+            &mut wcs.yrefval,
+            &mut wcs.xrefpix,
+            &mut wcs.yrefpix,
+            &mut wcs.xinc,
+            &mut wcs.yinc,
+            &mut wcs.rot,
+            &mut (wcs.dtype),
+            &mut tstat,
+        );
+        /* NO_WCS_KEY means the file has no WCS, which is not an error --
+        the region is then read in pixel coordinates */
+        if tstat == NO_WCS_KEY {
+            wcs.exists = false;
+        } else if tstat != 0 {
+            lParse.status = tstat;
+            return None;
+        } else {
+            wcs.exists = true;
+        }
+    }
+
+    /*  Read in Region file  */
+
+    /* SAFETY: fname is the NUL-terminated string the grammar captured. */
+    let fname_slice = unsafe { CStr::from_ptr(fname) };
+    let mut rgn: Option<Box<SAORegion>> = None;
+    fits_read_rgnfile(
+        cast_slice(fname_slice.to_bytes_with_nul()),
+        &mut wcs,
+        &mut rgn,
+        &mut lParse.status,
+    );
+    if lParse.status != 0 {
+        return None;
+    }
+    Some(rgn)
 }
 
 fn New_REG(
@@ -7675,25 +8296,13 @@ fn New_REG(
         let mut Node0: c_int = 0;
         let mut Xcol: c_int = 0;
         let mut Ycol: c_int = 0;
-        let mut tstat: c_int = 0;
-        let mut wcs: WCSdata = WCSdata {
-            exists: false,
-            xrefval: 0.,
-            yrefval: 0.,
-            xrefpix: 0.,
-            yrefpix: 0.,
-            xinc: 0.,
-            yinc: 0.,
-            rot: 0.,
-            dtype: [0; 5],
-        };
         let mut cX: *mut c_char = ptr::null_mut();
         let mut cY: *mut c_char = ptr::null_mut();
-        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE { Node: 0 };
+        let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
         if NodeX == -99 {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"X"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeX = New_Column(lParse, colVal.lng as c_int);
+                NodeX = New_Column(lParse, colVal.lng() as c_int);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build X column for REGFILTER"));
                 return -(1);
@@ -7702,7 +8311,7 @@ fn New_REG(
         if NodeY == -99 {
             type_0 = fits_parser_yyGetVariable(lParse, cs!(c"Y"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
-                NodeY = New_Column(lParse, colVal.lng as c_int);
+                NodeY = New_Column(lParse, colVal.lng() as c_int);
             } else {
                 fits_parser_yyerror(lParse, cs!(c"Could not build Y column for REGFILTER"));
                 return -(1);
@@ -7728,9 +8337,9 @@ fn New_REG(
             (lParse.Nodes[this_node_idx]).SubNodes[0] = Node0.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[1] = NodeX.try_into().unwrap();
             (lParse.Nodes[this_node_idx]).SubNodes[2] = NodeY.try_into().unwrap();
-            (lParse.Nodes[this_node_idx]).operation = REGFILT_FCT as c_int;
+            (lParse.Nodes[this_node_idx]).operation = funcOp::REGFILT_FCT as c_int;
             (lParse.Nodes[this_node_idx]).DoOp = Some(Do_REG);
-            (lParse.Nodes[this_node_idx]).ntype = fits_parser_yytokentype::BOOLEAN as c_int;
+            (lParse.Nodes[this_node_idx]).ntype = ValueSort::Boolean;
             (lParse.Nodes[this_node_idx]).value.nelem = 1;
             (lParse.Nodes[this_node_idx]).value.naxis = 1;
             (lParse.Nodes[this_node_idx]).value.naxes[0] = 1;
@@ -7819,59 +8428,28 @@ fn New_REG(
                     return -(1);
                 }
             }
-            /*  Now, get the WCS info, if it exists, from the indicated columns  */
-            wcs.exists = false;
-            if Xcol > 0 && Ycol > 0 {
-                tstat = 0;
-                let fptr = lParse.def_fptr.as_mut().unwrap();
-                ffgtcs_safe(
-                    fptr,
-                    Xcol,
-                    Ycol,
-                    &mut wcs.xrefval,
-                    &mut wcs.yrefval,
-                    &mut wcs.xrefpix,
-                    &mut wcs.yrefpix,
-                    &mut wcs.xinc,
-                    &mut wcs.yinc,
-                    &mut wcs.rot,
-                    &mut (wcs.dtype),
-                    &mut tstat,
-                );
-                if tstat == NO_WCS_KEY {
-                    wcs.exists = false;
-                } else if tstat != 0 {
-                    lParse.status = tstat;
-                    Free_Last_Node(lParse);
-                    return -(1);
-                } else {
-                    wcs.exists = true;
-                }
-            }
-
-            /*  Read in Region file  */
-
-            /* the region is allocated by fits_read_rgnfile; hand ownership of
-            it to the node, which frees it again in ffcprs */
-            let fname_slice = CStr::from_ptr(fname);
-            let mut rgn: Option<Box<SAORegion>> = None;
-            fits_read_rgnfile(
-                cast_slice(fname_slice.to_bytes_with_nul()),
-                &mut wcs,
-                &mut rgn,
-                &mut lParse.status,
-            );
-            if lParse.status != 0 {
+            let Some(rgn) = load_region(lParse, fname, Xcol, Ycol) else {
                 Free_Last_Node(lParse);
                 return -(1);
-            }
-            let Rgn: *mut SAORegion = match rgn {
-                Some(rgn) => Box::into_raw(rgn),
-                None => ptr::null_mut(),
             };
-            (lParse.Nodes[that0_idx]).value.data.ptr = Rgn.cast::<c_void>();
-            if ((lParse.Nodes)[NodeX as usize]).operation == CONST_OP
-                && ((lParse.Nodes)[NodeY as usize]).operation == CONST_OP
+            /* The region is shared, not owned by the node: it goes in
+            lParse.regions behind an Rc and the node keeps the index. That is
+            what lets Do_REG take a handle without the node having to hand its
+            only copy over, and it means ffcprs no longer frees anything by
+            hand -- dropping ParseData drops the regions with it. */
+            /* No region at all is a failure, not an empty region:
+            fits_in_region reads Shapes[0] unconditionally. The C stored a null
+            pointer here and dereferenced it. */
+            let Some(rgn) = rgn else {
+                fits_parser_yyerror(lParse, cs!(c"Region file contained no region"));
+                Free_Last_Node(lParse);
+                return -(1);
+            };
+            lParse.regions.push(Rc::from(rgn));
+            let idx = lParse.regions.len() - 1;
+            (lParse.Nodes[that0_idx]).value.data = NodeValue::Region(idx);
+            if ((lParse.Nodes)[NodeX as usize]).is_const()
+                && ((lParse.Nodes)[NodeY as usize]).is_const()
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
@@ -7912,7 +8490,7 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
 
             subnode = New_Unary(
                 lParse,
-                (lParse.Nodes[this_node_idx]).ntype,
+                (lParse.Nodes[this_node_idx]).ntype.code(),
                 0,
                 (lParse.Nodes[this_node_idx]).SubNodes[n as usize] as c_int,
             );
@@ -7937,132 +8515,130 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
 }
 
 fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_int {
-    unsafe {
-        let mut naxis: c_long = 0;
-        let mut nelem: c_long = 0;
-        let mut naxes: [c_long; 5] = [0; 5];
-        let this_node_idx: usize;
-        let mut n: c_int = 0;
-        let mut i: c_int = 0;
-        if valueNode < 0 || dimNode < 0 {
+    let mut naxis: c_long = 0;
+    let mut nelem: c_long = 0;
+    let mut naxes: [c_long; 5] = [0; 5];
+    let this_node_idx: usize;
+    let mut n: c_int = 0;
+    let mut i: c_int = 0;
+    if valueNode < 0 || dimNode < 0 {
+        return -(1);
+    }
+
+    /* Check that dimensions are {a,b,c,d}
+         - vector
+     - every element is constant integer
+     - 5 or fewer dimensions
+    */
+
+    let dims: usize = dimNode as usize;
+    i = 0;
+    while i < MAXDIMS as c_int {
+        naxes[i as usize] = 1;
+        i += 1;
+    }
+
+    if ((lParse.Nodes)[dimNode as usize]).is_const() {
+        /* ARRAY(V,n) is a constant integer */
+
+        if ((lParse.Nodes)[dimNode as usize]).ntype != ValueSort::Long {
+            dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
+        }
+        if dimNode < 0 {
             return -(1);
         }
+        naxis = 1;
+        naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng();
+    } else if ((lParse.Nodes)[dimNode as usize]).operation == '{' as i32 {
+        /* ARRAY(V,{a,b,c,d,e}) up to 5 dimensions */
 
-        /* Check that dimensions are {a,b,c,d}
-             - vector
-         - every element is constant integer
-         - 5 or fewer dimensions
-        */
-
-        let dims: usize = dimNode as usize;
-        i = 0;
-        while i < MAXDIMS as c_int {
-            naxes[i as usize] = 1;
-            i += 1;
-        }
-
-        if ((lParse.Nodes)[dimNode as usize]).operation == CONST_OP {
-            /* ARRAY(V,n) is a constant integer */
-
-            if ((lParse.Nodes)[dimNode as usize]).ntype != fits_parser_yytokentype::LONG as c_int {
-                dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
-            }
-            if dimNode < 0 {
-                return -(1);
-            }
-            naxis = 1;
-            naxes[0] = (((lParse.Nodes)[dimNode as usize]).value).data.lng;
-        } else if ((lParse.Nodes)[dimNode as usize]).operation == '{' as i32 {
-            /* ARRAY(V,{a,b,c,d,e}) up to 5 dimensions */
-
-            if (lParse.Nodes[dims]).nSubNodes > 5 as c_int {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,{...}) number of dimensions must not exceed 5"),
-                );
-                return -(1);
-            }
-            naxis = c_long::from((lParse.Nodes[dims]).nSubNodes);
-            i = 0;
-            while i < (lParse.Nodes[dims]).nSubNodes {
-                if ((lParse.Nodes)[(lParse.Nodes[dims]).SubNodes[i as usize] as usize]).ntype
-                    != fits_parser_yytokentype::LONG as c_int
-                {
-                    (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
-                        lParse,
-                        fits_parser_yytokentype::LONG as c_int,
-                        0,
-                        (lParse.Nodes[dims]).SubNodes[i as usize] as c_int,
-                    )
-                    .try_into()
-                    .unwrap();
-
-                    /*
-                    if (lParse.Nodes[dims]).SubNodes[i as usize] < 0 {
-                        return -(1);
-                    }
-                    */
-                }
-                naxes[i as usize] = ((lParse.Nodes)
-                    [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
-                    .value
-                    .data
-                    .lng;
-                i += 1;
-            }
-        } else {
+        if (lParse.Nodes[dims]).nSubNodes > 5 as c_int {
             fits_parser_yyerror(
                 lParse,
-                cs!(c"ARRAY(V,dims) dims must be either integer or const vector"),
+                cs!(c"ARRAY(V,{...}) number of dimensions must not exceed 5"),
             );
             return -(1);
         }
-
-        nelem = 1;
+        naxis = c_long::from((lParse.Nodes[dims]).nSubNodes);
         i = 0;
-        while c_long::from(i) < naxis {
-            if naxes[i as usize] <= 0 {
-                fits_parser_yyerror(lParse, cs!(c"ARRAY(V,dims) must have positive dimensions"));
-                return -(1);
+        while i < (lParse.Nodes[dims]).nSubNodes {
+            if ((lParse.Nodes)[(lParse.Nodes[dims]).SubNodes[i as usize] as usize]).ntype
+                != ValueSort::Long
+            {
+                (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
+                    lParse,
+                    fits_parser_yytokentype::LONG as c_int,
+                    0,
+                    (lParse.Nodes[dims]).SubNodes[i as usize] as c_int,
+                )
+                .try_into()
+                .unwrap();
+
+                /*
+                if (lParse.Nodes[dims]).SubNodes[i as usize] < 0 {
+                    return -(1);
+                }
+                */
             }
-            nelem *= naxes[i as usize];
+            naxes[i as usize] = ((lParse.Nodes)
+                [(lParse.Nodes[dims]).SubNodes[i as usize] as usize])
+                .value
+                .data
+                .lng();
             i += 1;
         }
-
-        if !((((lParse.Nodes)[valueNode as usize]).value).nelem == nelem && nelem > 1) {
-            /* "reform" operation - do nothing */
-            if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 && nelem > 1 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,d) mismatch between number of elements in V and d"),
-                );
-                return -(1);
-            } else if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 {
-                fits_parser_yyerror(
-                    lParse,
-                    cs!(c"ARRAY(V,n) value V must have vector dimension of 1"),
-                );
-                return -(1);
-            }
-        }
-        n = Alloc_Node(lParse);
-        if n >= 0 {
-            this_node_idx = n as usize;
-            (lParse.Nodes[this_node_idx]).operation = ARRAY_FCT as c_int;
-            (lParse.Nodes[this_node_idx]).nSubNodes = 1;
-            (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
-            (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
-            (lParse.Nodes[this_node_idx]).value.nelem = nelem;
-            (lParse.Nodes[this_node_idx]).value.naxis = naxis as c_int;
-            i = 0;
-            while c_long::from(i) < naxis {
-                (lParse.Nodes[this_node_idx]).value.naxes[i as usize] = naxes[i as usize];
-                i += 1;
-            }
-            (lParse.Nodes[this_node_idx]).DoOp = Some(Do_Array);
-        }
-        n
+    } else {
+        fits_parser_yyerror(
+            lParse,
+            cs!(c"ARRAY(V,dims) dims must be either integer or const vector"),
+        );
+        return -(1);
     }
+
+    nelem = 1;
+    i = 0;
+    while c_long::from(i) < naxis {
+        if naxes[i as usize] <= 0 {
+            fits_parser_yyerror(lParse, cs!(c"ARRAY(V,dims) must have positive dimensions"));
+            return -(1);
+        }
+        nelem *= naxes[i as usize];
+        i += 1;
+    }
+
+    if !((((lParse.Nodes)[valueNode as usize]).value).nelem == nelem && nelem > 1) {
+        /* "reform" operation - do nothing */
+        if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 && nelem > 1 {
+            fits_parser_yyerror(
+                lParse,
+                cs!(c"ARRAY(V,d) mismatch between number of elements in V and d"),
+            );
+            return -(1);
+        } else if (((lParse.Nodes)[valueNode as usize]).value).nelem > 1 {
+            fits_parser_yyerror(
+                lParse,
+                cs!(c"ARRAY(V,n) value V must have vector dimension of 1"),
+            );
+            return -(1);
+        }
+    }
+    n = Alloc_Node(lParse);
+    if n >= 0 {
+        this_node_idx = n as usize;
+        (lParse.Nodes[this_node_idx]).operation = funcOp::ARRAY_FCT as c_int;
+        (lParse.Nodes[this_node_idx]).nSubNodes = 1;
+        (lParse.Nodes[this_node_idx]).SubNodes[0] = valueNode.try_into().unwrap();
+        (lParse.Nodes[this_node_idx]).ntype = ((lParse.Nodes)[valueNode as usize]).ntype;
+        (lParse.Nodes[this_node_idx]).value.nelem = nelem;
+        (lParse.Nodes[this_node_idx]).value.naxis = naxis as c_int;
+        i = 0;
+        while c_long::from(i) < naxis {
+            (lParse.Nodes[this_node_idx]).value.naxes[i as usize] = naxes[i as usize];
+            i += 1;
+        }
+        (lParse.Nodes[this_node_idx]).DoOp = Some(Do_Array);
+    }
+    n
 }
 
 /*  Locate the TABLE column number of any columns in "this" calculation.  */
@@ -8073,14 +8649,14 @@ fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
     let mut newCol: c_int = 0;
     let mut nfound: c_int = 0;
 
-    if this.nSubNodes == 0 && this.operation <= 0 && this.operation != CONST_OP {
-        return ((lParse.colData)[(-this.operation) as usize]).colnum;
+    if this.nSubNodes == 0 && this.is_column() {
+        return ((lParse.colData)[this.column() as usize]).colnum;
     }
 
     i = 0;
     while i < this.nSubNodes {
         let that = &(lParse.Nodes)[this.SubNodes[i as usize] as usize];
-        if that.operation > 0 {
+        if that.is_computed() {
             newCol = Locate_Col(lParse, that);
             if newCol <= 0 {
                 nfound += -newCol;
@@ -8090,9 +8666,9 @@ fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
             } else if col != newCol {
                 nfound += 1;
             }
-        } else if that.operation != CONST_OP {
+        } else if !that.is_const() {
             /*  Found a Column  */
-            newCol = ((lParse.colData)[(-that.operation) as usize]).colnum;
+            newCol = ((lParse.colData)[that.column() as usize]).colnum;
             if nfound == 0 {
                 col = newCol;
                 nfound += 1;
@@ -8191,8 +8767,8 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
         rowOffset = firstRow - lParse.firstDataRow;
         i = 0;
         while i < lParse.nNodes {
-            if !(((lParse.Nodes)[i as usize]).operation > 0
-                || ((lParse.Nodes)[i as usize]).operation == CONST_OP)
+            if !(((lParse.Nodes)[i as usize]).is_computed()
+                || ((lParse.Nodes)[i as usize]).is_const())
             {
                 column = -((lParse.Nodes)[i as usize]).operation;
                 offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
@@ -8203,47 +8779,58 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                         None => ptr::null_mut(),
                     };
 
-                match ((lParse.Nodes)[i as usize]).ntype.into() {
-                    fits_parser_yytokentype::BITSTR => {
-                        let fresh12 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh12 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
+                match ((lParse.Nodes)[i as usize]).ntype {
+                    ValueSort::Bits => {
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Text,
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast(),
+                        );
                         let fresh13 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh13 = ptr::null_mut();
                     }
-                    fits_parser_yytokentype::STRING => {
-                        let fresh14 = &mut (((lParse.Nodes)[i as usize]).value).data.strptr;
-                        *fresh14 = ((lParse.varData)[column as usize])
-                            .data
-                            .cast::<*mut c_char>()
-                            .offset(rowOffset as isize);
+                    ValueSort::String => {
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Text,
+                            ((lParse.varData)[column as usize])
+                                .data
+                                .cast::<*mut c_char>()
+                                .offset(rowOffset as isize)
+                                .cast(),
+                        );
                         let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh15 = (((lParse.varData)[column as usize]).undef)
                             .as_deref_mut()
                             .unwrap()[(rowOffset as usize)..]
                             .as_mut_ptr();
                     }
-                    fits_parser_yytokentype::BOOLEAN => {
-                        let fresh16 = &mut (((lParse.Nodes)[i as usize]).value).data.logptr;
-                        *fresh16 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_char)
-                            .offset(offset as isize);
+                    ValueSort::Boolean => {
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Logical,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
-                    fits_parser_yytokentype::LONG => {
-                        let fresh17 = &mut (((lParse.Nodes)[i as usize]).value).data.lngptr;
-                        *fresh17 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_long)
-                            .offset(offset as isize);
+                    ValueSort::Long => {
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Long,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
-                    fits_parser_yytokentype::DOUBLE => {
-                        let fresh18 = &mut (((lParse.Nodes)[i as usize]).value).data.dblptr;
-                        *fresh18 = (((lParse.varData)[column as usize]).data as *const _
-                            as *mut c_double)
-                            .offset(offset as isize);
+                    ValueSort::Double => {
+                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
+                            BufferKind::Double,
+                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
+                                .offset(offset as isize)
+                                .cast(),
+                        );
                     }
-                    _ => {}
                 }
             }
             i += 1;
@@ -8263,7 +8850,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
         return;
     }
 
-    if (lParse.Nodes)[thisNode as usize].operation > 0 {
+    if (lParse.Nodes)[thisNode as usize].is_computed() {
         /* <=0 indicate constants and columns */
         i = ((lParse.Nodes)[thisNode as usize]).nSubNodes;
         loop {
@@ -8295,18 +8882,20 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
         let mut elem: c_long = 0;
         let mut row: c_long = 0;
         let mut size: c_long = 0;
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
-            || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
         {
-            (lParse.Nodes[this_node_idx]).value.data.strptr = malloc(
-                (lParse.nRows as c_ulong)
-                    .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
-                    .try_into()
-                    .unwrap(),
-            )
-            .cast::<*mut c_char>();
-            if !((lParse.Nodes[this_node_idx]).value.data.strptr).is_null() {
-                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0);
+            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
+                BufferKind::Text,
+                malloc(
+                    (lParse.nRows as c_ulong)
+                        .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
+                        .try_into()
+                        .unwrap(),
+                ),
+            );
+            if !((lParse.Nodes[this_node_idx]).value.data.str_buf()).is_null() {
+                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0);
                 *fresh20 = malloc(
                     ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
                         as c_ulong)
@@ -8315,25 +8904,23 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         .unwrap(),
                 )
                 .cast::<c_char>();
-                if !(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0)).is_null() {
+                if !(*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0)).is_null() {
                     row = 0;
                     loop {
                         row += 1;
                         if row >= lParse.nRows {
                             break;
                         }
-                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(row as isize);
-                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset((row - 1) as isize))
                         .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
                         .offset(1);
                     }
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
-                    {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                         (lParse.Nodes[this_node_idx]).value.undef =
-                            (*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset((row - 1) as isize))
                             .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
                             .offset(1);
@@ -8346,7 +8933,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                         (lParse.Nodes[this_node_idx])
                             .value
                             .data
-                            .strptr
+                            .str_buf()
                             .cast::<c_void>(),
                     );
                 }
@@ -8355,31 +8942,41 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
             }
         } else {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
-            match (lParse.Nodes[this_node_idx]).ntype.into() {
-                fits_parser_yytokentype::DOUBLE => {
+            /* The C only needed the element size; the tagged value also has to
+            record which arm the buffer is, so the two are chosen together. */
+            let kind: BufferKind;
+            match (lParse.Nodes[this_node_idx]).ntype {
+                ValueSort::Double => {
                     size = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
+                    kind = BufferKind::Double;
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     size = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
+                    kind = BufferKind::Long;
                 }
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     size = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
+                    kind = BufferKind::Logical;
                 }
                 _ => {
                     size = 1;
+                    kind = BufferKind::Logical;
                 }
             }
-            (lParse.Nodes[this_node_idx]).value.data.ptr = calloc(
-                ((size + 1) as c_ulong).try_into().unwrap(),
-                (elem as c_ulong).try_into().unwrap(),
+            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
+                kind,
+                calloc(
+                    ((size + 1) as c_ulong).try_into().unwrap(),
+                    (elem as c_ulong).try_into().unwrap(),
+                ),
             );
-            if ((lParse.Nodes[this_node_idx]).value.data.ptr).is_null() {
+            if ((lParse.Nodes[this_node_idx]).value.data.raw()).is_null() {
                 lParse.status = MEMORY_ALLOCATION;
             } else {
                 (lParse.Nodes[this_node_idx]).value.undef = (lParse.Nodes[this_node_idx])
                     .value
                     .data
-                    .ptr
+                    .raw()
                     .cast::<c_char>()
                     .offset((elem * size) as isize);
             }
@@ -8389,19 +8986,16 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
 
 unsafe fn free_node_buffer(node: &mut Node) {
     unsafe {
-        if node.ntype == fits_parser_yytokentype::BITSTR as c_int
-            || node.ntype == fits_parser_yytokentype::STRING as c_int
-        {
-            if !node.value.data.strptr.is_null() {
-                if !(*node.value.data.strptr).is_null() {
-                    free((*node.value.data.strptr) as *mut c_void);
+        if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
+            if !node.value.data.str_buf().is_null() {
+                /* the row pointers all point into one block, allocated at [0] */
+                if !(*node.value.data.str_buf()).is_null() {
+                    free((*node.value.data.str_buf()) as *mut c_void);
                 }
-                free(node.value.data.strptr as *mut c_void);
-                node.value.data.strptr = ptr::null_mut();
+                node.value.data.free_buffer();
             }
-        } else if !node.value.data.ptr.is_null() {
-            free(node.value.data.ptr);
-            node.value.data.ptr = ptr::null_mut();
+        } else {
+            node.value.data.free_buffer();
         }
 
         node.value.undef = ptr::null_mut();
@@ -8417,62 +9011,71 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
         let (this_node, that_node) =
             get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
-        if that_node.operation == CONST_OP {
+        if that_node.is_const() {
             /* Operating on a constant! */
-            match (this_node).operation {
-                x if x == fits_parser_yytokentype::DOUBLE as c_int
-                    || x == fits_parser_yytokentype::FLTCAST as c_int =>
-                {
-                    if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.dbl = that_node.value.data.lng as c_double;
-                    } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.dbl = if c_int::from(that_node.value.data.log) != 0 {
-                            1.0
-                        } else {
-                            0.0
-                        };
+            match UnaryOp::from_operation((this_node).operation) {
+                Some(UnaryOp::ToDouble) => {
+                    if that_node.ntype == ValueSort::Long {
+                        (this_node).value.data =
+                            NodeValue::Double(that_node.value.data.lng() as c_double);
+                    } else if that_node.ntype == ValueSort::Boolean {
+                        (this_node).value.data =
+                            NodeValue::Double(if c_int::from(that_node.value.data.log()) != 0 {
+                                1.0
+                            } else {
+                                0.0
+                            });
                     }
                 }
-                x if x == fits_parser_yytokentype::LONG as c_int
-                    || x == fits_parser_yytokentype::INTCAST as c_int =>
-                {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.lng = that_node.value.data.dbl as c_long;
-                    } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.lng = if c_int::from(that_node.value.data.log) != 0 {
-                            1
-                        } else {
-                            0
-                        };
+                Some(UnaryOp::ToLong) => {
+                    if that_node.ntype == ValueSort::Double {
+                        (this_node).value.data =
+                            NodeValue::Long(that_node.value.data.dbl() as c_long);
+                    } else if that_node.ntype == ValueSort::Boolean {
+                        (this_node).value.data =
+                            NodeValue::Long(if c_int::from(that_node.value.data.log()) != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
-                x if x == fits_parser_yytokentype::BOOLEAN as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.log = if that_node.value.data.dbl != 0.0 {
-                            1
-                        } else {
-                            0
-                        };
-                    } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.log =
-                            if that_node.value.data.lng != 0 { 1 } else { 0 };
+                Some(UnaryOp::ToBoolean) => {
+                    if that_node.ntype == ValueSort::Double {
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.dbl() != 0.0 {
+                                1
+                            } else {
+                                0
+                            });
+                    } else if that_node.ntype == ValueSort::Long {
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.lng() != 0 {
+                                1
+                            } else {
+                                0
+                            });
                     }
                 }
-                x if x == fits_parser_yytokentype::UMINUS as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                        (this_node).value.data.dbl = -that_node.value.data.dbl;
-                    } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
-                        (this_node).value.data.lng = -that_node.value.data.lng;
+                Some(UnaryOp::Negate) => {
+                    if that_node.ntype == ValueSort::Double {
+                        (this_node).value.data = NodeValue::Double(-that_node.value.data.dbl());
+                    } else if that_node.ntype == ValueSort::Long {
+                        (this_node).value.data = NodeValue::Long(-that_node.value.data.lng());
                     }
                 }
-                x if x == fits_parser_yytokentype::NOT as c_int => {
-                    if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
-                        (this_node).value.data.log =
-                            if that_node.value.data.log == 0 { 1 } else { 0 };
-                    } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
+                Some(UnaryOp::Not) => {
+                    if that_node.ntype == ValueSort::Boolean {
+                        (this_node).value.data =
+                            NodeValue::Logical(if that_node.value.data.log() == 0 {
+                                1
+                            } else {
+                                0
+                            });
+                    } else if that_node.ntype == ValueSort::Bits {
                         bitnot(
-                            ((this_node).value.data.astr).as_mut_ptr(),
-                            (that_node.value.data.astr).as_mut_ptr(),
+                            (this_node).value.data.text_mut_ptr(),
+                            that_node.value.data.text_mut_ptr(),
                         );
                     }
                 }
@@ -8485,9 +9088,9 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                 get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
             if lParse.status == 0 {
-                if (this_node).ntype != fits_parser_yytokentype::BITSTR as c_int {
+                if (this_node).ntype != ValueSort::Bits {
                     elem = lParse.nRows;
-                    if (this_node).ntype != fits_parser_yytokentype::STRING as c_int {
+                    if (this_node).ntype != ValueSort::String {
                         elem *= (this_node).value.nelem;
                     }
                     loop {
@@ -8501,31 +9104,34 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 elem = lParse.nRows * (this_node).value.nelem;
-                match (this_node).operation.into() {
-                    fits_parser_yytokentype::BOOLEAN => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                match UnaryOp::from_operation((this_node).operation) {
+                    Some(UnaryOp::ToBoolean) => {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh23 = elem;
                                 elem -= 1;
                                 if fresh23 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) =
-                                    if *(that_node.value.data.dblptr).offset(elem as isize) != 0.0 {
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    if *(that_node.value.data.dbl_buf()).offset(elem as isize)
+                                        != 0.0
+                                    {
                                         1
                                     } else {
                                         0
                                     };
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                        } else if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh24 = elem;
                                 elem -= 1;
                                 if fresh24 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) =
-                                    if *(that_node.value.data.lngptr).offset(elem as isize) != 0 {
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    if *(that_node.value.data.lng_buf()).offset(elem as isize) != 0
+                                    {
                                         1
                                     } else {
                                         0
@@ -8533,28 +9139,28 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::DOUBLE | fits_parser_yytokentype::FLTCAST => {
-                        if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                    Some(UnaryOp::ToDouble) => {
+                        if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh25 = elem;
                                 elem -= 1;
                                 if fresh25 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
-                                    *(that_node.value.data.lngptr).offset(elem as isize)
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
+                                    *(that_node.value.data.lng_buf()).offset(elem as isize)
                                         as c_double;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        } else if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh26 = elem;
                                 elem -= 1;
                                 if fresh26 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
                                     if c_int::from(
-                                        *(that_node.value.data.logptr).offset(elem as isize),
+                                        *(that_node.value.data.log_buf()).offset(elem as isize),
                                     ) != 0
                                     {
                                         1.0
@@ -8564,27 +9170,28 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::LONG | fits_parser_yytokentype::INTCAST => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                    Some(UnaryOp::ToLong) => {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh27 = elem;
                                 elem -= 1;
                                 if fresh27 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
-                                    *(that_node.value.data.dblptr).offset(elem as isize) as c_long;
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
+                                    *(that_node.value.data.dbl_buf()).offset(elem as isize)
+                                        as c_long;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                        } else if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh28 = elem;
                                 elem -= 1;
                                 if fresh28 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
                                     if c_int::from(
-                                        *(that_node.value.data.logptr).offset(elem as isize),
+                                        *(that_node.value.data.log_buf()).offset(elem as isize),
                                     ) != 0
                                     {
                                         1
@@ -8594,43 +9201,44 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    fits_parser_yytokentype::UMINUS => {
-                        if that_node.ntype == fits_parser_yytokentype::DOUBLE as c_int {
+                    Some(UnaryOp::Negate) => {
+                        if that_node.ntype == ValueSort::Double {
                             loop {
                                 let fresh29 = elem;
                                 elem -= 1;
                                 if fresh29 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.dblptr).offset(elem as isize) =
-                                    -*(that_node.value.data.dblptr).offset(elem as isize);
+                                *((this_node).value.data.dbl_buf()).offset(elem as isize) =
+                                    -*(that_node.value.data.dbl_buf()).offset(elem as isize);
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::LONG as c_int {
+                        } else if that_node.ntype == ValueSort::Long {
                             loop {
                                 let fresh30 = elem;
                                 elem -= 1;
                                 if fresh30 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.lngptr).offset(elem as isize) =
-                                    -*(that_node.value.data.lngptr).offset(elem as isize);
+                                *((this_node).value.data.lng_buf()).offset(elem as isize) =
+                                    -*(that_node.value.data.lng_buf()).offset(elem as isize);
                             }
                         }
                     }
-                    fits_parser_yytokentype::NOT => {
-                        if that_node.ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+                    Some(UnaryOp::Not) => {
+                        if that_node.ntype == ValueSort::Boolean {
                             loop {
                                 let fresh31 = elem;
                                 elem -= 1;
                                 if fresh31 == 0 {
                                     break;
                                 }
-                                *((this_node).value.data.logptr).offset(elem as isize) = c_int::from(
-                                    *(that_node.value.data.logptr).offset(elem as isize) == 0,
-                                )
-                                    as c_char;
+                                *((this_node).value.data.log_buf()).offset(elem as isize) =
+                                    c_int::from(
+                                        *(that_node.value.data.log_buf()).offset(elem as isize)
+                                            == 0,
+                                    ) as c_char;
                             }
-                        } else if that_node.ntype == fits_parser_yytokentype::BITSTR as c_int {
+                        } else if that_node.ntype == ValueSort::Bits {
                             elem = lParse.nRows;
                             loop {
                                 let fresh32 = elem;
@@ -8639,8 +9247,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 bitnot(
-                                    *((this_node).value.data.strptr).offset(elem as isize),
-                                    *(that_node.value.data.strptr).offset(elem as isize),
+                                    *((this_node).value.data.str_buf()).offset(elem as isize),
+                                    *(that_node.value.data.str_buf()).offset(elem as isize),
                                 );
                             }
                         }
@@ -8652,8 +9260,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
 
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
 
-        if (lParse.Nodes[that_idx]).operation > 0 {
-            free((lParse.Nodes[that_idx]).value.data.ptr);
+        if (lParse.Nodes[that_idx]).is_computed() {
+            free((lParse.Nodes[that_idx]).value.data.raw());
         }
     }
 }
@@ -8674,13 +9282,13 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         let rowOffset = ((lParse.Nodes)[(lParse.Nodes[this_node_idx]).SubNodes[1]])
             .value
             .data
-            .lng;
+            .lng();
 
         Allocate_Ptrs(lParse, this_node_idx);
 
         fRow = lParse.firstRow + rowOffset;
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::STRING as c_int
-            || (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
+            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
         {
             nRealElem = 1;
         } else {
@@ -8716,17 +9324,18 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             /*  NULLify any values falling out of bounds  */
 
             while fRow < 1 && nRowReload > 0 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
-                    *(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(offset as isize))
-                        .offset(nelem as isize) = 0;
+                    *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                        .offset(offset as isize))
+                    .offset(nelem as isize) = 0;
                     loop {
                         let fresh33 = nelem;
                         nelem -= 1;
                         if fresh33 == 0 {
                             break;
                         }
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(offset as isize))
                         .offset(nelem as isize) = b'0' as c_char;
                     }
@@ -8788,18 +9397,19 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
 
             elem = lParse.nRows * nelem;
             while fRow + nRowReload > lParse.totalRows && nRowReload > 0 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                     elem -= 1;
-                    *(*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(elem as isize))
-                        .offset(nelem as isize) = 0;
+                    *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                        .offset(elem as isize))
+                    .offset(nelem as isize) = 0;
                     loop {
                         let fresh36 = nelem;
                         nelem -= 1;
                         if fresh36 == 0 {
                             break;
                         }
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(elem as isize))
                         .offset(nelem as isize) = b'0' as c_char;
                     }
@@ -8823,56 +9433,55 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
             offset = 0;
         }
         if nRowReload > 0 {
-            match (lParse.Nodes[this_node_idx]).ntype.into() {
-                fits_parser_yytokentype::BITSTR | fits_parser_yytokentype::STRING => {
+            match (lParse.Nodes[this_node_idx]).ntype {
+                ValueSort::Bits | ValueSort::String => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::BOOLEAN => {
+                ValueSort::Boolean => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.log_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::LONG => {
+                ValueSort::Long => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                fits_parser_yytokentype::DOUBLE => {
+                ValueSort::Double => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
-                        ((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        ((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                             .offset(offset as isize)
                             .cast::<c_void>(),
                         ((lParse.Nodes[this_node_idx]).value.undef).offset(offset as isize),
                     );
                 }
-                _ => {}
             }
         }
         /*  Now copy over the overlapping region, if any  */
@@ -8900,43 +9509,45 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 elem -= 1;
 
-                if (lParse.Nodes[this_node_idx]).ntype != fits_parser_yytokentype::BITSTR as c_int {
+                if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
                         *((lParse.Nodes[col_idx]).value.undef).offset((elem + offset) as isize);
                 }
-                match (lParse.Nodes[this_node_idx]).ntype.into() {
-                    fits_parser_yytokentype::BITSTR => {
+                match (lParse.Nodes[this_node_idx]).ntype {
+                    ValueSort::Bits => {
                         strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.strptr)
+                            *((lParse.Nodes[col_idx]).value.data.str_buf())
                                 .offset((elem + offset) as isize),
                         );
                     }
-                    fits_parser_yytokentype::STRING => {
+                    ValueSort::String => {
                         strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.strptr)
+                            *((lParse.Nodes[col_idx]).value.data.str_buf())
                                 .offset((elem + offset) as isize),
                         );
                     }
-                    fits_parser_yytokentype::BOOLEAN => {
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.logptr)
+                    ValueSort::Boolean => {
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.log_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    fits_parser_yytokentype::LONG => {
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.lngptr)
+                    ValueSort::Long => {
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.lng_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    fits_parser_yytokentype::DOUBLE => {
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            *((lParse.Nodes[col_idx]).value.data.dblptr)
+                    ValueSort::Double => {
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) =
+                            *((lParse.Nodes[col_idx]).value.data.dbl_buf())
                                 .offset((elem + offset) as isize);
                     }
-                    _ => {}
                 }
             }
             nelem = nRealElem;
@@ -8956,63 +9567,68 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
-        const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
+        const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
+        const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
         sptr1 = if const1 != 0 {
-            ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
-            ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  BITSTR comparisons  */
-                NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
+                Operator::Ne => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 });
                 }
-                EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = bitcmp(sptr1, sptr2);
+                Operator::Eq => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(bitcmp(sptr1, sptr2));
                 }
-                GT | LT | LTE | GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
+                Operator::Gt | Operator::Lt | Operator::Lte | Operator::Gte => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bitlgte(
+                        sptr1,
+                        (lParse.Nodes[this_node_idx]).operation,
+                        sptr2,
+                    ));
                 }
                 /*  BITSTR AND/ORs ...  no UNDEFS in or out */
-                CHAR_PIPE => {
+                Operator::Pipe => {
                     bitor(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
-                CHAR_AMPERSAND => {
+                Operator::Ampersand => {
                     bitand(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                         sptr2,
                     );
                 }
-                CHAR_PLUS => {
+                Operator::Plus => {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                     );
                     strcat(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr2,
                     );
                 }
                 /* Accumulate 1 bits */
-                ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                Operator::Accum => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                     while *sptr1 != 0 {
                         if c_int::from(*sptr1) == '1' as i32 {
-                            (lParse.Nodes[this_node_idx]).value.data.lng += 1;
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Long((lParse.Nodes[this_node_idx]).value.data.lng() + 1);
                         }
                         sptr1 = sptr1.offset(1);
                     }
@@ -9024,33 +9640,38 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
                 rows = lParse.nRows;
-                match (lParse.Nodes[this_node_idx]).operation {
-                    EQ | NE | GT | LT | LTE | GTE => loop {
+                match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                    Operator::Eq
+                    | Operator::Ne
+                    | Operator::Gt
+                    | Operator::Lt
+                    | Operator::Lte
+                    | Operator::Gte => loop {
                         let fresh40 = rows;
                         rows -= 1;
                         if fresh40 == 0 {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
-                        match (lParse.Nodes[this_node_idx]).operation {
-                            NE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                            Operator::Ne => {
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     if bitcmp(sptr1, sptr2) == 0 { 1 } else { 0 };
                             }
-                            EQ => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            Operator::Eq => {
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) = bitcmp(sptr1, sptr2);
                             }
-                            GT | LT | LTE | GTE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            Operator::Gt | Operator::Lt | Operator::Lte | Operator::Gte => {
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(rows as isize) =
                                     bitlgte(sptr1, (lParse.Nodes[this_node_idx]).operation, sptr2);
                             }
@@ -9058,56 +9679,56 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) = 0;
                     },
-                    CHAR_PIPE | CHAR_AMPERSAND | CHAR_PLUS => loop {
+                    Operator::Pipe | Operator::Ampersand | Operator::Plus => loop {
                         let fresh41 = rows;
                         rows -= 1;
                         if fresh41 == 0 {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                 .offset(rows as isize);
                         }
                         if (lParse.Nodes[this_node_idx]).operation == '|' as i32 {
                             bitor(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                                 sptr2,
                             );
                         } else if (lParse.Nodes[this_node_idx]).operation == '&' as i32 {
                             bitand(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                                 sptr2,
                             );
                         } else {
                             strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                             );
                             strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr2,
                             );
                         }
                     },
-                    ACCUM => {
+                    Operator::Accum => {
                         let mut i: c_long = 0;
                         let mut previous: c_long = 0;
                         let mut curr: c_long = 0;
-                        previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                        previous = (lParse.Nodes[that2_idx]).value.data.lng();
                         i = 0;
                         while i < rows {
-                            sptr1 =
-                                *((lParse.Nodes[that1_idx]).value.data.strptr).offset(i as isize);
+                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
+                                .offset(i as isize);
                             curr = 0;
                             while *sptr1 != 0 {
                                 if c_int::from(*sptr1) == '1' as i32 {
@@ -9116,25 +9737,37 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                                 sptr1 = sptr1.offset(1);
                             }
                             previous += curr;
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                             i += 1;
                         }
                         /* Store final cumulant for next pass */
-                        (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                        (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
                     }
                     _ => {}
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+        if (lParse.Nodes[that1_idx]).is_computed() {
+            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that1_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+        if (lParse.Nodes[that2_idx]).is_computed() {
+            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that2_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
     }
 }
@@ -9155,22 +9788,22 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        const1 = c_int::from((lParse.Nodes[that1_idx]).operation == CONST_OP);
-        const2 = c_int::from((lParse.Nodes[that2_idx]).operation == CONST_OP);
+        const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
+        const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
         sptr1 = if const1 != 0 {
-            ((lParse.Nodes[that1_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         sptr2 = if const2 != 0 {
-            ((lParse.Nodes[that2_idx]).value.data.astr).as_mut_ptr()
+            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
         } else {
             core::ptr::null_mut::<c_char>()
         };
         if const1 != 0 && const2 != 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  Compare Strings  */
-                NE | EQ => {
+                Operator::Ne | Operator::Eq => {
                     val = c_int::from(
                         (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
@@ -9180,17 +9813,18 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             strcmp(sptr1, sptr2)
                         }) == 0,
                     );
-                    (lParse.Nodes[this_node_idx]).value.data.log = (if (lParse.Nodes[this_node_idx])
-                        .operation
-                        == fits_parser_yytokentype::EQ as c_int
-                    {
-                        val
-                    } else {
-                        c_int::from(val == 0)
-                    }) as c_char;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                        (if (lParse.Nodes[this_node_idx]).operation
+                            == fits_parser_yytokentype::EQ as c_int
+                        {
+                            val
+                        } else {
+                            c_int::from(val == 0)
+                        }) as c_char,
+                    );
                 }
-                GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                Operator::Gt => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9202,10 +9836,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
-                LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                Operator::Lt => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9217,10 +9852,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
-                GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                Operator::Gte => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9232,10 +9868,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
-                LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
+                Operator::Lte => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
                         if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
                             -(1)
                         } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
@@ -9247,16 +9884,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             1
                         } else {
                             0
-                        };
+                        },
+                    );
                 }
                 /*  Concat Strings  */
-                CHAR_PLUS => {
+                Operator::Plus => {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr1,
                     );
                     strcat(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
                         sptr2,
                     );
                 }
@@ -9268,9 +9906,9 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
                 rows = lParse.nRows;
-                match (lParse.Nodes[this_node_idx]).operation {
+                match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                     /*  Compare Strings  */
-                    NE | EQ => loop {
+                    Operator::Ne | Operator::Eq => loop {
                         let fresh42 = rows;
                         rows -= 1;
                         if fresh42 == 0 {
@@ -9290,11 +9928,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = c_int::from(
@@ -9308,7 +9946,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                                     strcmp(sptr1, sptr2)
                                 }) == 0,
                             );
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::EQ as c_int
                             {
@@ -9318,7 +9956,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             }) as c_char;
                         }
                     },
-                    GT | LT => loop {
+                    Operator::Gt | Operator::Lt => loop {
                         let fresh43 = rows;
                         rows -= 1;
                         if fresh43 == 0 {
@@ -9338,11 +9976,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
@@ -9353,7 +9991,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 strcmp(sptr1, sptr2)
                             };
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::GT as c_int
                             {
@@ -9363,7 +10001,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             }) as c_char;
                         }
                     },
-                    GTE | LTE => loop {
+                    Operator::Gte | Operator::Lte => loop {
                         let fresh44 = rows;
                         rows -= 1;
                         if fresh44 == 0 {
@@ -9383,11 +10021,11 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
@@ -9398,7 +10036,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 strcmp(sptr1, sptr2)
                             };
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
                                 == fits_parser_yytokentype::GTE as c_int
                             {
@@ -9409,7 +10047,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     },
                     /*  Concat Strings  */
-                    CHAR_PLUS => loop {
+                    Operator::Plus => loop {
                         let fresh45 = rows;
                         rows -= 1;
                         if fresh45 == 0 {
@@ -9429,20 +10067,20 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.strptr)
+                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.strptr)
+                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
                                     .offset(rows as isize);
                             }
                             strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr1,
                             );
                             strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(rows as isize),
                                 sptr2,
                             );
@@ -9452,13 +10090,25 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((*((lParse.Nodes[that1_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that1_idx]).value.data.strptr.cast::<c_void>());
+        if (lParse.Nodes[that1_idx]).is_computed() {
+            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that1_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((*((lParse.Nodes[that2_idx]).value.data.strptr).offset(0)).cast::<c_void>());
-            free((lParse.Nodes[that2_idx]).value.data.strptr.cast::<c_void>());
+        if (lParse.Nodes[that2_idx]).is_computed() {
+            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
+            free(
+                (lParse.Nodes[that2_idx])
+                    .value
+                    .data
+                    .str_buf()
+                    .cast::<c_void>(),
+            );
         }
     }
 }
@@ -9478,53 +10128,55 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.log;
+            val1 = (lParse.Nodes[that1_idx]).value.data.log();
         }
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.log;
+            val2 = (lParse.Nodes[that2_idx]).value.data.log();
         }
         if vector1 == 0 && vector2 == 0 {
-            match (lParse.Nodes[this_node_idx]).operation {
-                OR => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                Operator::Or => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
-                AND => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
+                Operator::And => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                             1
                         } else {
                             0
-                        };
+                        });
                 }
-                EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = c_int::from(
+                Operator::Eq => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(c_int::from(
                         c_int::from(val1) != 0 && c_int::from(val2) != 0 || val1 == 0 && val2 == 0,
-                    ) as c_char;
+                    )
+                        as c_char);
                 }
-                NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if c_int::from(val1) != 0
-                        && val2 == 0
-                        || val1 == 0 && c_int::from(val2) != 0
-                    {
-                        1
-                    } else {
-                        0
-                    };
+                Operator::Ne => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                        if c_int::from(val1) != 0 && val2 == 0
+                            || val1 == 0 && c_int::from(val2) != 0
+                        {
+                            1
+                        } else {
+                            0
+                        },
+                    );
                 }
-                ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = c_long::from(val1);
+                Operator::Accum => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(val1));
                 }
                 _ => {}
             }
@@ -9539,22 +10191,22 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                previous = (lParse.Nodes[that2_idx]).value.data.lng();
                 i = 0;
                 while i < elem {
                     if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
                         curr = c_long::from(
-                            *((lParse.Nodes[that1_idx]).value.data.logptr).offset(i as isize),
+                            *((lParse.Nodes[that1_idx]).value.data.log_buf()).offset(i as isize),
                         );
                         previous += curr;
                     }
-                    *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
+                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf()).offset(i as isize) =
                         previous;
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                     i += 1;
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
             }
         } else {
             rows = lParse.nRows;
@@ -9568,21 +10220,22 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                     let mut i_0: c_long = 0;
                     let mut previous_0: c_long = 0;
                     let mut curr_0: c_long = 0;
-                    previous_0 = (lParse.Nodes[that2_idx]).value.data.lng;
+                    previous_0 = (lParse.Nodes[that2_idx]).value.data.lng();
                     i_0 = 0;
                     while i_0 < elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i_0 as isize) == 0 {
                             curr_0 = c_long::from(
-                                *((lParse.Nodes[that1_idx]).value.data.logptr).offset(i_0 as isize),
+                                *((lParse.Nodes[that1_idx]).value.data.log_buf())
+                                    .offset(i_0 as isize),
                             );
                             previous_0 += curr_0;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i_0 as isize) =
-                            previous_0;
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(i_0 as isize) = previous_0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i_0 as isize) = 0;
                         i_0 += 1;
                     }
-                    (lParse.Nodes[that2_idx]).value.data.lng = previous_0;
+                    (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous_0);
                 }
                 loop {
                     let fresh46 = rows;
@@ -9598,20 +10251,20 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         elem -= 1;
                         if vector1 > 1 {
-                            val1 = *((lParse.Nodes[that1_idx]).value.data.logptr)
+                            val1 = *((lParse.Nodes[that1_idx]).value.data.log_buf())
                                 .offset(elem as isize);
                             null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                         } else if vector1 != 0 {
-                            val1 = *((lParse.Nodes[that1_idx]).value.data.logptr)
+                            val1 = *((lParse.Nodes[that1_idx]).value.data.log_buf())
                                 .offset(rows as isize);
                             null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                         }
                         if vector2 > 1 {
-                            val2 = *((lParse.Nodes[that2_idx]).value.data.logptr)
+                            val2 = *((lParse.Nodes[that2_idx]).value.data.log_buf())
                                 .offset(elem as isize);
                             null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                         } else if vector2 != 0 {
-                            val2 = *((lParse.Nodes[that2_idx]).value.data.logptr)
+                            val2 = *((lParse.Nodes[that2_idx]).value.data.log_buf())
                                 .offset(rows as isize);
                             null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                         }
@@ -9621,12 +10274,12 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                             } else {
                                 0
                             };
-                        match (lParse.Nodes[this_node_idx]).operation {
-                            OR => {
+                        match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                            Operator::Or => {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && TRUE  */
                                 if null1 == 0 && null2 == 0 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) =
                                         if c_int::from(val1) != 0 || c_int::from(val2) != 0 {
                                             1
@@ -9640,17 +10293,17 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                         && c_int::from(null2) != 0
                                         && c_int::from(val1) != 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) = 1;
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                 }
                             }
-                            AND => {
+                            Operator::And => {
                                 /*  This is more complicated than others to suppress UNDEFs */
                                 /*  in those cases where the other argument is DEF && FALSE */
                                 if null1 == 0 && null2 == 0 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) =
                                         if c_int::from(val1) != 0 && c_int::from(val2) != 0 {
                                             1
@@ -9660,22 +10313,22 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else if c_int::from(null1) != 0 && null2 == 0 && val2 == 0
                                     || null1 == 0 && c_int::from(null2) != 0 && val1 == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                         .offset(elem as isize) = 0;
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
                                 }
                             }
-                            EQ => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            Operator::Eq => {
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && c_int::from(val2) != 0
                                         || val1 == 0 && val2 == 0,
                                 )
                                     as c_char;
                             }
-                            NE => {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            Operator::Ne => {
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = c_int::from(
                                     c_int::from(val1) != 0 && val2 == 0
                                         || val1 == 0 && c_int::from(val2) != 0,
@@ -9689,11 +10342,11 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+        if (lParse.Nodes[that1_idx]).is_computed() {
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+        if (lParse.Nodes[that2_idx]).is_computed() {
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
@@ -9712,101 +10365,107 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
 
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
 
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.lng;
+            val1 = (lParse.Nodes[that1_idx]).value.data.lng();
         }
 
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.lng;
+            val2 = (lParse.Nodes[that2_idx]).value.data.lng();
         }
 
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
 
-            match (lParse.Nodes[this_node_idx]).operation {
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /* Treat as == for LONGS */
-                CHAR_TILDE | EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                Operator::Tilde | Operator::Eq => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
-                NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                Operator::Ne => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
-                GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                Operator::Gt => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
-                LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                Operator::Lt => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
-                LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                Operator::Lte => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
-                GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                Operator::Gte => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
-                CHAR_PLUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 + val2;
+                Operator::Plus => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 + val2);
                 }
-                CHAR_MINUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 - val2;
+                Operator::Minus => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 - val2);
                 }
-                CHAR_STAR => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 * val2;
+                Operator::Star => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 * val2);
                 }
-                CHAR_AMPERSAND => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 & val2;
+                Operator::Ampersand => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 & val2);
                 }
-                CHAR_PIPE => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 | val2;
+                Operator::Pipe => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 | val2);
                 }
-                CHAR_CARET => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1 ^ val2;
+                Operator::Caret => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 ^ val2);
                 }
-                CHAR_PERCENT => {
+                Operator::Percent => {
                     if val2 != 0 {
                         if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lng_buf()
                                 .offset(elem as isize) = 0;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 % val2;
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 % val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                CHAR_SLASH => {
+                Operator::Slash => {
                     if val2 != 0 {
                         if val1 == LONG_MIN && val2 == -1 {
                             *(lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .lngptr
+                                .lng_buf()
                                 .offset(elem as isize) = LONG_MAX;
                         } else {
-                            (lParse.Nodes[this_node_idx]).value.data.lng = val1 / val2;
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1 / val2);
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                POWER => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng =
-                        pow(val1 as c_double, val2 as c_double) as c_long;
+                Operator::Power => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Long(pow(val1 as c_double, val2 as c_double) as c_long);
                 }
-                ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = val1;
+                Operator::Accum => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1);
                 }
-                DIFF => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                Operator::Diff => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                 }
                 _ => {}
             }
@@ -9823,7 +10482,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * rows;
             Allocate_Ptrs(lParse, this_node_idx);
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.lng;
+                previous = (lParse.Nodes[that2_idx]).value.data.lng();
                 /* the C stores this flag *in* the undef pointer field of the
                 constant node ("XXX evil, but no harm here"), so read the
                 pointer value back rather than dereferencing it */
@@ -9834,11 +10493,11 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     i = 0;
                     while i < elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
-                            curr =
-                                *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(i as isize);
+                            curr = *((lParse.Nodes[that1_idx]).value.data.lng_buf())
+                                .offset(i as isize);
                             previous += curr;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf()).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         i += 1;
@@ -9847,19 +10506,19 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Sequential difference for this chunk */
                     i = 0;
                     while i < elem {
-                        curr = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(i as isize);
+                        curr = *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(i as isize);
                         if c_int::from(*((lParse.Nodes[that1_idx]).value.undef).offset(i as isize))
                             != 0
                             || undef != 0
                         {
                             /* Either this, or previous, value was undefined */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                0;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = 0;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 1;
                         } else {
                             /* Both defined, we are okay! */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(i as isize) =
-                                curr - previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                .offset(i as isize) = curr - previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         }
                         previous = curr;
@@ -9870,7 +10529,7 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.lng = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Long(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -9893,17 +10552,21 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     elem -= 1;
 
                     if vector1 > 1 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(elem as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(elem as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                     } else if vector1 != 0 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.lngptr).offset(rows as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.lng_buf()).offset(rows as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                     }
                     if vector2 > 1 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.lngptr).offset(elem as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.lng_buf()).offset(elem as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                     } else if vector2 != 0 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.lngptr).offset(rows as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.lng_buf()).offset(rows as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                     }
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -9912,80 +10575,80 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                         } else {
                             0
                         };
-                    match (lParse.Nodes[this_node_idx]).operation {
+                    match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                         /* Treat as == for LONGS */
-                        CHAR_TILDE | EQ => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Tilde | Operator::Eq => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
-                        NE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Ne => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
-                        GT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Gt => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
-                        LT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Lt => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
-                        LTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Lte => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
-                        GTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Gte => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
-                        CHAR_PLUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Plus => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
-                        CHAR_MINUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Minus => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
-                        CHAR_STAR => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Star => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
-                        CHAR_AMPERSAND => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Ampersand => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 & val2;
                         }
-                        CHAR_PIPE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Pipe => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 | val2;
                         }
-                        CHAR_CARET => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Caret => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) = val1 ^ val2;
                         }
-                        CHAR_PERCENT => {
+                        Operator::Percent => {
                             if val2 != 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 % val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        CHAR_SLASH => {
+                        Operator::Slash => {
                             if val2 != 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = val1 / val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        POWER => {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                        Operator::Power => {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
                                 pow(val1 as c_double, val2 as c_double) as c_long;
                         }
@@ -9995,17 +10658,17 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                 nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+        if (lParse.Nodes[that1_idx]).is_computed() {
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+        if (lParse.Nodes[that2_idx]).is_computed() {
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
 
 fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
-    let data = unsafe { (lParse.Nodes[node_idx]).value.data.dblptr };
+    let data = (lParse.Nodes[node_idx]).value.data.dbl_buf();
     let undef = (lParse.Nodes[node_idx]).value.undef;
 
     if data.is_null()
@@ -10040,18 +10703,18 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
         let that1_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let that2_idx = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
-        vector1 = c_int::from((lParse.Nodes[that1_idx]).operation != CONST_OP);
+        vector1 = c_int::from(!(lParse.Nodes[that1_idx]).is_const());
         if vector1 != 0 {
             vector1 = (lParse.Nodes[that1_idx]).value.nelem as c_int;
         } else {
-            val1 = (lParse.Nodes[that1_idx]).value.data.dbl;
+            val1 = (lParse.Nodes[that1_idx]).value.data.dbl();
         }
 
-        vector2 = c_int::from((lParse.Nodes[that2_idx]).operation != CONST_OP);
+        vector2 = c_int::from(!(lParse.Nodes[that2_idx]).is_const());
         if vector2 != 0 {
             vector2 = (lParse.Nodes[that2_idx]).value.nelem as c_int;
         } else {
-            val2 = (lParse.Nodes[that2_idx]).value.data.dbl;
+            val2 = (lParse.Nodes[that2_idx]).value.data.dbl();
         }
 
         if vector1 != 0 && validate_double_vector(lParse, that1_idx) == 0 {
@@ -10064,61 +10727,67 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
 
         if vector1 == 0 && vector2 == 0 {
             /*  Result is a constant  */
-            match (lParse.Nodes[this_node_idx]).operation {
-                CHAR_TILDE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        if fabs(val1 - val2) < APPROX { 1 } else { 0 };
+            match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                Operator::Tilde => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if fabs(val1 - val2) < APPROX { 1 } else { 0 });
                 }
-                EQ => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 == val2 { 1 } else { 0 };
+                Operator::Eq => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 == val2 { 1 } else { 0 });
                 }
-                NE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 != val2 { 1 } else { 0 };
+                Operator::Ne => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 != val2 { 1 } else { 0 });
                 }
-                GT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 > val2 { 1 } else { 0 };
+                Operator::Gt => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 > val2 { 1 } else { 0 });
                 }
-                LT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 < val2 { 1 } else { 0 };
+                Operator::Lt => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 < val2 { 1 } else { 0 });
                 }
-                LTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 <= val2 { 1 } else { 0 };
+                Operator::Lte => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 <= val2 { 1 } else { 0 });
                 }
-                GTE => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = if val1 >= val2 { 1 } else { 0 };
+                Operator::Gte => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Logical(if val1 >= val2 { 1 } else { 0 });
                 }
-                CHAR_PLUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 + val2;
+                Operator::Plus => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 + val2);
                 }
-                CHAR_MINUS => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 - val2;
+                Operator::Minus => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 - val2);
                 }
-                CHAR_STAR => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1 * val2;
+                Operator::Star => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 * val2);
                 }
-                CHAR_PERCENT => {
+                Operator::Percent => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            val1 - val2 * c_double::from((val1 / val2) as c_int);
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(val1 - val2 * c_double::from((val1 / val2) as c_int));
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                CHAR_SLASH => {
+                Operator::Slash => {
                     if val2 != 0. {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = val1 / val2;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1 / val2);
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Divide by Zero"));
                     }
                 }
-                POWER => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pow(val1, val2);
+                Operator::Power => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(pow(val1, val2));
                 }
-                ACCUM => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = val1;
+                Operator::Accum => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(val1);
                 }
-                DIFF => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0;
+                Operator::Diff => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0);
                 }
                 _ => {}
             }
@@ -10138,7 +10807,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             Allocate_Ptrs(lParse, this_node_idx);
 
             if lParse.status == 0 {
-                previous = (lParse.Nodes[that2_idx]).value.data.dbl;
+                previous = (lParse.Nodes[that2_idx]).value.data.dbl();
                 undef = (lParse.Nodes[that2_idx]).value.undef as c_long;
                 if (lParse.Nodes[this_node_idx]).operation
                     == fits_parser_yytokentype::ACCUM as c_int
@@ -10146,11 +10815,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Cumulative sum of this chunk */
                     for i in 0..elem {
                         if *((lParse.Nodes[that1_idx]).value.undef).offset(i as isize) == 0 {
-                            curr =
-                                *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(i as isize);
+                            curr = *((lParse.Nodes[that1_idx]).value.data.dbl_buf())
+                                .offset(i as isize);
                             previous += curr;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf()).offset(i as isize) =
                             previous;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                     }
@@ -10158,19 +10827,19 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Sequential difference for this chunk */
                     i = 0;
                     while i < elem {
-                        curr = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(i as isize);
+                        curr = *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(i as isize);
                         if c_int::from(*((lParse.Nodes[that1_idx]).value.undef).offset(i as isize))
                             != 0
                             || undef != 0
                         {
                             /* Either this, or previous, value was undefined */
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
-                                0.0;
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                .offset(i as isize) = 0.0;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 1;
                         } else {
                             /* Both defined, we are okay! */
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(i as isize) =
-                                curr - previous;
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                .offset(i as isize) = curr - previous;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(i as isize) = 0;
                         }
                         previous = curr;
@@ -10181,7 +10850,7 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 /* Store final cumulant for next pass */
-                (lParse.Nodes[that2_idx]).value.data.dbl = previous;
+                (lParse.Nodes[that2_idx]).value.data = NodeValue::Double(previous);
                 (lParse.Nodes[that2_idx]).value.undef = undef as *mut c_char;
             }
         } else {
@@ -10204,17 +10873,21 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                     elem -= 1;
 
                     if vector1 > 1 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(elem as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(elem as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(elem as isize);
                     } else if vector1 != 0 {
-                        val1 = *((lParse.Nodes[that1_idx]).value.data.dblptr).offset(rows as isize);
+                        val1 =
+                            *((lParse.Nodes[that1_idx]).value.data.dbl_buf()).offset(rows as isize);
                         null1 = *((lParse.Nodes[that1_idx]).value.undef).offset(rows as isize);
                     }
                     if vector2 > 1 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.dblptr).offset(elem as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.dbl_buf()).offset(elem as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(elem as isize);
                     } else if vector2 != 0 {
-                        val2 = *((lParse.Nodes[that2_idx]).value.data.dblptr).offset(rows as isize);
+                        val2 =
+                            *((lParse.Nodes[that2_idx]).value.data.dbl_buf()).offset(rows as isize);
                         null2 = *((lParse.Nodes[that2_idx]).value.undef).offset(rows as isize);
                     }
                     *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -10223,73 +10896,73 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                         } else {
                             0
                         };
-                    match (lParse.Nodes[this_node_idx]).operation {
-                        CHAR_TILDE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                    match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
+                        Operator::Tilde => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) =
                                 if fabs(val1 - val2) < APPROX { 1 } else { 0 };
                         }
-                        EQ => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Eq => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 == val2 { 1 } else { 0 };
                         }
-                        NE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Ne => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 != val2 { 1 } else { 0 };
                         }
-                        GT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Gt => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 > val2 { 1 } else { 0 };
                         }
-                        LT => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Lt => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 < val2 { 1 } else { 0 };
                         }
-                        LTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Lte => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 <= val2 { 1 } else { 0 };
                         }
-                        GTE => {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                        Operator::Gte => {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if val1 >= val2 { 1 } else { 0 };
                         }
-                        CHAR_PLUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        Operator::Plus => {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 + val2;
                         }
-                        CHAR_MINUS => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        Operator::Minus => {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 - val2;
                         }
-                        CHAR_STAR => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        Operator::Star => {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = val1 * val2;
                         }
-                        CHAR_PERCENT => {
+                        Operator::Percent => {
                             if val2 != 0. {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
                                     val1 - val2 * c_double::from((val1 / val2) as c_int);
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        CHAR_SLASH => {
+                        Operator::Slash => {
                             if val2 != 0. {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = val1 / val2;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             }
                         }
-                        POWER => {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        Operator::Power => {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = pow(val1, val2);
                         }
                         _ => {}
@@ -10298,11 +10971,11 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
                 nelem = (lParse.Nodes[this_node_idx]).value.nelem;
             }
         }
-        if (lParse.Nodes[that1_idx]).operation > 0 {
-            free((lParse.Nodes[that1_idx]).value.data.ptr);
+        if (lParse.Nodes[that1_idx]).is_computed() {
+            free((lParse.Nodes[that1_idx]).value.data.raw());
         }
-        if (lParse.Nodes[that2_idx]).operation > 0 {
-            free((lParse.Nodes[that2_idx]).value.data.ptr);
+        if (lParse.Nodes[that2_idx]).is_computed() {
+            free((lParse.Nodes[that2_idx]).value.data.raw());
         }
     }
 }
@@ -10315,211 +10988,77 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
  * http://ndevilla.free.fr/median/median/src/quickselect.c
  */
 
-/*
- * qselect_median_lng - select the median value of a long array
- *
- * This routine selects the median value of the long integer array
- * arr[].  If there are an even number of elements, the "lower median"
- * is selected.
- *
- * The array arr[] is scrambled, so users must operate on a scratch
- * array if they wish the values to be preserved.
- *
- * long arr[] - array of values
- * int n - number of elements in arr
- *
- * RETURNS: the lower median value of arr[]
- *
- */
-pub(crate) fn qselect_median_lng(arr: *mut c_long, n: c_int) -> c_long {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
-        loop {
-            if high <= low {
-                /* One element only */
-                return *arr.offset(median as isize);
-            }
-            if high == low + 1 {
-                /* Two elements only */
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_long = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
-            }
-            /* Find median of low, middle and high items; swap into position low */
-            /* Find median of low, middle and high items; swap into position low */
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
-            }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_long = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_long = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            /* Swap low item (now in position middle) into position (low+1) */
-            let t_3: c_long = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
+/// Quickselect: partially sorts `arr` in place and returns its median.
+///
+/// This is the median-of-three partition from Numerical Recipes that CFITSIO
+/// uses for `MEDIAN()`. For an even number of elements it returns the lower of
+/// the two middle values, which is what the C returned.
+///
+/// Comparisons use `>` exactly as the C did, so for floating point a NaN never
+/// compares greater and is treated as already in place.
+pub(crate) fn qselect_median<T: PartialOrd + Copy>(arr: &mut [T]) -> T {
+    assert!(!arr.is_empty(), "qselect_median needs at least one element");
 
-            /* Nibble from each end towards middle, swapping items when stuck */
-            ll = low + 1;
-            hh = high;
-            loop {
-                loop {
-                    ll += 1;
-                    if *arr.offset(low as isize) <= *arr.offset(ll as isize) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if *arr.offset(hh as isize) <= *arr.offset(low as isize) {
-                        break;
-                    }
-                }
-                if hh < ll {
-                    break;
-                }
-                let t_4: c_long = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
-            }
-            /* Swap middle item (in position low) back into correct position */
-            let t_5: c_long = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            /* Re-set active partition */
-            if hh <= median {
-                low = ll;
-            }
-            if hh >= median {
-                high = hh - 1;
-            }
+    let mut low = 0usize;
+    let mut high = arr.len() - 1;
+    let median = (low + high) / 2;
+
+    loop {
+        if high <= low {
+            /* One element only */
+            return arr[median];
         }
-    }
-}
+        if high == low + 1 {
+            /* Two elements only */
+            if arr[low] > arr[high] {
+                arr.swap(low, high);
+            }
+            return arr[median];
+        }
 
-// The `!(a > b)` partition tests below are transcribed from the C and their
-// NaN behaviour is load-bearing: `>` is false for NaN, so the negation breaks
-// the loop rather than running off the end of the array. Rewriting them via
-// partial_cmp would change that, and this quickselect has already been the
-// source of one reproducibility bug, so leave the comparisons exactly as the
-// C has them.
-#[allow(clippy::neg_cmp_op_on_partial_ord)]
-/*
- * qselect_median_dbl - select the median value of a double array
- *
- * This routine selects the median value of the double array
- * arr[].  If there are an even number of elements, the "lower median"
- * is selected.
- *
- * The array arr[] is scrambled, so users must operate on a scratch
- * array if they wish the values to be preserved.
- *
- * double arr[] - array of values
- * int n - number of elements in arr
- *
- * RETURNS: the lower median value of arr[]
- *
- */
-pub(crate) fn qselect_median_dbl(arr: *mut c_double, n: c_int) -> c_double {
-    unsafe {
-        let mut low: c_int = 0;
-        let mut high: c_int = 0;
-        let mut median: c_int = 0;
-        let mut middle: c_int = 0;
-        let mut ll: c_int = 0;
-        let mut hh: c_int = 0;
-        low = 0;
-        high = n - 1;
-        median = (low + high) / 2;
+        /* Find median of low, middle and high items; swap into position low */
+        let middle = (low + high) / 2;
+        if arr[middle] > arr[high] {
+            arr.swap(middle, high);
+        }
+        if arr[low] > arr[high] {
+            arr.swap(low, high);
+        }
+        if arr[middle] > arr[low] {
+            arr.swap(middle, low);
+        }
+        /* Swap low item (now in position middle) into position (low+1) */
+        arr.swap(middle, low + 1);
+
+        /* Nibble from each end towards middle, swapping items when stuck */
+        let mut ll = low + 1;
+        let mut hh = high;
         loop {
-            if high <= low {
-                /* One element only */
-                return *arr.offset(median as isize);
+            /* scan up for an element not below the pivot, and down for one not
+            above it. A NaN compares false either way and so stops the scan,
+            which is what the C's `>` did. */
+            ll += 1;
+            while arr[low] > arr[ll] {
+                ll += 1;
             }
-            if high == low + 1 {
-                /* Two elements only */
-                if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                    let t: c_double = *arr.offset(low as isize);
-                    *arr.offset(low as isize) = *arr.offset(high as isize);
-                    *arr.offset(high as isize) = t;
-                }
-                return *arr.offset(median as isize);
+            hh -= 1;
+            while arr[hh] > arr[low] {
+                hh -= 1;
             }
-            middle = (low + high) / 2;
-            if *arr.offset(middle as isize) > *arr.offset(high as isize) {
-                let t_0: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_0;
+            if hh < ll {
+                break;
             }
-            if *arr.offset(low as isize) > *arr.offset(high as isize) {
-                let t_1: c_double = *arr.offset(low as isize);
-                *arr.offset(low as isize) = *arr.offset(high as isize);
-                *arr.offset(high as isize) = t_1;
-            }
-            if *arr.offset(middle as isize) > *arr.offset(low as isize) {
-                let t_2: c_double = *arr.offset(middle as isize);
-                *arr.offset(middle as isize) = *arr.offset(low as isize);
-                *arr.offset(low as isize) = t_2;
-            }
-            /* Swap low item (now in position middle) into position (low+1) */
-            let t_3: c_double = *arr.offset(middle as isize);
-            *arr.offset(middle as isize) = *arr.offset((low + 1) as isize);
-            *arr.offset((low + 1) as isize) = t_3;
+            arr.swap(ll, hh);
+        }
+        /* Swap middle item (in position low) back into correct position */
+        arr.swap(low, hh);
 
-            /* Nibble from each end towards middle, swapping items when stuck */
-            ll = low + 1;
-            hh = high;
-            loop {
-                loop {
-                    ll += 1;
-                    if !(*arr.offset(low as isize) > *arr.offset(ll as isize)) {
-                        break;
-                    }
-                }
-                loop {
-                    hh -= 1;
-                    if !(*arr.offset(hh as isize) > *arr.offset(low as isize)) {
-                        break;
-                    }
-                }
-                if hh < ll {
-                    break;
-                }
-                let t_4: c_double = *arr.offset(ll as isize);
-                *arr.offset(ll as isize) = *arr.offset(hh as isize);
-                *arr.offset(hh as isize) = t_4;
-            }
-            /* Swap middle item (in position low) back into correct position */
-            let t_5: c_double = *arr.offset(low as isize);
-            *arr.offset(low as isize) = *arr.offset(hh as isize);
-            *arr.offset(hh as isize) = t_5;
-            /* Re-set active partition */
-            if hh <= median {
-                low = ll;
-            }
-            if hh >= median {
-                high = hh - 1;
-            }
+        /* Re-set active partition */
+        if hh <= median {
+            low = ll;
+        }
+        if hh >= median {
+            high = hh - 1;
         }
     }
 }
@@ -10574,7 +11113,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             naxis: 0,
             naxes: [0; 5],
             undef: core::ptr::null_mut::<c_char>(),
-            data: data_union { dbl: 0. },
+            data: NodeValue::Empty,
         }; 10];
         let mut pNull: [c_char; 10] = [0; 10];
         let mut ival: c_long = 0;
@@ -10593,31 +11132,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 break;
             }
             theParams[i as usize] = (lParse.Nodes[this_node_idx]).SubNodes[i as usize] as usize;
-            vector[i as usize] =
-                c_int::from((lParse.Nodes[theParams[i as usize]]).operation != CONST_OP);
+            vector[i as usize] = c_int::from(!(lParse.Nodes[theParams[i as usize]]).is_const());
             if vector[i as usize] != 0 {
                 allConst = 0;
                 vector[i as usize] = (lParse.Nodes[theParams[i as usize]]).value.nelem as c_int;
             } else {
-                if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::DOUBLE as c_int
-                {
-                    pVals[i as usize].data.dbl =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.dbl;
-                } else if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::LONG as c_int
-                {
-                    pVals[i as usize].data.lng =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.lng;
-                } else if (lParse.Nodes[theParams[i as usize]]).ntype
-                    == fits_parser_yytokentype::BOOLEAN as c_int
-                {
-                    pVals[i as usize].data.log =
-                        (lParse.Nodes[theParams[i as usize]]).value.data.log;
+                if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Double {
+                    pVals[i as usize].data =
+                        NodeValue::Double((lParse.Nodes[theParams[i as usize]]).value.data.dbl());
+                } else if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Long {
+                    pVals[i as usize].data =
+                        NodeValue::Long((lParse.Nodes[theParams[i as usize]]).value.data.lng());
+                } else if (lParse.Nodes[theParams[i as usize]]).ntype == ValueSort::Boolean {
+                    pVals[i as usize].data =
+                        NodeValue::Logical((lParse.Nodes[theParams[i as usize]]).value.data.log());
                 } else {
                     strcpy(
-                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                        ((lParse.Nodes[theParams[i as usize]]).value.data.astr).as_mut_ptr(),
+                        pVals[i as usize].data.text_mut_ptr(),
+                        (lParse.Nodes[theParams[i as usize]])
+                            .value
+                            .data
+                            .text_mut_ptr(),
                     );
                 }
                 pNull[i as usize] = 0;
@@ -10627,257 +11162,252 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             allConst = 0; /* These do produce scalars */
         }
         /* Random numbers are *never* constant !! */
-        if (lParse.Nodes[this_node_idx]).operation == POIRND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::POIRND_FCT as c_int {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == GASRND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::GASRND_FCT as c_int {
             allConst = 0;
         }
-        if (lParse.Nodes[this_node_idx]).operation == RND_FCT as c_int {
+        if (lParse.Nodes[this_node_idx]).operation == funcOp::RND_FCT as c_int {
             allConst = 0;
         }
         if allConst != 0 {
             let current_block_139: u64;
-            match (lParse.Nodes[this_node_idx]).operation as u32 {
+            match funcOp::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /* Non-Trig single-argument functions */
-                SUM_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                funcOp::SUM_FCT => {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BITSTR as c_int
-                    {
+                            },
+                        ));
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Bits {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                AVERAGE_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            pVals[0].data.lng as c_double;
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                funcOp::AVERAGE_FCT => {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.lng() as c_double);
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                STDDEV_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = 0.0; /* Standard deviation of a constant = 0 */
+                funcOp::STDDEV_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(0.0); /* Standard deviation of a constant = 0 */
                     current_block_139 = 7627602990488000394;
                 }
-                MEDIAN_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(if c_int::from(pVals[0].data.log) != 0 {
+                funcOp::MEDIAN_FCT => {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            if c_int::from(pVals[0].data.log()) != 0 {
                                 1
                             } else {
                                 0
-                            });
-                    } else if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
+                            },
+                        ));
+                    } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                POIRND_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                funcOp::POIRND_FCT => {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.dbl()),
+                        ));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            c_long::from(simplerng_getpoisson(pVals[0].data.lng as c_double));
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(c_long::from(
+                            simplerng_getpoisson(pVals[0].data.lng() as c_double),
+                        ));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ABS_FCT => {
-                    if (lParse.Nodes[theParams[0]]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        dval = pVals[0].data.dbl;
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if dval > 0.0 { dval } else { -dval };
+                funcOp::ABS_FCT => {
+                    if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
+                        dval = pVals[0].data.dbl();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if dval > 0.0 { dval } else { -dval });
                     } else {
-                        ival = pVals[0].data.lng;
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if ival > 0 { ival } else { -ival };
+                        ival = pVals[0].data.lng();
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if ival > 0 { ival } else { -ival });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Special Null-Handling Functions */
-                NONNULL_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = 1; /* Constants are always 1-element and defined */
+                funcOp::NONNULL_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(1); /* Constants are always 1-element and defined */
                     current_block_139 = 7627602990488000394;
                 }
-                ISNULL_FCT => {
+                funcOp::ISNULL_FCT => {
                     /* Constants are always defined */
-                    (lParse.Nodes[this_node_idx]).value.data.log = 0;
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(0);
                     current_block_139 = 7627602990488000394;
                 }
-                DEFNULL_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::BOOLEAN as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.log = pVals[0].data.log;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
-                    {
+                funcOp::DEFNULL_FCT => {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Logical(pVals[0].data.log());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                SETNULL_FCT => {
+                funcOp::SETNULL_FCT => {
                     /* Only defined for numeric expressions */
-                    if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Math functions with 1 double argument */
-                SIN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sin(pVals[0].data.dbl);
+                funcOp::SIN_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(sin(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                COS_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cos(pVals[0].data.dbl);
+                funcOp::COS_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(cos(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                TAN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tan(pVals[0].data.dbl);
+                funcOp::TAN_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(tan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                ASIN_FCT => {
-                    dval = pVals[0].data.dbl;
+                funcOp::ASIN_FCT => {
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arcsin"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = asin(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(asin(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ACOS_FCT => {
-                    dval = pVals[0].data.dbl;
+                funcOp::ACOS_FCT => {
+                    dval = pVals[0].data.dbl();
                     if dval < -1.0 || dval > 1.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to arccos"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = acos(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(acos(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                ATAN_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = atan(pVals[0].data.dbl);
+                funcOp::ATAN_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(atan(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                SINH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = sinh(pVals[0].data.dbl);
+                funcOp::SINH_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(sinh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                COSH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = cosh(pVals[0].data.dbl);
+                funcOp::COSH_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(cosh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                TANH_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = tanh(pVals[0].data.dbl);
+                funcOp::TANH_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(tanh(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                EXP_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = exp(pVals[0].data.dbl);
+                funcOp::EXP_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(exp(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                LOG_FCT => {
-                    dval = pVals[0].data.dbl;
+                funcOp::LOG_FCT => {
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(log(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                LOG10_FCT => {
-                    dval = pVals[0].data.dbl;
+                funcOp::LOG10_FCT => {
+                    dval = pVals[0].data.dbl();
                     if dval <= 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to log10"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = log10(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(log10(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                SQRT_FCT => {
-                    dval = pVals[0].data.dbl;
+                funcOp::SQRT_FCT => {
+                    dval = pVals[0].data.dbl();
                     if dval < 0.0 {
                         fits_parser_yyerror(lParse, cs!(c"Out of range argument to sqrt"));
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = sqrt(dval);
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(sqrt(dval));
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                CEIL_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = ceil(pVals[0].data.dbl);
+                funcOp::CEIL_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(ceil(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                FLOOR_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl);
+                funcOp::FLOOR_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(floor(pVals[0].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
-                ROUND_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = floor(pVals[0].data.dbl + 0.5);
+                funcOp::ROUND_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(floor(pVals[0].data.dbl() + 0.5));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Two-argument Trig Functions */
-                ATAN2_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl =
-                        atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                funcOp::ATAN2_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(atan2(pVals[0].data.dbl(), pVals[1].data.dbl()));
                     current_block_139 = 7627602990488000394;
                 }
                 /* Four-argument ANGSEP function */
-                ANGSEP_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = angsep_calc(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                    );
+                funcOp::ANGSEP_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(angsep_calc(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                    ));
                     /* DEVIATION from CFITSIO 4.7.0: "case angsep_fct:" there
                     is missing its "break;" and falls through into
                     "case min1_fct:", which overwrites the separation just
@@ -10887,147 +11417,139 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /*  Min/Max functions taking 1 or 2 arguments  */
-                MIN1_FCT => {
+                funcOp::MIN1_FCT => {
                     current_block_139 = 15934000668868306918;
                 }
-                MIN2_FCT => {
+                funcOp::MIN2_FCT => {
                     /* No constant vectors! */
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng < pVals[1].data.lng {
-                                pVals[0].data.lng
+                                pVals[1].data.dbl()
+                            });
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if pVals[0].data.lng() < pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                MAX1_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::BITSTR as c_int
-                    {
+                funcOp::MAX1_FCT => {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(pVals[0].data.dbl());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(pVals[0].data.lng());
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                         strcpy(
-                            ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                            (pVals[0].data.astr).as_mut_ptr(),
+                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                            pVals[0].data.text_mut_ptr(),
                         );
                     }
                     current_block_139 = 7627602990488000394;
                 }
-                MAX2_FCT => {
-                    if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::DOUBLE as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.dbl =
-                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                pVals[0].data.dbl
+                funcOp::MAX2_FCT => {
+                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Double(if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                pVals[0].data.dbl()
                             } else {
-                                pVals[1].data.dbl
-                            };
-                    } else if (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::LONG as c_int
-                    {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            if pVals[0].data.lng > pVals[1].data.lng {
-                                pVals[0].data.lng
+                                pVals[1].data.dbl()
+                            });
+                    } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                        (lParse.Nodes[this_node_idx]).value.data =
+                            NodeValue::Long(if pVals[0].data.lng() > pVals[1].data.lng() {
+                                pVals[0].data.lng()
                             } else {
-                                pVals[1].data.lng
-                            };
+                                pVals[1].data.lng()
+                            });
                     }
                     current_block_139 = 7627602990488000394;
                 }
                 /* Boolean SAO region Functions... scalar or vector dbls */
-                NEAR_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log =
-                        bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                funcOp::NEAR_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(bnear(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
-                CIRCLE_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = circle(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                    );
+                funcOp::CIRCLE_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(circle(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
-                BOX_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = saobox(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                funcOp::BOX_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(saobox(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
-                ELPS_FCT => {
-                    (lParse.Nodes[this_node_idx]).value.data.log = ellipse(
-                        pVals[0].data.dbl,
-                        pVals[1].data.dbl,
-                        pVals[2].data.dbl,
-                        pVals[3].data.dbl,
-                        pVals[4].data.dbl,
-                        pVals[5].data.dbl,
-                        pVals[6].data.dbl,
-                    );
+                funcOp::ELPS_FCT => {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(ellipse(
+                        pVals[0].data.dbl(),
+                        pVals[1].data.dbl(),
+                        pVals[2].data.dbl(),
+                        pVals[3].data.dbl(),
+                        pVals[4].data.dbl(),
+                        pVals[5].data.dbl(),
+                        pVals[6].data.dbl(),
+                    ));
                     current_block_139 = 7627602990488000394;
                 }
                 /* C Conditional expression:  bool ? expr : expr */
-                IFTHENELSE_FCT => {
-                    match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
-                            (lParse.Nodes[this_node_idx]).value.data.log =
-                                (if c_int::from(pVals[2].data.log) != 0 {
-                                    c_int::from(pVals[0].data.log)
+                funcOp::IFTHENELSE_FCT => {
+                    match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => {
+                            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
+                                (if c_int::from(pVals[2].data.log()) != 0 {
+                                    c_int::from(pVals[0].data.log())
                                 } else {
-                                    c_int::from(pVals[1].data.log)
-                                }) as c_char;
+                                    c_int::from(pVals[1].data.log())
+                                }) as c_char,
+                            );
                         }
-                        fits_parser_yytokentype::LONG => {
-                            (lParse.Nodes[this_node_idx]).value.data.lng =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.lng
+                        ValueSort::Long => {
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Long(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.lng()
                                 } else {
-                                    pVals[1].data.lng
-                                };
+                                    pVals[1].data.lng()
+                                });
                         }
-                        fits_parser_yytokentype::DOUBLE => {
-                            (lParse.Nodes[this_node_idx]).value.data.dbl =
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    pVals[0].data.dbl
+                        ValueSort::Double => {
+                            (lParse.Nodes[this_node_idx]).value.data =
+                                NodeValue::Double(if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.dbl()
                                 } else {
-                                    pVals[1].data.dbl
-                                };
+                                    pVals[1].data.dbl()
+                                });
                         }
-                        fits_parser_yytokentype::STRING => {
+                        ValueSort::String => {
                             strcpy(
-                                ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                                if c_int::from(pVals[2].data.log) != 0 {
-                                    (pVals[0].data.astr).as_mut_ptr()
+                                (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                                if c_int::from(pVals[2].data.log()) != 0 {
+                                    pVals[0].data.text_mut_ptr()
                                 } else {
-                                    (pVals[1].data.astr).as_mut_ptr()
+                                    pVals[1].data.text_mut_ptr()
                                 },
                             );
                         }
@@ -11036,29 +11558,28 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 /* String functions */
-                STRMID_FCT => {
-                    let dest_str = ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr();
+                funcOp::STRMID_FCT => {
+                    let dest_str = (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                     cstrmid(
                         lParse,
                         dest_str,
                         dest_len,
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        pVals[0].data.text_mut_ptr(),
                         pVals[0].nelem as c_int,
-                        pVals[1].data.lng as c_int,
+                        pVals[1].data.lng() as c_int,
                     );
                     current_block_139 = 7627602990488000394;
                 }
-                STRPOS_FCT => {
-                    let res: *mut c_char = strstr(
-                        (pVals[0].data.astr).as_mut_ptr(),
-                        (pVals[1].data.astr).as_mut_ptr(),
-                    );
+                funcOp::STRPOS_FCT => {
+                    let res: *mut c_char =
+                        strstr(pVals[0].data.text_mut_ptr(), pVals[1].data.text_mut_ptr());
                     if res.is_null() {
-                        (lParse.Nodes[this_node_idx]).value.data.lng = 0;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
                     } else {
-                        (lParse.Nodes[this_node_idx]).value.data.lng =
-                            res.offset_from((pVals[0].data.astr).as_mut_ptr()) as c_long + 1;
+                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(
+                            res.offset_from(pVals[0].data.text_mut_ptr()) as c_long + 1,
+                        );
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -11067,18 +11588,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
             if current_block_139 == 15934000668868306918 {
-                if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
-                    (lParse.Nodes[this_node_idx]).value.data.dbl = pVals[0].data.dbl;
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::LONG as c_int
-                {
-                    (lParse.Nodes[this_node_idx]).value.data.lng = pVals[0].data.lng;
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::BITSTR as c_int
-                {
+                if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Double(pVals[0].data.dbl());
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(pVals[0].data.lng());
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                     strcpy(
-                        ((lParse.Nodes[this_node_idx]).value.data.astr).as_mut_ptr(),
-                        (pVals[0].data.astr).as_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                        pVals[0].data.text_mut_ptr(),
                     );
                 }
             }
@@ -11088,43 +11606,39 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             row = lParse.nRows;
             elem = row * (lParse.Nodes[this_node_idx]).value.nelem;
             if lParse.status == 0 {
-                match (lParse.Nodes[this_node_idx]).operation as u32 {
+                match funcOp::from_operation((lParse.Nodes[this_node_idx]).operation) {
                     /* Special functions with no arguments */
-                    ROW_FCT => loop {
+                    funcOp::ROW_FCT => loop {
                         let fresh53 = row;
                         row -= 1;
                         if fresh53 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.lngptr).offset(row as isize) =
-                            lParse.firstRow + row;
+                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                            .offset(row as isize) = lParse.firstRow + row;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0;
                     },
-                    NULL_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                    funcOp::NULL_FCT => {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh54 = row;
                                 row -= 1;
                                 if fresh54 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     1;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             loop {
                                 let fresh55 = row;
                                 row -= 1;
                                 if fresh55 == 0 {
                                     break;
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11132,11 +11646,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    AXISELEM_FCT => {
+                    funcOp::AXISELEM_FCT => {
                         let mut ielem: c_long = 0;
                         let mut iaxis: [c_long; 5] = [1, 1, 1, 1, 1];
                         /* This should be a constant long value */
-                        let ipos: c_long = pVals[1].data.lng - 1;
+                        let ipos: c_long = pVals[1].data.lng() - 1;
                         let naxis: c_int = (lParse.Nodes[this_node_idx]).value.naxis;
                         let mut j: c_int = 0;
                         if ipos < 0 || ipos >= 5 as c_long {
@@ -11144,11 +11658,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 lParse,
                                 cs!(c"AXISELEM(V,n) n value exceeded maximum dimension"),
                             );
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                            free((lParse.Nodes[this_node_idx]).value.data.raw());
                         } else {
                             ielem = 0;
                             while ielem < elem {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(ielem as isize) = iaxis[ipos as usize];
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(ielem as isize) = 0;
@@ -11170,13 +11684,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    ELEMNUM_FCT => {
+                    funcOp::ELEMNUM_FCT => {
                         let mut ielem_0: c_long = 0;
                         let mut elemnum: c_long = 1;
                         let j_0: c_int = 0;
                         ielem_0 = 0;
                         while ielem_0 < elem {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(ielem_0 as isize) = elemnum;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(ielem_0 as isize) =
                                 0;
@@ -11187,31 +11701,29 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             ielem_0 += 1;
                         }
                     }
-                    RND_FCT => loop {
+                    funcOp::RND_FCT => loop {
                         let fresh56 = elem;
                         elem -= 1;
                         if fresh56 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            simplerng_getuniform();
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = simplerng_getuniform();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    GASRND_FCT => loop {
+                    funcOp::GASRND_FCT => loop {
                         let fresh57 = elem;
                         elem -= 1;
                         if fresh57 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            simplerng_getnorm();
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = simplerng_getnorm();
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     },
-                    POIRND_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
-                            if (lParse.Nodes[theParams[0]]).operation == CONST_OP {
+                    funcOp::POIRND_FCT => {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
+                            if (lParse.Nodes[theParams[0]]).is_const() {
                                 loop {
                                     let fresh58 = elem;
                                     elem -= 1;
@@ -11220,14 +11732,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) =
-                                        if pVals[0].data.dbl < 0.0 { 1 } else { 0 };
+                                        if pVals[0].data.dbl() < 0.0 { 1 } else { 0 };
                                     if *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl));
+                                            c_long::from(simplerng_getpoisson(pVals[0].data.dbl()));
                                     }
                                 }
                             } else {
@@ -11241,7 +11753,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize) =
                                         *((lParse.Nodes[theParams[0]]).value.undef)
                                             .offset(elem as isize);
-                                    if *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    if *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                         .offset(elem as isize)
                                         < 0.0
                                     {
@@ -11252,16 +11764,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
                                             c_long::from(simplerng_getpoisson(
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize),
+                                                *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
                                             ));
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).operation == CONST_OP {
+                        } else if (lParse.Nodes[theParams[0]]).is_const() {
                             loop {
                                 let fresh60 = elem;
                                 elem -= 1;
@@ -11270,14 +11785,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
-                                    if pVals[0].data.lng < 0 { 1 } else { 0 };
+                                    if pVals[0].data.lng() < 0 { 1 } else { 0 };
                                 if *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize)
                                     == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(elem as isize) = c_long::from(
-                                        simplerng_getpoisson(pVals[0].data.lng as c_double),
+                                        simplerng_getpoisson(pVals[0].data.lng() as c_double),
                                     );
                                 }
                             }
@@ -11292,7 +11807,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize) =
                                     *((lParse.Nodes[theParams[0]]).value.undef)
                                         .offset(elem as isize);
-                                if *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                if *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize)
                                     < 0
                                 {
@@ -11303,10 +11818,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize)
                                     == 0
                                 {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(elem as isize) =
                                         c_long::from(simplerng_getpoisson(
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize)
                                                 as c_double,
                                         ));
@@ -11315,18 +11830,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         } /* END LONG */
                     }
                     /* Non-Trig single-argument functions */
-                    SUM_FCT => {
+                    funcOp::SUM_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Boolean {
                             loop {
                                 let fresh62 = row;
                                 row -= 1;
                                 if fresh62 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11344,11 +11857,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize) += c_long::from(
                                             if c_int::from(
-                                                *((lParse.Nodes[theParams[0]]).value.data.logptr)
-                                                    .offset(elem as isize),
+                                                *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .log_buf())
+                                                .offset(elem as isize),
                                             ) != 0
                                             {
                                                 1
@@ -11361,16 +11877,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             loop {
                                 let fresh64 = row;
                                 row -= 1;
                                 if fresh64 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11388,25 +11902,23 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize);
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(row as isize) = 0;
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh66 = row;
                                 row -= 1;
                                 if fresh66 == 0 {
                                     break;
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 /* Default is UNDEF until a defined value is found */
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -11424,9 +11936,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize)
                                         == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                 .offset(elem as isize);
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(row as isize) = 0;
@@ -11442,17 +11954,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     0;
                                 while *sptr1 != 0 {
                                     if c_int::from(*sptr1) == '1' as i32 {
-                                        let fresh69 =
-                                            &mut *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                                .offset(row as isize);
+                                        let fresh69 = &mut *((lParse.Nodes[this_node_idx])
+                                            .value
+                                            .data
+                                            .lng_buf())
+                                        .offset(row as isize);
                                         *fresh69 += 1;
                                     }
                                     sptr1 = sptr1.offset(1);
@@ -11460,11 +11974,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    AVERAGE_FCT => {
+                    funcOp::AVERAGE_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             loop {
                                 let fresh70 = row;
                                 row -= 1;
@@ -11472,7 +11984,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut count: c_int = 0;
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                                 loop {
@@ -11488,9 +12000,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                 .offset(elem as isize)
                                                 as c_double;
                                         count += 1;
@@ -11502,13 +12014,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) /= c_double::from(count);
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh72 = row;
                                 row -= 1;
@@ -11516,7 +12026,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut count_0: c_int = 0;
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = 0.0;
                                 nelem = (lParse.Nodes[theParams[0]]).value.nelem;
                                 loop {
@@ -11532,9 +12042,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(row as isize) +=
-                                            *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                 .offset(elem as isize);
                                         count_0 += 1;
                                     }
@@ -11545,17 +12055,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) /= c_double::from(count_0);
                                 }
                             }
                         }
                     }
-                    STDDEV_FCT => {
+                    funcOp::STDDEV_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             /* Compute the mean value */
                             loop {
                                 let fresh74 = row;
@@ -11580,7 +12088,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        sum += *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                        sum += *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                             .offset(elem as isize)
                                             as c_double;
                                         count_1 += 1;
@@ -11605,29 +12113,29 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                                 .offset(elem as isize),
                                         ) == 0
                                         {
-                                            let dx: c_double =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
-                                                    as c_double
-                                                    - sum;
+                                            let dx: c_double = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize)
+                                                as c_double
+                                                - sum;
                                             sum2 += dx * dx;
                                         }
                                     }
                                     sum2 /= c_double::from(count_1) - c_double::from(1);
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0; /* STDDEV => 0 */
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = sqrt(sum2);
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = 0.0;
                                 }
                             }
-                        } else if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             /* Compute the mean value */
                             loop {
                                 let fresh77 = row;
@@ -11652,8 +12160,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(elem as isize),
                                     ) == 0
                                     {
-                                        sum_0 += *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                        sum_0 +=
+                                            *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
+                                                .offset(elem as isize);
                                         count_2 += 1;
                                     }
                                 }
@@ -11676,35 +12185,35 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                                 .offset(elem as isize),
                                         ) == 0
                                         {
-                                            let dx_0: c_double =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
-                                                    - sum_0;
+                                            let dx_0: c_double = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize)
+                                                - sum_0;
                                             sum2_0 += dx_0 * dx_0;
                                         }
                                     }
                                     sum2_0 /= c_double::from(count_2) - c_double::from(1);
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0; /* STDDEV => 0 */
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = sqrt(sum2_0);
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                         .offset(row as isize) = 0.0;
                                 }
                             }
                         }
                     }
-                    MEDIAN_FCT => {
+                    funcOp::MEDIAN_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Long {
                             let mut dptr: *mut c_long =
-                                (lParse.Nodes[theParams[0]]).value.data.lngptr;
+                                (lParse.Nodes[theParams[0]]).value.data.lng_buf();
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mptr: *mut c_long = malloc(
                                 (::core::mem::size_of::<c_long>() as c_ulong)
@@ -11721,7 +12230,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
                                 irow = 0;
                                 while c_long::from(irow) < row {
@@ -11745,13 +12254,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if nelem1 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(irow as isize) =
-                                            qselect_median_lng(mptr, nelem1);
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(irow as isize) = qselect_median(
+                                            slice::from_raw_parts_mut(mptr, nelem1 as usize),
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(irow as isize) = 0;
                                     }
                                     irow += 1;
@@ -11760,7 +12270,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         } else {
                             let mut dptr_0: *mut c_double =
-                                (lParse.Nodes[theParams[0]]).value.data.dblptr;
+                                (lParse.Nodes[theParams[0]]).value.data.dbl_buf();
                             let mut uptr_0: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
                             let mptr_0: *mut c_double = malloc(
                                 (::core::mem::size_of::<c_double>() as c_ulong)
@@ -11777,7 +12287,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
+                                free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
                                 irow_0 = 0;
                                 while c_long::from(irow_0) < row {
@@ -11801,13 +12311,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if nelem1_0 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(irow_0 as isize) =
-                                            qselect_median_dbl(mptr_0, nelem1_0);
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(irow_0 as isize) = qselect_median(
+                                            slice::from_raw_parts_mut(mptr_0, nelem1_0 as usize),
+                                        );
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(irow_0 as isize) = 0.0;
                                     }
                                     irow_0 += 1;
@@ -11816,19 +12327,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                     }
-                    ABS_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                    funcOp::ABS_FCT => {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Double {
                             loop {
                                 let fresh84 = elem;
                                 elem -= 1;
                                 if fresh84 == 0 {
                                     break;
                                 }
-                                dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = if dval > 0.0 { dval } else { -dval };
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -11842,9 +12351,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 if fresh85 == 0 {
                                     break;
                                 }
-                                ival = *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                ival = *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize);
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = if ival > 0 { ival } else { -ival };
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -11854,11 +12363,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     /* Special Null-Handling Functions */
-                    NONNULL_FCT => {
+                    funcOp::NONNULL_FCT => {
                         nelem = (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::String {
                             nelem = 1;
                         }
                         elem = row * nelem;
@@ -11870,7 +12377,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let mut nelem1_1: c_int = nelem as c_int;
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) = 0; /* Initialize to 0 (defined) */
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) = 0;
                             loop {
                                 let fresh87 = nelem1_1;
@@ -11886,17 +12393,15 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 ) == 0
                                 {
                                     let fresh88 =
-                                        &mut *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        &mut *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(row as isize);
                                     *fresh88 += 1;
                                 }
                             }
                         }
                     }
-                    ISNULL_FCT => {
-                        if (lParse.Nodes[theParams[0]]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                    funcOp::ISNULL_FCT => {
+                        if (lParse.Nodes[theParams[0]]).ntype == ValueSort::String {
                             elem = row;
                         }
                         loop {
@@ -11905,14 +12410,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if fresh89 == 0 {
                                 break;
                             }
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) =
                                 *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                         }
                     }
-                    DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => loop {
+                    funcOp::DEFNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => loop {
                             let fresh90 = row;
                             row -= 1;
                             if fresh90 == 0 {
@@ -11938,38 +12443,40 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                        .offset(elem as isize) = pVals[1].data.log;
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                        .offset(elem as isize) = pVals[1].data.log();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                        .offset(elem as isize) = pVals[0].data.log;
+                                    *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                        .offset(elem as isize) = pVals[0].data.log();
                                 }
                             }
                         },
-                        fits_parser_yytokentype::LONG => loop {
+                        ValueSort::Long => loop {
                             let fresh93 = row;
                             row -= 1;
                             if fresh93 == 0 {
@@ -11995,38 +12502,40 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                        .offset(elem as isize) = pVals[1].data.lng;
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                        .offset(elem as isize) = pVals[1].data.lng();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                        .offset(elem as isize) = pVals[0].data.lng;
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                        .offset(elem as isize) = pVals[0].data.lng();
                                 }
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh96 = row;
                             row -= 1;
                             if fresh96 == 0 {
@@ -12052,38 +12561,40 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize),
+                                        );
                                     } else if vector[i as usize] != 0 {
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(row as isize),
+                                        );
                                     }
                                 }
                                 if pNull[0] != 0 {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = pNull[1];
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(elem as isize) = pVals[1].data.dbl;
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                        .offset(elem as isize) = pVals[1].data.dbl();
                                 } else {
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(elem as isize) = 0;
-                                    *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                        .offset(elem as isize) = pVals[0].data.dbl;
+                                    *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                        .offset(elem as isize) = pVals[0].data.dbl();
                                 }
                             }
                         },
-                        fits_parser_yytokentype::STRING => loop {
+                        ValueSort::String => loop {
                             let fresh99 = row;
                             row -= 1;
                             if fresh99 == 0 {
@@ -12101,9 +12612,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.strptr)
-                                            .offset(row as isize),
+                                        pVals[i as usize].data.text_mut_ptr(),
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .str_buf())
+                                        .offset(row as isize),
                                     );
                                 }
                             }
@@ -12111,41 +12625,41 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     pNull[1];
                                 strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
-                                    (pVals[1].data.astr).as_mut_ptr(),
+                                    pVals[1].data.text_mut_ptr(),
                                 );
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 0;
                                 strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
-                                    (pVals[0].data.astr).as_mut_ptr(),
+                                    pVals[0].data.text_mut_ptr(),
                                 );
                             }
                         },
                         _ => {}
                     },
-                    SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::LONG => loop {
+                    funcOp::SETNULL_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Long => loop {
                             let fresh101 = elem;
                             elem -= 1;
                             if fresh101 == 0 {
                                 break;
                             }
-                            if (lParse.Nodes[theParams[1]]).value.data.lng
-                                == *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                            if (lParse.Nodes[theParams[1]]).value.data.lng()
+                                == *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                     .offset(elem as isize)
                             {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) = 0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(elem as isize) =
-                                    *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                         .offset(elem as isize);
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -12153,24 +12667,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         .offset(elem as isize);
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh102 = elem;
                             elem -= 1;
                             if fresh102 == 0 {
                                 break;
                             }
-                            if (lParse.Nodes[theParams[1]]).value.data.dbl
-                                == *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            if (lParse.Nodes[theParams[1]]).value.data.dbl()
+                                == *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize)
                             {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
-                                    *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                         .offset(elem as isize);
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) =
@@ -12181,7 +12695,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         _ => {}
                     },
                     /* Math functions with 1 double argument */
-                    SIN_FCT => loop {
+                    funcOp::SIN_FCT => loop {
                         let fresh103 = elem;
                         elem -= 1;
                         if fresh103 == 0 {
@@ -12192,13 +12706,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh104 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh104 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                sin(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                sin(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
-                    COS_FCT => loop {
+                    funcOp::COS_FCT => loop {
                         let fresh105 = elem;
                         elem -= 1;
                         if fresh105 == 0 {
@@ -12209,13 +12723,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh106 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh106 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                cos(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                cos(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
-                    TAN_FCT => loop {
+                    funcOp::TAN_FCT => loop {
                         let fresh107 = elem;
                         elem -= 1;
                         if fresh107 == 0 {
@@ -12226,13 +12740,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh108 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh108 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) =
-                                tan(*((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                tan(*((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize));
                         }
                     },
-                    ASIN_FCT => loop {
+                    funcOp::ASIN_FCT => loop {
                         let fresh109 = elem;
                         elem -= 1;
                         if fresh109 == 0 {
@@ -12243,20 +12757,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh110 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh110 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < -1.0 || dval > 1.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = asin(dval);
                             }
                         }
                     },
-                    ACOS_FCT => loop {
+                    funcOp::ACOS_FCT => loop {
                         let fresh111 = elem;
                         elem -= 1;
                         if fresh111 == 0 {
@@ -12267,20 +12781,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh112 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh112 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < -1.0 || dval > 1.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = acos(dval);
                             }
                         }
                     },
-                    ATAN_FCT => loop {
+                    funcOp::ATAN_FCT => loop {
                         let fresh113 = elem;
                         elem -= 1;
                         if fresh113 == 0 {
@@ -12291,13 +12805,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh114 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh114 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = atan(dval);
                         }
                     },
-                    SINH_FCT => loop {
+                    funcOp::SINH_FCT => loop {
                         let fresh115 = elem;
                         elem -= 1;
                         if fresh115 == 0 {
@@ -12308,14 +12822,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh116 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh116 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = sinh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
                     },
-                    COSH_FCT => loop {
+                    funcOp::COSH_FCT => loop {
                         let fresh117 = elem;
                         elem -= 1;
                         if fresh117 == 0 {
@@ -12326,14 +12840,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh118 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh118 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = cosh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
                     },
-                    TANH_FCT => loop {
+                    funcOp::TANH_FCT => loop {
                         let fresh119 = elem;
                         elem -= 1;
                         if fresh119 == 0 {
@@ -12344,14 +12858,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh120 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh120 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = tanh(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
                     },
-                    EXP_FCT => loop {
+                    funcOp::EXP_FCT => loop {
                         let fresh121 = elem;
                         elem -= 1;
                         if fresh121 == 0 {
@@ -12362,13 +12876,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh122 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh122 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = exp(dval);
                         }
                     },
-                    LOG_FCT => loop {
+                    funcOp::LOG_FCT => loop {
                         let fresh123 = elem;
                         elem -= 1;
                         if fresh123 == 0 {
@@ -12379,20 +12893,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh124 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh124 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval <= 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = log(dval);
                             }
                         }
                     },
-                    LOG10_FCT => loop {
+                    funcOp::LOG10_FCT => loop {
                         let fresh125 = elem;
                         elem -= 1;
                         if fresh125 == 0 {
@@ -12403,20 +12917,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh126 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh126 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval <= 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = log10(dval);
                             }
                         }
                     },
-                    SQRT_FCT => loop {
+                    funcOp::SQRT_FCT => loop {
                         let fresh127 = elem;
                         elem -= 1;
                         if fresh127 == 0 {
@@ -12427,20 +12941,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh128 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh128 == 0 {
-                            dval = *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                            dval = *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                 .offset(elem as isize);
                             if dval < 0.0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = 0.0;
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 1;
                             } else {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = sqrt(dval);
                             }
                         }
                     },
-                    CEIL_FCT => loop {
+                    funcOp::CEIL_FCT => loop {
                         let fresh129 = elem;
                         elem -= 1;
                         if fresh129 == 0 {
@@ -12451,14 +12965,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh130 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh130 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = ceil(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
                     },
-                    FLOOR_FCT => loop {
+                    funcOp::FLOOR_FCT => loop {
                         let fresh131 = elem;
                         elem -= 1;
                         if fresh131 == 0 {
@@ -12469,14 +12983,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh132 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh132 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize),
                             );
                         }
                     },
-                    ROUND_FCT => loop {
+                    funcOp::ROUND_FCT => loop {
                         let fresh133 = elem;
                         elem -= 1;
                         if fresh133 == 0 {
@@ -12487,16 +13001,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         *fresh134 =
                             *((lParse.Nodes[theParams[0]]).value.undef).offset(elem as isize);
                         if *fresh134 == 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(elem as isize) = floor(
-                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                     .offset(elem as isize)
                                     + 0.5,
                             );
                         }
                     },
                     /* Two-argument Trig Functions */
-                    ATAN2_FCT => loop {
+                    funcOp::ATAN2_FCT => loop {
                         let fresh135 = row;
                         row -= 1;
                         if fresh135 == 0 {
@@ -12519,16 +13033,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12543,14 +13065,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 0
                             };
                             if *fresh138 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) =
-                                    atan2(pVals[0].data.dbl, pVals[1].data.dbl);
+                                    atan2(pVals[0].data.dbl(), pVals[1].data.dbl());
                             }
                         }
                     },
                     /* Four-argument ANGSEP Function */
-                    ANGSEP_FCT => loop {
+                    funcOp::ANGSEP_FCT => loop {
                         let fresh139 = row;
                         row -= 1;
                         if fresh139 == 0 {
@@ -12572,16 +13094,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -12596,22 +13126,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[3]) != 0,
                             ) as c_char;
                             if *fresh142 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(elem as isize) = angsep_calc(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
                                 );
                             }
                         }
                     },
                     /*  Min/Max functions taking 1 or 2 arguments  */
-                    MIN1_FCT => {
+                    funcOp::MIN1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             let mut minVal: c_long = 0;
                             loop {
                                 let fresh143 = row;
@@ -12636,17 +13164,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            minVal =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize);
+                                            minVal = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             minVal = if minVal
-                                                < *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
+                                                < *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize)
                                             {
                                                 minVal
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12654,12 +13187,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = minVal;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             let mut minVal_0: c_double = 0.0;
                             loop {
                                 let fresh145 = row;
@@ -12684,17 +13215,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            minVal_0 =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize);
+                                            minVal_0 = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             minVal_0 = if minVal_0
-                                                < *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
+                                                < *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize)
                                             {
                                                 minVal_0
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12702,12 +13238,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = minVal_0;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                             let mut minVal_1: c_char = 0;
                             loop {
                                 let fresh147 = row;
@@ -12716,7 +13250,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1_0: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
                                 minVal_1 = b'1' as c_char;
                                 while *sptr1_0 != 0 {
@@ -12725,19 +13259,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     sptr1_0 = sptr1_0.offset(1);
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = minVal_1;
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(1) = 0;
                             }
                         }
                     }
-                    MIN2_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                    funcOp::MIN2_FCT => {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh148 = row;
                                 row -= 1;
@@ -12760,24 +13292,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12788,34 +13322,32 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) = 0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng < pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() < pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             loop {
                                 let fresh151 = row;
                                 row -= 1;
@@ -12838,24 +13370,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -12866,38 +13400,36 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) = 0.0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl < pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() < pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
                             }
                         }
                     }
-                    MAX1_FCT => {
+                    funcOp::MAX1_FCT => {
                         elem = row * (lParse.Nodes[theParams[0]]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             let mut maxVal: c_long = 0;
                             loop {
                                 let fresh154 = row;
@@ -12922,17 +13454,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            maxVal =
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize);
+                                            maxVal = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             maxVal = if maxVal
-                                                > *((lParse.Nodes[theParams[0]]).value.data.lngptr)
-                                                    .offset(elem as isize)
+                                                > *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize)
                                             {
                                                 maxVal
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.lngptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.lng_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12940,12 +13477,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                     .offset(row as isize) = maxVal;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             let mut maxVal_0: c_double = 0.0;
                             loop {
                                 let fresh156 = row;
@@ -12970,17 +13505,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     {
                                         if valInit != 0 {
                                             valInit = 0;
-                                            maxVal_0 =
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize);
+                                            maxVal_0 = *((lParse.Nodes[theParams[0]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize);
                                         } else {
                                             maxVal_0 = if maxVal_0
-                                                > *((lParse.Nodes[theParams[0]]).value.data.dblptr)
-                                                    .offset(elem as isize)
+                                                > *((lParse.Nodes[theParams[0]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize)
                                             {
                                                 maxVal_0
                                             } else {
-                                                *((lParse.Nodes[theParams[0]]).value.data.dblptr)
+                                                *((lParse.Nodes[theParams[0]]).value.data.dbl_buf())
                                                     .offset(elem as isize)
                                             };
                                         }
@@ -12988,12 +13528,10 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             .offset(row as isize) = 0;
                                     }
                                 }
-                                *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                     .offset(row as isize) = maxVal_0;
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
                             let mut maxVal_1: c_char = 0;
                             loop {
                                 let fresh158 = row;
@@ -13002,7 +13540,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 let mut sptr1_1: *mut c_char =
-                                    *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                    *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                         .offset(row as isize);
                                 maxVal_1 = b'0' as c_char;
                                 while *sptr1_1 != 0 {
@@ -13011,19 +13549,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     sptr1_1 = sptr1_1.offset(1);
                                 }
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = maxVal_1;
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(1) = 0;
                             }
                         }
                     }
-                    MAX2_FCT => {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
+                    funcOp::MAX2_FCT => {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                             loop {
                                 let fresh159 = row;
                                 row -= 1;
@@ -13046,24 +13582,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.lng = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .lngptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Long(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .lng_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -13074,34 +13612,32 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) = 0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.lng > pVals[1].data.lng {
-                                                pVals[0].data.lng
+                                            if pVals[0].data.lng() > pVals[1].data.lng() {
+                                                pVals[0].data.lng()
                                             } else {
-                                                pVals[1].data.lng
+                                                pVals[1].data.lng()
                                             };
                                     }
                                 }
                             }
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
                             loop {
                                 let fresh162 = row;
                                 row -= 1;
@@ -13124,24 +13660,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if vector[i as usize] > 1 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(elem as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(elem as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
                                                 .undef)
                                                 .offset(elem as isize);
                                         } else if vector[i as usize] != 0 {
-                                            pVals[i as usize].data.dbl = *((lParse.Nodes
-                                                [theParams[i as usize]])
-                                                .value
-                                                .data
-                                                .dblptr)
-                                                .offset(row as isize);
+                                            pVals[i as usize].data = NodeValue::Double(
+                                                *((lParse.Nodes[theParams[i as usize]])
+                                                    .value
+                                                    .data
+                                                    .dbl_buf())
+                                                .offset(row as isize),
+                                            );
                                             pNull[i as usize] = *((lParse.Nodes
                                                 [theParams[i as usize]])
                                                 .value
@@ -13152,27 +13690,27 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     if c_int::from(pNull[0]) != 0 && c_int::from(pNull[1]) != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 1;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) = 0.0;
                                     } else if pNull[0] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                     } else if pNull[1] != 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = 0;
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                             .offset(elem as isize) =
-                                            if pVals[0].data.dbl > pVals[1].data.dbl {
-                                                pVals[0].data.dbl
+                                            if pVals[0].data.dbl() > pVals[1].data.dbl() {
+                                                pVals[0].data.dbl()
                                             } else {
-                                                pVals[1].data.dbl
+                                                pVals[1].data.dbl()
                                             };
                                     }
                                 }
@@ -13180,7 +13718,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     }
                     /* Boolean SAO region Functions... scalar or vector dbls */
-                    NEAR_FCT => loop {
+                    funcOp::NEAR_FCT => loop {
                         let fresh165 = row;
                         row -= 1;
                         if fresh165 == 0 {
@@ -13202,16 +13740,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13225,13 +13771,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[2]) != 0,
                             ) as c_char;
                             if *fresh168 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                    .offset(elem as isize) =
-                                    bnear(pVals[0].data.dbl, pVals[1].data.dbl, pVals[2].data.dbl);
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                    .offset(elem as isize) = bnear(
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                );
                             }
                         }
                     },
-                    CIRCLE_FCT => loop {
+                    funcOp::CIRCLE_FCT => loop {
                         let fresh169 = row;
                         row -= 1;
                         if fresh169 == 0 {
@@ -13253,16 +13802,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13278,18 +13835,18 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[4]) != 0,
                             ) as c_char;
                             if *fresh172 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = circle(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
                                 );
                             }
                         }
                     },
-                    BOX_FCT => loop {
+                    funcOp::BOX_FCT => loop {
                         let fresh173 = row;
                         row -= 1;
                         if fresh173 == 0 {
@@ -13311,16 +13868,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13338,20 +13903,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[6]) != 0,
                             ) as c_char;
                             if *fresh176 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = saobox(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
                     },
-                    ELPS_FCT => loop {
+                    funcOp::ELPS_FCT => loop {
                         let fresh177 = row;
                         row -= 1;
                         if fresh177 == 0 {
@@ -13373,16 +13938,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] > 1 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(elem as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(elem as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(elem as isize);
                                 } else if vector[i as usize] != 0 {
-                                    pVals[i as usize].data.dbl =
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.dblptr)
-                                            .offset(row as isize);
+                                    pVals[i as usize].data = NodeValue::Double(
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .dbl_buf())
+                                        .offset(row as isize),
+                                    );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -13400,22 +13973,22 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     || c_int::from(pNull[6]) != 0,
                             ) as c_char;
                             if *fresh180 == 0 {
-                                *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                     .offset(elem as isize) = ellipse(
-                                    pVals[0].data.dbl,
-                                    pVals[1].data.dbl,
-                                    pVals[2].data.dbl,
-                                    pVals[3].data.dbl,
-                                    pVals[4].data.dbl,
-                                    pVals[5].data.dbl,
-                                    pVals[6].data.dbl,
+                                    pVals[0].data.dbl(),
+                                    pVals[1].data.dbl(),
+                                    pVals[2].data.dbl(),
+                                    pVals[3].data.dbl(),
+                                    pVals[4].data.dbl(),
+                                    pVals[5].data.dbl(),
+                                    pVals[6].data.dbl(),
                                 );
                             }
                         }
                     },
                     /* C Conditional expression:  bool ? expr : expr */
-                    IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => loop {
+                    funcOp::IFTHENELSE_FCT => match (lParse.Nodes[this_node_idx]).ntype {
+                        ValueSort::Boolean => loop {
                             let fresh181 = row;
                             row -= 1;
                             if fresh181 == 0 {
@@ -13430,15 +14003,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13450,22 +14025,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.log = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .logptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Logical(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .log_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13475,21 +14052,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh184 = pNull[2];
                                 if *fresh184 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                            .offset(elem as isize) = pVals[0].data.log;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                            .offset(elem as isize) = pVals[0].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.logptr)
-                                            .offset(elem as isize) = pVals[1].data.log;
+                                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                                            .offset(elem as isize) = pVals[1].data.log();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
                                 }
                             }
                         },
-                        fits_parser_yytokentype::LONG => loop {
+                        ValueSort::Long => loop {
                             let fresh185 = row;
                             row -= 1;
                             if fresh185 == 0 {
@@ -13504,15 +14081,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13524,22 +14103,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.lng = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .lngptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Long(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .lng_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13549,21 +14130,21 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh188 = pNull[2];
                                 if *fresh188 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[0].data.lng;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[0].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.lngptr)
-                                            .offset(elem as isize) = pVals[1].data.lng;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(elem as isize) = pVals[1].data.lng();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
                                 }
                             }
                         },
-                        fits_parser_yytokentype::DOUBLE => loop {
+                        ValueSort::Double => loop {
                             let fresh189 = row;
                             row -= 1;
                             if fresh189 == 0 {
@@ -13578,15 +14159,17 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 elem -= 1;
                                 if vector[2] > 1 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(elem as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(elem as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(elem as isize);
                                 } else if vector[2] != 0 {
-                                    pVals[2].data.log =
-                                        *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                            .offset(row as isize);
+                                    pVals[2].data = NodeValue::Logical(
+                                        *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                            .offset(row as isize),
+                                    );
                                     pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                         .offset(row as isize);
                                 }
@@ -13598,22 +14181,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                         break;
                                     }
                                     if vector[i as usize] > 1 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(elem as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(elem as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(elem as isize);
                                     } else if vector[i as usize] != 0 {
-                                        pVals[i as usize].data.dbl = *((lParse.Nodes
-                                            [theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .dblptr)
-                                            .offset(row as isize);
+                                        pVals[i as usize].data = NodeValue::Double(
+                                            *((lParse.Nodes[theParams[i as usize]])
+                                                .value
+                                                .data
+                                                .dbl_buf())
+                                            .offset(row as isize),
+                                        );
                                         pNull[i as usize] =
                                             *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                                 .offset(row as isize);
@@ -13623,30 +14208,31 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     .offset(elem as isize);
                                 *fresh192 = pNull[2];
                                 if *fresh192 == 0 {
-                                    if pVals[2].data.log != 0 {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[0].data.dbl;
+                                    if pVals[2].data.log() != 0 {
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[0].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[0];
                                     } else {
-                                        *((lParse.Nodes[this_node_idx]).value.data.dblptr)
-                                            .offset(elem as isize) = pVals[1].data.dbl;
+                                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                                            .offset(elem as isize) = pVals[1].data.dbl();
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(elem as isize) = pNull[1];
                                     }
                                 }
                             }
                         },
-                        fits_parser_yytokentype::STRING => loop {
+                        ValueSort::String => loop {
                             let fresh193 = row;
                             row -= 1;
                             if fresh193 == 0 {
                                 break;
                             }
                             if vector[2] != 0 {
-                                pVals[2].data.log =
-                                    *((lParse.Nodes[theParams[2]]).value.data.logptr)
-                                        .offset(row as isize);
+                                pVals[2].data = NodeValue::Logical(
+                                    *((lParse.Nodes[theParams[2]]).value.data.log_buf())
+                                        .offset(row as isize),
+                                );
                                 pNull[2] = *((lParse.Nodes[theParams[2]]).value.undef)
                                     .offset(row as isize);
                             }
@@ -13659,9 +14245,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                                 if vector[i as usize] != 0 {
                                     strcpy(
-                                        (pVals[i as usize].data.astr).as_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]]).value.data.strptr)
-                                            .offset(row as isize),
+                                        pVals[i as usize].data.text_mut_ptr(),
+                                        *((lParse.Nodes[theParams[i as usize]])
+                                            .value
+                                            .data
+                                            .str_buf())
+                                        .offset(row as isize),
                                     );
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
@@ -13672,38 +14261,35 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 .offset(row as isize);
                             *fresh195 = pNull[2];
                             if *fresh195 == 0 {
-                                if pVals[2].data.log != 0 {
+                                if pVals[2].data.log() != 0 {
                                     strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                             .offset(row as isize),
-                                        (pVals[0].data.astr).as_mut_ptr(),
+                                        pVals[0].data.text_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[0];
                                 } else {
                                     strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                             .offset(row as isize),
-                                        (pVals[1].data.astr).as_mut_ptr(),
+                                        pVals[1].data.text_mut_ptr(),
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[1];
                                 }
                             } else {
-                                *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                     .offset(row as isize))
                                 .offset(0) = 0;
                             }
                         },
                         _ => {}
                     },
-                    STRMID_FCT => {
-                        let strconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
-                        let posconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[1]]).operation == CONST_OP);
-                        let lenconst: c_int =
-                            c_int::from((lParse.Nodes[theParams[2]]).operation == CONST_OP);
+                    funcOp::STRMID_FCT => {
+                        let strconst: c_int = c_int::from((lParse.Nodes[theParams[0]]).is_const());
+                        let posconst: c_int = c_int::from((lParse.Nodes[theParams[1]]).is_const());
+                        let lenconst: c_int = c_int::from((lParse.Nodes[theParams[2]]).is_const());
                         let dest_len: c_int = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                         let mut src_len: c_int = (lParse.Nodes[theParams[0]]).value.nelem as c_int;
                         loop {
@@ -13717,9 +14303,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut str: *mut c_char = ptr::null_mut();
                             let mut undef: c_int = 0;
                             if posconst != 0 {
-                                pos = (lParse.Nodes[theParams[1]]).value.data.lng as c_int;
+                                pos = (lParse.Nodes[theParams[1]]).value.data.lng() as c_int;
                             } else {
-                                pos = *((lParse.Nodes[theParams[1]]).value.data.lngptr)
+                                pos = *((lParse.Nodes[theParams[1]]).value.data.lng_buf())
                                     .offset(row as isize)
                                     as c_int;
                                 if *((lParse.Nodes[theParams[1]]).value.undef).offset(row as isize)
@@ -13729,12 +14315,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if strconst != 0 {
-                                str = ((lParse.Nodes[theParams[0]]).value.data.astr).as_mut_ptr();
+                                str = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
                                 if src_len == 0 {
                                     src_len = strlen(str) as c_int;
                                 }
                             } else {
-                                str = *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                str = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
@@ -13745,7 +14331,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if lenconst != 0 {
                                 len = dest_len;
                             } else {
-                                len = *((lParse.Nodes[theParams[2]]).value.data.lngptr)
+                                len = *((lParse.Nodes[theParams[2]]).value.data.lng_buf())
                                     .offset(row as isize)
                                     as c_int;
                                 if *((lParse.Nodes[theParams[2]]).value.undef).offset(row as isize)
@@ -13754,7 +14340,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     undef = 1;
                                 }
                             }
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(0) = 0;
                             if pos == 0 {
@@ -13763,7 +14349,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             if undef == 0
                                 && cstrmid(
                                     lParse,
-                                    *((lParse.Nodes[this_node_idx]).value.data.strptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                         .offset(row as isize),
                                     len,
                                     str,
@@ -13777,11 +14363,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 undef as c_char;
                         }
                     }
-                    STRPOS_FCT => {
-                        let const1: c_int =
-                            c_int::from((lParse.Nodes[theParams[0]]).operation == CONST_OP);
-                        let const2: c_int =
-                            c_int::from((lParse.Nodes[theParams[1]]).operation == CONST_OP);
+                    funcOp::STRPOS_FCT => {
+                        let const1: c_int = c_int::from((lParse.Nodes[theParams[0]]).is_const());
+                        let const2: c_int = c_int::from((lParse.Nodes[theParams[1]]).is_const());
                         loop {
                             let fresh197 = row;
                             row -= 1;
@@ -13792,9 +14376,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut str2: *mut c_char = ptr::null_mut();
                             let mut undef_0: c_int = 0;
                             if const1 != 0 {
-                                str1 = ((lParse.Nodes[theParams[0]]).value.data.astr).as_mut_ptr();
+                                str1 = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
                             } else {
-                                str1 = *((lParse.Nodes[theParams[0]]).value.data.strptr)
+                                str1 = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
@@ -13803,9 +14387,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if const2 != 0 {
-                                str2 = ((lParse.Nodes[theParams[1]]).value.data.astr).as_mut_ptr();
+                                str2 = (lParse.Nodes[theParams[1]]).value.data.text_mut_ptr();
                             } else {
-                                str2 = *((lParse.Nodes[theParams[1]]).value.data.strptr)
+                                str2 = *((lParse.Nodes[theParams[1]]).value.data.str_buf())
                                     .offset(row as isize);
                                 if *((lParse.Nodes[theParams[1]]).value.undef).offset(row as isize)
                                     != 0
@@ -13813,16 +14397,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     undef_0 = 1;
                                 }
                             }
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) = 0;
                             if undef_0 == 0 {
                                 let res_0: *mut c_char = strstr(str1, str2);
                                 if res_0.is_null() {
                                     undef_0 = 1;
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(row as isize) = 0;
                                 } else {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                         .offset(row as isize) =
                                         res_0.offset_from(str1) as c_long + 1;
                                 }
@@ -13843,9 +14427,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             if fresh198 == 0 {
                 break;
             }
-            if (lParse.Nodes[theParams[i as usize]]).operation > 0 {
+            if (lParse.Nodes[theParams[i as usize]]).is_computed() {
                 /*  Currently only numeric params allowed  */
-                free((lParse.Nodes[theParams[i as usize]]).value.data.ptr);
+                free((lParse.Nodes[theParams[i as usize]]).value.data.raw());
             }
         }
     }
@@ -13877,20 +14461,19 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             i -= 1;
 
             theDims[i as usize] = (lParse.Nodes[this_node_idx]).SubNodes[(i + 1) as usize] as usize;
-            isConst[i as usize] =
-                c_int::from((lParse.Nodes[theDims[i as usize]]).operation == CONST_OP);
+            isConst[i as usize] = c_int::from((lParse.Nodes[theDims[i as usize]]).is_const());
             if isConst[i as usize] != 0 {
-                dimVals[i as usize] = (lParse.Nodes[theDims[i as usize]]).value.data.lng;
+                dimVals[i as usize] = (lParse.Nodes[theDims[i as usize]]).value.data.lng();
             } else {
                 allConst = 0;
             }
         }
 
-        if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::DOUBLE as c_int {
+        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
             dsize = ::core::mem::size_of::<c_double>() as c_ulong as c_long;
-        } else if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::LONG as c_int {
+        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
             dsize = ::core::mem::size_of::<c_long>() as c_ulong as c_long;
-        } else if (lParse.Nodes[this_node_idx]).ntype == fits_parser_yytokentype::BOOLEAN as c_int {
+        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
             dsize = ::core::mem::size_of::<c_char>() as c_ulong as c_long;
         } else {
             dsize = 0;
@@ -13924,47 +14507,41 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 if i < 0 {
                     row = 0;
                     while row < lParse.nRows {
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            != fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(elem as isize);
                             /* Dummy - BITSTRs do not have undefs */
                         }
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.dblptr).offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[theVar]).value.data.dbl_buf())
+                                    .offset(elem as isize);
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.lngptr).offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[theVar]).value.data.lng_buf())
+                                    .offset(elem as isize);
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.logptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.log_buf())
+                                    .offset(elem as isize);
                         } else {
                             /* XXX Note, the below expression uses knowledge of
                             the layout of the string format, namely (nelem+1)
                             characters per string, followed by (nelem+1)
                             "undef" values. */
 
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
-                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.strptr).offset(0))
-                                .offset((elem + row) as isize);
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.str_buf())
+                                .offset(0))
+                            .offset((elem + row) as isize);
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(1) = 0; /* Null terminate */
                         }
@@ -13973,8 +14550,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -13985,12 +14561,9 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                    (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
-                } else if (lParse.Nodes[this_node_idx]).ntype
-                    == fits_parser_yytokentype::BITSTR as c_int
-                    || (lParse.Nodes[this_node_idx]).ntype
-                        == fits_parser_yytokentype::STRING as c_int
+                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+                    || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                 {
                     elem = (lParse.Nodes[this_node_idx]).value.nelem * (dimVals[0] - 1);
                     row = 0;
@@ -14000,7 +14573,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
                         }
                         memcpy(
-                            (*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0))
+                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0))
                                 .offset(
                                     (row as c_ulong)
                                         .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
@@ -14010,7 +14583,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                         ) as isize,
                                 )
                                 .cast::<c_void>(),
-                            (*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).offset(
+                            (*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).offset(
                                 (elem as c_ulong)
                                     .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
                                     as isize,
@@ -14020,7 +14593,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 .try_into()
                                 .unwrap(),
                         );
-                        *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                        *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                             .offset(row as isize))
                         .offset((lParse.Nodes[this_node_idx]).value.nelem as isize) = 0; /* Null terminate */
                         elem += (lParse.Nodes[theVar]).value.nelem + 1;
@@ -14045,7 +14618,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[this_node_idx])
                                 .value
                                 .data
-                                .ptr
+                                .raw()
                                 .cast::<c_char>()
                                 .offset(
                                     (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -14055,7 +14628,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             (lParse.Nodes[theVar])
                                 .value
                                 .data
-                                .ptr
+                                .raw()
                                 .cast::<c_char>()
                                 .offset((elem * dsize) as isize)
                                 as *const c_void,
@@ -14082,12 +14655,11 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Null encountered as vector index"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                                (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                                (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                                 break;
                             } else {
                                 dimVals[i as usize] =
-                                    *((lParse.Nodes[theDims[i as usize]]).value.data.lngptr)
+                                    *((lParse.Nodes[theDims[i as usize]]).value.data.lng_buf())
                                         .offset(row as isize);
                             }
                         }
@@ -14115,53 +14687,46 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     if i < 0 {
                         elem += row * (lParse.Nodes[theVar]).value.nelem;
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::STRING as c_int
-                        {
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            != fits_parser_yytokentype::BITSTR as c_int
-                        {
+                        } else if (lParse.Nodes[this_node_idx]).ntype != ValueSort::Bits {
                             /* Dummy - BITSTRs do not have undefs */
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                 *((lParse.Nodes[theVar]).value.undef).offset(elem as isize);
                         }
-                        if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::DOUBLE as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.dblptr)
+                        if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Double {
+                            *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.dblptr).offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::LONG as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                                *((lParse.Nodes[theVar]).value.data.dbl_buf())
+                                    .offset(elem as isize);
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.lngptr).offset(elem as isize);
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BOOLEAN as c_int
-                        {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                                *((lParse.Nodes[theVar]).value.data.lng_buf())
+                                    .offset(elem as isize);
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Boolean {
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(row as isize) =
-                                *((lParse.Nodes[theVar]).value.data.logptr).offset(elem as isize);
+                                *((lParse.Nodes[theVar]).value.data.log_buf())
+                                    .offset(elem as isize);
                         } else {
                             /* XXX Note, the below expression uses knowledge of
                             the layout of the string format, namely (nelem+1)
                             characters per string, followed by (nelem+1)
                             "undef" values. */
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
-                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.strptr).offset(0))
-                                .offset((elem + row) as isize);
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            .offset(0) = *(*((lParse.Nodes[theVar]).value.data.str_buf())
+                                .offset(0))
+                            .offset((elem + row) as isize);
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset(1) = 0; /* Null terminate */
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                     }
                     row += 1;
                 }
@@ -14172,24 +14737,20 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Index cannot be a constant */
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
-                        free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                        (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
+                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
                         break;
                     } else {
                         dimVals[0] =
-                            *((lParse.Nodes[theDims[0]]).value.data.lngptr).offset(row as isize);
+                            *((lParse.Nodes[theDims[0]]).value.data.lng_buf()).offset(row as isize);
                         if dimVals[0] < 1
                             || dimVals[0]
                                 > (lParse.Nodes[theVar]).value.naxes
                                     [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                            free((lParse.Nodes[this_node_idx]).value.data.ptr);
-                            (lParse.Nodes[this_node_idx]).value.data.ptr = ptr::null_mut();
-                        } else if (lParse.Nodes[this_node_idx]).ntype
-                            == fits_parser_yytokentype::BITSTR as c_int
-                            || (lParse.Nodes[this_node_idx]).ntype
-                                == fits_parser_yytokentype::STRING as c_int
+                            (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                        } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
+                            || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                         {
                             elem = (lParse.Nodes[this_node_idx]).value.nelem * (dimVals[0] - 1);
                             elem += row * ((lParse.Nodes[theVar]).value.nelem + 1);
@@ -14198,7 +14759,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     *((lParse.Nodes[theVar]).value.undef).offset(row as isize);
                             }
                             memcpy(
-                                (*((lParse.Nodes[this_node_idx]).value.data.strptr).offset(0))
+                                (*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0))
                                     .offset(
                                         (row as c_ulong)
                                             .wrapping_mul(
@@ -14210,7 +14771,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                             ) as isize,
                                     )
                                     .cast::<c_void>(),
-                                (*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).offset(
+                                (*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).offset(
                                     (elem as c_ulong)
                                         .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
                                         as isize,
@@ -14220,7 +14781,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     .try_into()
                                     .unwrap(),
                             );
-                            *(*((lParse.Nodes[this_node_idx]).value.data.strptr)
+                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
                                 .offset(row as isize))
                             .offset((lParse.Nodes[this_node_idx]).value.nelem as isize) = 0; /* Null terminate */
                         } else {
@@ -14243,7 +14804,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[this_node_idx])
                                     .value
                                     .data
-                                    .ptr
+                                    .raw()
                                     .cast::<c_char>()
                                     .offset(
                                         (row * dsize * (lParse.Nodes[this_node_idx]).value.nelem)
@@ -14253,7 +14814,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                 (lParse.Nodes[theVar])
                                     .value
                                     .data
-                                    .ptr
+                                    .raw()
                                     .cast::<c_char>()
                                     .offset((elem * dsize) as isize)
                                     as *const c_void,
@@ -14267,19 +14828,19 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
         }
-        if (lParse.Nodes[theVar]).operation > 0 {
-            if (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::STRING as c_int
-                || (lParse.Nodes[theVar]).ntype == fits_parser_yytokentype::BITSTR as c_int
+        if (lParse.Nodes[theVar]).is_computed() {
+            if (lParse.Nodes[theVar]).ntype == ValueSort::String
+                || (lParse.Nodes[theVar]).ntype == ValueSort::Bits
             {
-                free((*((lParse.Nodes[theVar]).value.data.strptr).offset(0)).cast::<c_void>());
+                free((*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).cast::<c_void>());
             } else {
-                free((lParse.Nodes[theVar]).value.data.ptr);
+                free((lParse.Nodes[theVar]).value.data.raw());
             }
         }
         i = 0;
         while i < nDims {
-            if (lParse.Nodes[theDims[i as usize]]).operation > 0 {
-                free((lParse.Nodes[theDims[i as usize]]).value.data.ptr);
+            if (lParse.Nodes[theDims[i as usize]]).is_computed() {
+                free((lParse.Nodes[theDims[i as usize]]).value.data.raw());
             }
             i += 1;
         }
@@ -14298,18 +14859,18 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
         let mut gti: c_long = 0;
         let mut ordered: c_int = 0;
         let dorow: c_int =
-            c_int::from((lParse.Nodes[this_node_idx]).operation == GTIFIND_FCT as c_int);
+            c_int::from((lParse.Nodes[this_node_idx]).operation == funcOp::GTIFIND_FCT as c_int);
 
         let theTimes = (lParse.Nodes[this_node_idx]).SubNodes[0];
         let theExpr = (lParse.Nodes[this_node_idx]).SubNodes[1];
 
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
-        start = (lParse.Nodes[theTimes]).value.data.dblptr;
-        stop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize);
-        ordered = (lParse.Nodes[theTimes]).ntype;
-        if (lParse.Nodes[theExpr]).operation == CONST_OP {
+        start = (lParse.Nodes[theTimes]).value.data.dbl_buf();
+        stop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize);
+        ordered = c_int::from((lParse.Nodes[theTimes]).gtiOrdered);
+        if (lParse.Nodes[theExpr]).is_const() {
             gti = Search_GTI(
-                (lParse.Nodes[theExpr]).value.data.dbl,
+                (lParse.Nodes[theExpr]).value.data.dbl(),
                 nGTI,
                 start,
                 stop,
@@ -14317,15 +14878,16 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                 core::ptr::null_mut::<c_long>(),
             );
             if dorow != 0 {
-                (lParse.Nodes[this_node_idx]).value.data.lng =
-                    if gti >= 0 { gti + 1 } else { -(1) as c_long };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    NodeValue::Long(if gti >= 0 { gti + 1 } else { -(1) as c_long });
             } else {
-                (lParse.Nodes[this_node_idx]).value.data.log = if gti >= 0 { 1 } else { 0 };
+                (lParse.Nodes[this_node_idx]).value.data =
+                    NodeValue::Logical(if gti >= 0 { 1 } else { 0 });
             }
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
-            times = (lParse.Nodes[theExpr]).value.data.dblptr;
+            times = (lParse.Nodes[theExpr]).value.data.dbl_buf();
             if lParse.status == 0 {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
@@ -14357,13 +14919,13 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                             );
                         }
                         if dorow != 0 {
-                            *((lParse.Nodes[this_node_idx]).value.data.lngptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
                                 if gti >= 0 { gti + 1 } else { -(1) as c_long };
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
                                 (if gti >= 0 { 0 } else { 1 }) as c_char;
                         } else {
-                            *((lParse.Nodes[this_node_idx]).value.data.logptr)
+                            *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(elem as isize) = if gti >= 0 { 1 } else { 0 };
                         }
                     }
@@ -14386,15 +14948,15 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh205 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            0;
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) = 0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     }
                 }
             }
         }
-        if (lParse.Nodes[theExpr]).operation > 0 {
-            free((lParse.Nodes[theExpr]).value.data.ptr);
+        if (lParse.Nodes[theExpr]).is_computed() {
+            free((lParse.Nodes[theExpr]).value.data.raw());
         }
     }
 }
@@ -14419,36 +14981,34 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
         let theStart = (lParse.Nodes[this_node_idx]).SubNodes[1]; /* User stop time */
 
         nGTI = (lParse.Nodes[theTimes]).value.nelem;
-        gtiStart = (lParse.Nodes[theTimes]).value.data.dblptr; /* GTI start */
-        gtiStop = ((lParse.Nodes[theTimes]).value.data.dblptr).offset(nGTI as isize); /* GTI stop */
-        if (lParse.Nodes[theStart]).operation == CONST_OP
-            && (lParse.Nodes[theStop]).operation == CONST_OP
-        {
-            (lParse.Nodes[this_node_idx]).value.data.dbl = GTI_Over(
-                (lParse.Nodes[theStart]).value.data.dbl,
-                (lParse.Nodes[theStop]).value.data.dbl,
+        gtiStart = (lParse.Nodes[theTimes]).value.data.dbl_buf(); /* GTI start */
+        gtiStop = ((lParse.Nodes[theTimes]).value.data.dbl_buf()).offset(nGTI as isize); /* GTI stop */
+        if (lParse.Nodes[theStart]).is_const() && (lParse.Nodes[theStop]).is_const() {
+            (lParse.Nodes[this_node_idx]).value.data = NodeValue::Double(GTI_Over(
+                (lParse.Nodes[theStart]).value.data.dbl(),
+                (lParse.Nodes[theStop]).value.data.dbl(),
                 nGTI,
                 gtiStart,
                 gtiStop,
                 &mut gti,
-            );
+            ));
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             let mut undefStart: c_char = 0;
             let mut undefStop: c_char = 0; /* Input values are undef? */
             let mut uStart: c_double = 0.0;
             let mut uStop: c_double = 0.0; /* User start/stop values */
-            if (lParse.Nodes[theStart]).operation == CONST_OP {
-                uStart = (lParse.Nodes[theStart]).value.data.dbl;
+            if (lParse.Nodes[theStart]).is_const() {
+                uStart = (lParse.Nodes[theStart]).value.data.dbl();
             }
-            if (lParse.Nodes[theStop]).operation == CONST_OP {
-                uStop = (lParse.Nodes[theStop]).value.data.dbl;
+            if (lParse.Nodes[theStop]).is_const() {
+                uStop = (lParse.Nodes[theStop]).value.data.dbl();
             }
 
             Allocate_Ptrs(lParse, this_node_idx);
 
-            evtStart = (lParse.Nodes[theStart]).value.data.dblptr;
-            evtStop = (lParse.Nodes[theStop]).value.data.dblptr;
+            evtStart = (lParse.Nodes[theStart]).value.data.dbl_buf();
+            evtStop = (lParse.Nodes[theStop]).value.data.dbl_buf();
             if lParse.status == 0 {
                 elem = lParse.nRows * (lParse.Nodes[this_node_idx]).value.nelem;
                 if nGTI != 0 {
@@ -14460,12 +15020,12 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh206 == 0 {
                             break;
                         }
-                        if (lParse.Nodes[theStart]).operation != CONST_OP {
+                        if !(lParse.Nodes[theStart]).is_const() {
                             undefStart =
                                 *((lParse.Nodes[theStart]).value.undef).offset(elem as isize);
                             uStart = *evtStart.offset(elem as isize);
                         }
-                        if (lParse.Nodes[theStop]).operation != CONST_OP {
+                        if !(lParse.Nodes[theStop]).is_const() {
                             undefStop =
                                 *((lParse.Nodes[theStop]).value.undef).offset(elem as isize);
                             uStop = *evtStop.offset(elem as isize);
@@ -14496,8 +15056,8 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         }
 
                         /* This works because at least one of the values is not const */
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            toverlap;
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = toverlap;
                     }
                 } else {
                     /* nGTI == 0; there is no overlap so set all values to 0.0 */
@@ -14507,18 +15067,18 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                         if fresh208 == 0 {
                             break;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.dblptr).offset(elem as isize) =
-                            0.0;
+                        *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
+                            .offset(elem as isize) = 0.0;
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) = 0;
                     }
                 }
             }
         }
-        if (lParse.Nodes[theStart]).operation > 0 {
-            free((lParse.Nodes[theStart]).value.data.ptr);
+        if (lParse.Nodes[theStart]).is_computed() {
+            free((lParse.Nodes[theStart]).value.data.raw());
         }
-        if (lParse.Nodes[theStop]).operation > 0 {
-            free((lParse.Nodes[theStop]).value.data.ptr);
+        if (lParse.Nodes[theStop]).is_computed() {
+            free((lParse.Nodes[theStop]).value.data.raw());
         }
     }
 }
@@ -14708,32 +15268,32 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
         let mut rows: c_long = 0;
 
         let theRegion = (lParse.Nodes[this_node_idx]).SubNodes[0];
+        /* A handle on the shared region. Cloning the Rc is what keeps this
+        readable while the loops below hold &mut on lParse.Nodes -- the region
+        is not in the arena, so borrowing it does not conflict. */
+        let rgn = Rc::clone(&lParse.regions[(lParse.Nodes[theRegion]).value.data.region()]);
         let theX = (lParse.Nodes[this_node_idx]).SubNodes[1];
         let theY = (lParse.Nodes[this_node_idx]).SubNodes[2];
 
-        Xvector = c_int::from((lParse.Nodes[theX]).operation != CONST_OP);
+        Xvector = c_int::from(!(lParse.Nodes[theX]).is_const());
         if Xvector != 0 {
             Xvector = (lParse.Nodes[theX]).value.nelem as c_int;
         } else {
-            Xval = (lParse.Nodes[theX]).value.data.dbl;
+            Xval = (lParse.Nodes[theX]).value.data.dbl();
         }
-        Yvector = c_int::from((lParse.Nodes[theY]).operation != CONST_OP);
+        Yvector = c_int::from(!(lParse.Nodes[theY]).is_const());
         if Yvector != 0 {
             Yvector = (lParse.Nodes[theY]).value.nelem as c_int;
         } else {
-            Yval = (lParse.Nodes[theY]).value.data.dbl;
+            Yval = (lParse.Nodes[theY]).value.data.dbl();
         }
         if Xvector == 0 && Yvector == 0 {
-            (lParse.Nodes[this_node_idx]).value.data.log = if fits_in_region(
-                Xval,
-                Yval,
-                &mut *(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
-            ) != 0
-            {
-                1
-            } else {
-                0
-            };
+            (lParse.Nodes[this_node_idx]).value.data =
+                NodeValue::Logical(if fits_in_region(Xval, Yval, &rgn) != 0 {
+                    1
+                } else {
+                    0
+                });
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
             Allocate_Ptrs(lParse, this_node_idx);
@@ -14755,17 +15315,21 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         elem -= 1;
                         if Xvector > 1 {
-                            Xval = *((lParse.Nodes[theX]).value.data.dblptr).offset(elem as isize);
+                            Xval =
+                                *((lParse.Nodes[theX]).value.data.dbl_buf()).offset(elem as isize);
                             Xnull = *((lParse.Nodes[theX]).value.undef).offset(elem as isize);
                         } else if Xvector != 0 {
-                            Xval = *((lParse.Nodes[theX]).value.data.dblptr).offset(rows as isize);
+                            Xval =
+                                *((lParse.Nodes[theX]).value.data.dbl_buf()).offset(rows as isize);
                             Xnull = *((lParse.Nodes[theX]).value.undef).offset(rows as isize);
                         }
                         if Yvector > 1 {
-                            Yval = *((lParse.Nodes[theY]).value.data.dblptr).offset(elem as isize);
+                            Yval =
+                                *((lParse.Nodes[theY]).value.data.dbl_buf()).offset(elem as isize);
                             Ynull = *((lParse.Nodes[theY]).value.undef).offset(elem as isize);
                         } else if Yvector != 0 {
-                            Yval = *((lParse.Nodes[theY]).value.data.dblptr).offset(rows as isize);
+                            Yval =
+                                *((lParse.Nodes[theY]).value.data.dbl_buf()).offset(rows as isize);
                             Ynull = *((lParse.Nodes[theY]).value.undef).offset(rows as isize);
                         }
                         *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) =
@@ -14777,27 +15341,22 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(elem as isize) != 0 {
                             continue;
                         }
-                        *((lParse.Nodes[this_node_idx]).value.data.logptr).offset(elem as isize) =
-                            if fits_in_region(
-                                Xval,
-                                Yval,
-                                &mut *(lParse.Nodes[theRegion]).value.data.ptr.cast::<SAORegion>(),
-                            ) != 0
-                            {
-                                1
-                            } else {
-                                0
-                            };
+                        *((lParse.Nodes[this_node_idx]).value.data.log_buf())
+                            .offset(elem as isize) = if fits_in_region(Xval, Yval, &rgn) != 0 {
+                            1
+                        } else {
+                            0
+                        };
                     }
                     nelem = (lParse.Nodes[this_node_idx]).value.nelem;
                 }
             }
         }
-        if (lParse.Nodes[theX]).operation > 0 {
-            free((lParse.Nodes[theX]).value.data.ptr);
+        if (lParse.Nodes[theX]).is_computed() {
+            free((lParse.Nodes[theX]).value.data.raw());
         }
-        if (lParse.Nodes[theY]).operation > 0 {
-            free((lParse.Nodes[theY]).value.data.ptr);
+        if (lParse.Nodes[theY]).is_computed() {
+            free((lParse.Nodes[theY]).value.data.raw());
         }
     }
 }
@@ -14900,7 +15459,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                 let (this_node, that_node) =
                     get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_node_idx);
 
-                if that_node.operation == CONST_OP {
+                if that_node.is_const() {
                     idx = lParse.nRows * (this_node).value.nelem + offset;
                     loop {
                         idx -= (this_node).value.nelem;
@@ -14908,18 +15467,18 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         *((this_node).value.undef).offset(idx as isize) = 0;
-                        match (this_node).ntype.into() {
-                            fits_parser_yytokentype::BOOLEAN => {
-                                *((this_node).value.data.logptr).offset(idx as isize) =
-                                    that_node.value.data.log;
+                        match (this_node).ntype {
+                            ValueSort::Boolean => {
+                                *((this_node).value.data.log_buf()).offset(idx as isize) =
+                                    that_node.value.data.log();
                             }
-                            fits_parser_yytokentype::LONG => {
-                                *((this_node).value.data.lngptr).offset(idx as isize) =
-                                    that_node.value.data.lng;
+                            ValueSort::Long => {
+                                *((this_node).value.data.lng_buf()).offset(idx as isize) =
+                                    that_node.value.data.lng();
                             }
-                            fits_parser_yytokentype::DOUBLE => {
-                                *((this_node).value.data.dblptr).offset(idx as isize) =
-                                    that_node.value.data.dbl;
+                            ValueSort::Double => {
+                                *((this_node).value.data.dbl_buf()).offset(idx as isize) =
+                                    that_node.value.data.dbl();
                             }
                             _ => {}
                         }
@@ -14944,21 +15503,21 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                             idx -= 1;
                             *((this_node).value.undef).offset((jdx + elem) as isize) =
                                 *(that_node.value.undef).offset(idx as isize);
-                            match (this_node).ntype.into() {
-                                fits_parser_yytokentype::BOOLEAN => {
-                                    *((this_node).value.data.logptr)
+                            match (this_node).ntype {
+                                ValueSort::Boolean => {
+                                    *((this_node).value.data.log_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.logptr).offset(idx as isize);
+                                        *(that_node.value.data.log_buf()).offset(idx as isize);
                                 }
-                                fits_parser_yytokentype::LONG => {
-                                    *((this_node).value.data.lngptr)
+                                ValueSort::Long => {
+                                    *((this_node).value.data.lng_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.lngptr).offset(idx as isize);
+                                        *(that_node.value.data.lng_buf()).offset(idx as isize);
                                 }
-                                fits_parser_yytokentype::DOUBLE => {
-                                    *((this_node).value.data.dblptr)
+                                ValueSort::Double => {
+                                    *((this_node).value.data.dbl_buf())
                                         .offset((jdx + elem) as isize) =
-                                        *(that_node.value.data.dblptr).offset(idx as isize);
+                                        *(that_node.value.data.dbl_buf()).offset(idx as isize);
                                 }
                                 _ => {}
                             }
@@ -14981,7 +15540,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                         [(lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize])
                         .value
                         .data
-                        .ptr,
+                        .raw(),
                 );
             }
             node += 1;
@@ -15007,7 +15566,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
             get_this_that_nodes(&mut lParse.Nodes, this_node_idx, that_idx);
 
         if lParse.status == 0 {
-            if (that_node).operation == CONST_OP {
+            if (that_node).is_const() {
                 idx = lParse.nRows * this_node.value.nelem + offset;
                 loop {
                     let fresh214 = idx;
@@ -15016,18 +15575,18 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                         break;
                     }
                     *(this_node.value.undef).offset(idx as isize) = 0;
-                    match this_node.ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
-                            *(this_node.value.data.logptr).offset(idx as isize) =
-                                (that_node).value.data.log;
+                    match this_node.ntype {
+                        ValueSort::Boolean => {
+                            *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                (that_node).value.data.log();
                         }
-                        fits_parser_yytokentype::LONG => {
-                            *(this_node.value.data.lngptr).offset(idx as isize) =
-                                (that_node).value.data.lng;
+                        ValueSort::Long => {
+                            *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                (that_node).value.data.lng();
                         }
-                        fits_parser_yytokentype::DOUBLE => {
-                            *(this_node.value.data.dblptr).offset(idx as isize) =
-                                (that_node).value.data.dbl;
+                        ValueSort::Double => {
+                            *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                (that_node).value.data.dbl();
                         }
                         _ => {}
                     }
@@ -15045,18 +15604,18 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                     *(this_node.value.undef).offset(idx as isize) =
                         *((that_node).value.undef).offset(idx as isize);
-                    match this_node.ntype.into() {
-                        fits_parser_yytokentype::BOOLEAN => {
-                            *(this_node.value.data.logptr).offset(idx as isize) =
-                                *((that_node).value.data.logptr).offset(idx as isize);
+                    match this_node.ntype {
+                        ValueSort::Boolean => {
+                            *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                *((that_node).value.data.log_buf()).offset(idx as isize);
                         }
-                        fits_parser_yytokentype::LONG => {
-                            *(this_node.value.data.lngptr).offset(idx as isize) =
-                                *((that_node).value.data.lngptr).offset(idx as isize);
+                        ValueSort::Long => {
+                            *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                *((that_node).value.data.lng_buf()).offset(idx as isize);
                         }
-                        fits_parser_yytokentype::DOUBLE => {
-                            *(this_node.value.data.dblptr).offset(idx as isize) =
-                                *((that_node).value.data.dblptr).offset(idx as isize);
+                        ValueSort::Double => {
+                            *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                *((that_node).value.data.dbl_buf()).offset(idx as isize);
                         }
                         _ => {}
                     }
@@ -15080,18 +15639,18 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                         *(this_node.value.undef).offset(idx as isize) =
                             *((that_node).value.undef).offset(row as isize);
-                        match this_node.ntype.into() {
-                            fits_parser_yytokentype::BOOLEAN => {
-                                *(this_node.value.data.logptr).offset(idx as isize) =
-                                    *((that_node).value.data.logptr).offset(row as isize);
+                        match this_node.ntype {
+                            ValueSort::Boolean => {
+                                *(this_node.value.data.log_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.log_buf()).offset(row as isize);
                             }
-                            fits_parser_yytokentype::LONG => {
-                                *(this_node.value.data.lngptr).offset(idx as isize) =
-                                    *((that_node).value.data.lngptr).offset(row as isize);
+                            ValueSort::Long => {
+                                *(this_node.value.data.lng_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.lng_buf()).offset(row as isize);
                             }
-                            fits_parser_yytokentype::DOUBLE => {
-                                *(this_node.value.data.dblptr).offset(idx as isize) =
-                                    *((that_node).value.data.dblptr).offset(row as isize);
+                            ValueSort::Double => {
+                                *(this_node.value.data.dbl_buf()).offset(idx as isize) =
+                                    *((that_node).value.data.dbl_buf()).offset(row as isize);
                             }
                             _ => {}
                         }
@@ -15100,12 +15659,12 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
                 }
             }
 
-            if ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]]).operation > 0 {
+            if ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]]).is_computed() {
                 free(
                     ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]])
                         .value
                         .data
-                        .ptr,
+                        .raw(),
                 );
             }
         }
@@ -15693,4 +16252,120 @@ fn fits_parser_yyerror(lParse: &mut ParseData, s: &[c_char]) {
     msg[79] = 0;
 
     ffpmsg_slice(&msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the algorithm is specified to return: the lower of the two middle
+    /// elements of the sorted array.
+    fn expected_lng(v: &[c_long]) -> c_long {
+        let mut sorted = v.to_vec();
+        sorted.sort_unstable();
+        sorted[(sorted.len() - 1) / 2]
+    }
+
+    fn expected_dbl(v: &[f64]) -> f64 {
+        let mut sorted = v.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted[(sorted.len() - 1) / 2]
+    }
+
+    #[test]
+    fn qselect_median_matches_a_full_sort() {
+        let cases: &[&[c_long]] = &[
+            &[1],
+            &[2, 1],
+            &[1, 2],
+            &[3, 1, 2],
+            &[1, 2, 3, 4],
+            &[4, 3, 2, 1],
+            &[5, 1, 4, 2, 3],
+            &[1, 1, 1, 1, 1],
+            &[7, 7, 3, 3, 9, 9],
+            &[0, -1, -2, -3, 5, 4, 3],
+            &[c_long::MIN, 0, c_long::MAX],
+            &[10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0],
+        ];
+        for case in cases {
+            let mut v = case.to_vec();
+            assert_eq!(
+                qselect_median(&mut v),
+                expected_lng(case),
+                "input: {case:?}"
+            );
+            /* the input is permuted, never lost */
+            let (mut a, mut b) = (v.clone(), case.to_vec());
+            a.sort_unstable();
+            b.sort_unstable();
+            assert_eq!(a, b, "input: {case:?}");
+        }
+    }
+
+    #[test]
+    fn qselect_median_doubles() {
+        let cases: &[&[f64]] = &[
+            &[1.5],
+            &[2.5, -1.5],
+            &[3.0, 1.0, 2.0],
+            &[1.0, 2.0, 3.0, 4.0],
+            &[0.5, 0.25, 0.75, 0.125, 1.0],
+            &[-1.0, -2.0, -3.0],
+        ];
+        for case in cases {
+            let mut v = case.to_vec();
+            assert_eq!(
+                qselect_median(&mut v),
+                expected_dbl(case),
+                "input: {case:?}"
+            );
+        }
+    }
+
+    /// Exhaustive over every permutation of 1..=n for small n: quickselect is
+    /// exactly the kind of code where one ordering out of many misbehaves.
+    #[test]
+    fn qselect_median_over_all_permutations() {
+        fn permute(v: &mut Vec<c_long>, k: usize, out: &mut Vec<Vec<c_long>>) {
+            if k == v.len() {
+                out.push(v.clone());
+                return;
+            }
+            for i in k..v.len() {
+                v.swap(k, i);
+                permute(v, k + 1, out);
+                v.swap(k, i);
+            }
+        }
+        for n in 1..=7usize {
+            let mut base: Vec<c_long> = (1..=n as c_long).collect();
+            let want = base[(n - 1) / 2];
+            let mut perms = Vec::new();
+            permute(&mut base, 0, &mut perms);
+            for p in perms {
+                let mut v = p.clone();
+                assert_eq!(qselect_median(&mut v), want, "permutation: {p:?}");
+            }
+        }
+    }
+
+    /// Duplicates stress the partition loop, which advances past equal keys.
+    #[test]
+    fn qselect_median_with_many_duplicates() {
+        for n in 1..=40usize {
+            for m in 1..=4 as c_long {
+                let v: Vec<c_long> = (0..n).map(|i| (i as c_long) % m).collect();
+                let mut a = v.clone();
+                assert_eq!(qselect_median(&mut a), expected_lng(&v), "n={n} m={m}");
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one element")]
+    fn qselect_median_rejects_an_empty_slice() {
+        let mut empty: [c_long; 0] = [];
+        qselect_median(&mut empty);
+    }
 }

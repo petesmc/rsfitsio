@@ -174,7 +174,7 @@ impl<'a> LZW_Compress<'a> {
 /// Uncompress the file into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
-pub(crate) unsafe fn zuncompress2mem(
+pub(crate) fn zuncompress2mem(
     filename: &[c_char],   /* name of input file                 */
     indiskfile: *mut FILE, /* I - file pointer                        */
     buffptr: *mut *mut u8, /* IO - memory pointer                     */
@@ -545,21 +545,19 @@ mod tests {
         let mut status: c_int = 0;
 
         // Call the zuncompress2mem function
-        let result = unsafe {
-            zuncompress2mem(
-                cast_slice(
-                    CString::new(compressed_file_path)
-                        .unwrap()
-                        .as_bytes_with_nul(),
-                ),
-                compressed_file_ptr,
-                &mut decompressed_buffer.as_mut_ptr(),
-                &mut buffer_size,
-                Some(realloc),
-                &mut decompressed_size,
-                &mut status,
-            )
-        };
+        let result = zuncompress2mem(
+            cast_slice(
+                CString::new(compressed_file_path)
+                    .unwrap()
+                    .as_bytes_with_nul(),
+            ),
+            compressed_file_ptr,
+            &mut decompressed_buffer.as_mut_ptr(),
+            &mut buffer_size,
+            Some(realloc),
+            &mut decompressed_size,
+            &mut status,
+        );
 
         // Ensure the decompression was successful
         assert_eq!(result, 0, "Decompression failed with status: {status}");

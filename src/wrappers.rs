@@ -344,6 +344,13 @@ pub(crate) fn toupper(c: c_char) -> c_char {
     c
 }
 
+pub(crate) fn tolower(c: c_char) -> c_char {
+    if isupper(c) {
+        return c | 0x20;
+    }
+    c
+}
+
 pub(crate) fn islower(c: c_char) -> bool {
     (c >= 97) && (c <= 122)
 }

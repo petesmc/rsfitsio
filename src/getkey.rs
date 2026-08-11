@@ -12,7 +12,7 @@ use core::{cmp, ptr};
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
 use crate::fitscore::ALLOCATIONS;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
-use crate::imcompress::fits_img_decompress_header_safer;
+use crate::imcompress::fits_img_decompress_header_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -873,7 +873,11 @@ pub fn ffgcrd_safe(
     nkeys = n_k as isize;
     nextkey = nk as isize;
 
-    namelenminus1 = cmp::max(namelen - 1, 1) as c_int;
+    /* The C computes maxvalue(namelen - 1, 1) in signed int, so an empty name
+    gives max(-1, 1) = 1. `namelen` is unsigned here, so subtract saturating —
+    plain `namelen - 1` panics on an empty keyword name, which a filter
+    expression can reach through the `$…$` variable form. */
+    namelenminus1 = namelen.saturating_sub(1).max(1) as c_int;
     ntodo = nkeys + 1 - nextkey; /* first, read from next keyword to end */
 
     let mut jj: usize = 0;
@@ -6078,7 +6082,7 @@ pub unsafe extern "C" fn ffcnvthdr2str(
             v_exclist.push(exclist_item);
         }
 
-        ffcnvthdr2str_safer(fptr, exclude_comm, &v_exclist, nexc, header, nkeys, status)
+        ffcnvthdr2str_safe(fptr, exclude_comm, &v_exclist, nexc, header, nkeys, status)
     }
 }
 
@@ -6087,7 +6091,7 @@ pub unsafe extern "C" fn ffcnvthdr2str(
 /// (stored in a binary table) then it will first convert that header back
 /// to that of a normal uncompressed FITS image before concatenating the header
 /// keyword records. (safe version)
-pub fn ffcnvthdr2str_safer(
+pub fn ffcnvthdr2str_safe(
     fptr: &mut fitsfile,      /* I - FITS file pointer                    */
     exclude_comm: c_int,      /* I - if TRUE, exclude commentary keywords */
     exclist: &[&[c_char]],    /* I - list of excluded keyword names       */
@@ -6104,31 +6108,29 @@ pub fn ffcnvthdr2str_safer(
         /* this is a tile compressed image, so need to make an uncompressed */
         /* copy of the image header in memory before concatenating the keywords */
 
-        unsafe {
-            let mut tempfptr = None;
+        let mut tempfptr = None;
 
-            if fits_create_file(&mut tempfptr, cs!(c"mem://"), status) > 0 {
-                return *status;
-            }
-
-            let mut tempfptr = tempfptr.unwrap();
-
-            if fits_img_decompress_header_safer(fptr, &mut tempfptr, status) > 0 {
-                fits_delete_file(&mut Some(tempfptr), status);
-                return *status;
-            }
-
-            ffhdr2str_safe(
-                &mut tempfptr,
-                exclude_comm,
-                exclist,
-                nexc,
-                header,
-                nkeys,
-                status,
-            );
-            fits_close_file(tempfptr, status);
+        if fits_create_file(&mut tempfptr, cs!(c"mem://"), status) > 0 {
+            return *status;
         }
+
+        let mut tempfptr = tempfptr.unwrap();
+
+        if fits_img_decompress_header_safe(fptr, &mut tempfptr, status) > 0 {
+            fits_delete_file(&mut Some(tempfptr), status);
+            return *status;
+        }
+
+        ffhdr2str_safe(
+            &mut tempfptr,
+            exclude_comm,
+            exclist,
+            nexc,
+            header,
+            nkeys,
+            status,
+        );
+        fits_close_file(tempfptr, status);
     } else {
         ffhdr2str_safe(fptr, exclude_comm, exclist, nexc, header, nkeys, status);
     }

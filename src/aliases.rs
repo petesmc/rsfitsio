@@ -853,7 +853,7 @@ pub mod rust_api {
     pub use crate::getkey::ffmaky_safe as fits_movabs_key;
     pub use crate::getkey::ffmrky_safe as fits_movrel_key;
 
-    pub use crate::getkey::ffcnvthdr2str_safer as fits_convert_hdr2str;
+    pub use crate::getkey::ffcnvthdr2str_safe as fits_convert_hdr2str;
     pub use crate::getkey::ffdtdm_safe as fits_decode_tdim;
     pub use crate::getkey::ffdtdmll_safe as fits_decode_tdimll;
     pub use crate::getkey::fffree_safe as fits_free_memory;

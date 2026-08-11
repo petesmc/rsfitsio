@@ -50,7 +50,7 @@ use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe, ffghdn_safe,
     ffghdt_safe, ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe,
     ffmnhd_safe, ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
-    fits_strcasecmp, fits_strncasecmp, fits_translate_keywords_safer,
+    fits_strcasecmp, fits_strncasecmp, fits_translate_keywords_safe,
 };
 use crate::getkey::{
     ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
@@ -3571,7 +3571,7 @@ pub fn fits_copy_cell2image_safe(
     let npat: c_int = patterns.len() as c_int;
 
     /* skip over the first 8 keywords, starting just after TFIELDS */
-    fits_translate_keywords_safer(fptr, newptr, 9, &patterns, npat, colnum, 0, 0, status);
+    fits_translate_keywords_safe(fptr, newptr, 9, &patterns, npat, colnum, 0, 0, status);
 
     /* The C builds a HISTORY card here, but the ffprec() that would write it is
     disabled (left to the caller), so the card is never used; omitted. */
@@ -8503,9 +8503,7 @@ pub unsafe extern "C" fn ffshdwn(flag: c_int) {
 /// This is NOT THREAD-SAFE
 pub fn ffshdwn_safe(flag: c_int) {
     if cfg!(feature = "net_services") {
-        unsafe {
-            fits_dwnld_prog_bar(flag);
-        }
+        fits_dwnld_prog_bar(flag);
     }
 }
 
@@ -8522,7 +8520,7 @@ pub fn ffgtmo_safer() -> c_int {
     let mut timeout = 0;
 
     if cfg!(feature = "net_services") {
-        timeout = unsafe { fits_net_timeout(-1) };
+        timeout = fits_net_timeout(-1);
     }
 
     timeout
