@@ -6630,7 +6630,7 @@ pub(crate) fn fits_read_compressed_pixels(
 
         /* increment pointers to next elements to be read */
         arrayptr += nread as usize * bytesperpixel;
-        if nullarrayptr != 0 && (nullcheck == NullCheckType::SetNullArray) {
+        if nullarray.is_some() && (nullcheck == NullCheckType::SetNullArray) {
             nullarrayptr += nread as usize;
         }
     }
@@ -14105,12 +14105,14 @@ mod tests {
     use crate::cfileio::{ffclos_safe, ffinit_safe, ffopen_safe};
     use crate::fitscore::{ffmahd_safe, fits_is_compressed_image_safe};
     use crate::fitsio::{
-        BYTE_IMG, DOUBLE_IMG, GZIP_1, GZIP_2, HCOMPRESS_1, LONG_IMG, LONGLONG, PLIO_1, READONLY,
-        RICE_1, SHORT_IMG, SUBTRACTIVE_DITHER_2, TBYTE, TDOUBLE, TINT, TSHORT, fitsfile,
+        BYTE_IMG, DOUBLE_IMG, FLOAT_IMG, GZIP_1, GZIP_2, HCOMPRESS_1, LONG_IMG, LONGLONG, PLIO_1,
+        READONLY, RICE_1, SHORT_IMG, SUBTRACTIVE_DITHER_2, TBYTE, TDOUBLE, TINT, TSHORT, fitsfile,
     };
     use crate::getcol::ffgpv_safe;
+    use crate::getcole::ffgpfe_safe;
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use crate::putcol::ffppr_safe;
+    use crate::putcole::ffppne_safe;
     use crate::putkey::ffcrim_safe;
     use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -14769,6 +14771,94 @@ mod tests {
 
         ffclos_safe(fptr.take().unwrap(), &mut status);
         assert_eq!(status, 0, "closing the compressed {naxis}D file failed");
+    }
+
+    /*
+     * Reading with a null flag array, over a pixel range that spans more than
+     * one plane, must advance the null flag array along with the data array.
+     * The offset used to stay at zero, so every plane after the first wrote its
+     * flags over the flags of the first one.
+     */
+    #[test]
+    fn test_read_compressed_pixels_null_flags_span_planes() {
+        const NULLVAL: f32 = -999.0;
+
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let naxes: [c_long; 3] = [4, 3, 2];
+            let npix: c_long = naxes.iter().product();
+
+            /* one null in the first plane, two in the second */
+            let nulls = [2_usize, 13, 19];
+            let mut original: Vec<f32> = (0..npix).map(|i| (i * 3 + 1) as f32).collect();
+            for &i in &nulls {
+                original[i] = NULLVAL;
+            }
+
+            let name = to_buf(filename);
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            {
+                let f = fptr.as_deref_mut().unwrap();
+                ffcrim_safe(f, FLOAT_IMG, 0, &[], &mut status);
+                fits_set_compression_type_safe(f, GZIP_1, &mut status);
+                fits_set_quantize_level_safe(f, 0.0, &mut status); // lossless floats
+                ffcrim_safe(f, FLOAT_IMG, 3, &naxes, &mut status);
+                ffppne_safe(f, 1, 1, npix as LONGLONG, &original, NULLVAL, &mut status);
+                assert_eq!(status, 0, "writing the image with nulls failed");
+            }
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "close failed");
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            let f = fptr.as_deref_mut().unwrap();
+            ffmahd_safe(f, 2, None, &mut status);
+            assert_eq!(status, 0, "movabs to the compressed HDU failed");
+
+            /*
+             * Start one pixel in, so the read is split into partial rows and
+             * planes instead of being satisfied by a single section read.
+             */
+            let firstelem: LONGLONG = 2;
+            let nelem = npix as LONGLONG - 1;
+            let mut values = vec![0.0f32; nelem as usize];
+            let mut nularray = vec![0 as c_char; nelem as usize];
+            let mut anynul: c_int = 0;
+            ffgpfe_safe(
+                f,
+                1,
+                firstelem,
+                nelem,
+                &mut values,
+                &mut nularray,
+                Some(&mut anynul),
+                &mut status,
+            );
+            assert_eq!(status, 0, "reading the image with nulls failed");
+            assert_eq!(anynul, 1, "the null pixels were not reported");
+
+            for i in 0..nelem as usize {
+                let expected_null = nulls.contains(&(i + firstelem as usize - 1));
+                assert_eq!(
+                    nularray[i] != 0,
+                    expected_null,
+                    "null flag {i} (pixel {}) is wrong",
+                    i + firstelem as usize
+                );
+                if !expected_null {
+                    assert_eq!(
+                        values[i],
+                        original[i + firstelem as usize - 1],
+                        "pixel {} is wrong",
+                        i + firstelem as usize
+                    );
+                }
+            }
+
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "close failed");
+        });
     }
 
     /*
