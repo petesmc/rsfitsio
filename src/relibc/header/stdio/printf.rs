@@ -11,7 +11,7 @@ use crate::relibc::io::{self, Write};
 // };
 use alloc::collections::{BTreeMap, VecDeque};
 use core::ffi::{CStr, c_void};
-use core::{cmp, fmt, num::FpCategory, ops::Range, slice};
+use core::{fmt, num::FpCategory, ops::Range, slice};
 
 use crate::relibc::{
     header::errno::EILSEQ,
@@ -105,7 +105,7 @@ impl Number {
     }
 }
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum VaArg {
+pub enum VaArg {
     c_char(c_char),
     c_double(c_double),
     c_int(c_int),
@@ -457,7 +457,10 @@ fn abs(float: c_double) -> c_double {
     }
 }
 
-fn float_string(float: c_double, precision: usize, trim: bool) -> String {
+/// `trim` strips trailing zeros and a then-trailing point (%g without `#`).
+/// `force_point` keeps a radix point that would otherwise not appear at all
+/// (the `#' alternate flag: `%#.0f' of 1.0 is "1.", not "1").
+fn float_string(float: c_double, precision: usize, trim: bool, force_point: bool) -> String {
     let mut string = format!("{float:.precision$}");
     if trim && string.contains('.') {
         let truncate = {
@@ -470,26 +473,22 @@ fn float_string(float: c_double, precision: usize, trim: bool) -> String {
         };
         string.truncate(truncate);
     }
+    if force_point && !string.contains('.') {
+        string.push('.');
+    }
     string
 }
 
-fn float_exp(mut float: c_double) -> (c_double, isize) {
-    let mut exp: isize = 0;
-    while abs(float) >= 10.0 {
-        float /= 10.0;
-        exp += 1;
-    }
-    while f64::EPSILON < abs(float) && abs(float) < 1.0 {
-        float *= 10.0;
-        exp -= 1;
-    }
-    (float, exp)
-}
+/* `float_exp' used to normalize the mantissa by repeated division to derive
+the exponent for %g's style choice.  Both callers now take the exponent from
+Rust's correctly-rounded exponential formatting instead (see FmtKind::Scientific
+and FmtKind::AnyNotation), so it has been removed. */
 
 fn fmt_float_exp<W: Write>(
     w: &mut W,
     exp_fmt: u8,
     trim: bool,
+    force_point: bool,
     precision: usize,
     float: c_double,
     left: bool,
@@ -520,6 +519,9 @@ fn fmt_float_exp<W: Write>(
         };
         string.truncate(truncate);
     }
+    if force_point && !string.contains('.') {
+        string.push('.');
+    }
 
     let mut exp2 = exp.abs();
     let mut exp_len = 1;
@@ -548,13 +550,14 @@ fn fmt_float_exp<W: Write>(
 fn fmt_float_normal<W: Write>(
     w: &mut W,
     trim: bool,
+    force_point: bool,
     precision: usize,
     float: c_double,
     left: bool,
     pad_space: usize,
     pad_zero: usize,
 ) -> io::Result<usize> {
-    let string = float_string(float, precision, trim);
+    let string = float_string(float, precision, trim, force_point);
 
     pad(w, !left, b' ', string.len()..pad_space)?;
     let bytes = if string.starts_with('-') {
@@ -570,8 +573,21 @@ fn fmt_float_normal<W: Write>(
     Ok(string.len())
 }
 
-/// Write ±infinity or ±NaN representation for any floating-point style
-fn fmt_float_nonfinite<W: Write>(w: &mut W, float: c_double, case: FmtCase) -> io::Result<()> {
+/// Write ±infinity or ±NaN representation for any floating-point style.
+///
+/// C pads these to the field width with *spaces* even when the `0' flag is
+/// given (C99 7.19.6.1: the 0 flag is ignored for infinities and NaNs), and
+/// honours `-' for left alignment.
+fn fmt_float_nonfinite<W: Write>(
+    w: &mut W,
+    float: c_double,
+    case: FmtCase,
+    left: bool,
+    width: usize,
+) -> io::Result<()> {
+    let len = if float.is_sign_negative() { 4 } else { 3 };
+    pad(w, !left, b' ', len..width)?;
+
     if float.is_sign_negative() {
         w.write_all(b"-")?;
     }
@@ -592,6 +608,7 @@ fn fmt_float_nonfinite<W: Write>(w: &mut W, float: c_double, case: FmtCase) -> i
     };
 
     w.write_all(nonfinite_str.as_bytes())?;
+    pad(w, left, b' ', len..width)?;
 
     Ok(())
 }
@@ -949,9 +966,17 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     if float.is_finite() {
                         let precision = precision.unwrap_or(6);
 
-                        fmt_float_exp(w, fmt, false, precision, float, left, pad_space, pad_zero)?;
+                        fmt_float_exp(
+                            w, fmt, false, alternate, precision, float, left, pad_space, pad_zero,
+                        )?;
                     } else {
-                        fmt_float_nonfinite(w, float, fmtcase.unwrap())?;
+                        fmt_float_nonfinite(
+                            w,
+                            float,
+                            fmtcase.unwrap(),
+                            left,
+                            pad_space.max(pad_zero),
+                        )?;
                     }
                 }
                 FmtKind::Decimal => {
@@ -963,9 +988,17 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     if float.is_finite() {
                         let precision = precision.unwrap_or(6);
 
-                        fmt_float_normal(w, false, precision, float, left, pad_space, pad_zero)?;
+                        fmt_float_normal(
+                            w, false, alternate, precision, float, left, pad_space, pad_zero,
+                        )?;
                     } else {
-                        fmt_float_nonfinite(w, float, fmtcase.unwrap())?;
+                        fmt_float_nonfinite(
+                            w,
+                            float,
+                            fmtcase.unwrap(),
+                            left,
+                            pad_space.max(pad_zero),
+                        )?;
                     }
                 }
                 FmtKind::AnyNotation => {
@@ -975,29 +1008,70 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                         _ => panic!("this should not be possible"),
                     };
                     if float.is_finite() {
-                        let (_log, exp) = float_exp(float);
                         let exp_fmt = b'E' | (fmt & 32);
-                        let precision = precision.unwrap_or(6);
-                        let use_exp_format = exp < -4 || exp >= precision as isize;
 
-                        if use_exp_format {
-                            // Length of integral part will always be 1 here,
-                            // because that's how x/floor(log10(x)) works
-                            let precision = precision.saturating_sub(1);
+                        // C99 7.19.6.1: "Let P equal the precision if nonzero,
+                        // 6 if the precision is omitted, or 1 if the precision
+                        // is zero."
+                        let p = match precision {
+                            Some(0) => 1,
+                            Some(p) => p,
+                            None => 6,
+                        };
+
+                        // "...if a conversion with style E would have an
+                        // exponent of X: if P > X >= -4, the conversion is with
+                        // style f and precision P - (X + 1); otherwise with
+                        // style e and precision P - 1."
+                        //
+                        // X is the exponent *after* rounding to P significant
+                        // digits, so it is taken from Rust's exponential
+                        // formatting (which is correctly rounded) rather than by
+                        // normalizing the mantissa with repeated division as
+                        // this code used to.  That distinction is visible: at
+                        // P = 3, 9.999e-5 rounds to 1.00e-04, so C prints it in
+                        // fixed notation as 0.000100 -- dividing first yields
+                        // X = -5 and the wrong style.
+                        let rounded = format!("{:.*e}", p - 1, float);
+                        let exp: isize = rounded[rounded
+                            .find('e')
+                            .expect("exponential formatting always contains 'e'")
+                            + 1..]
+                            .parse()
+                            .expect("exponential formatting has a valid exponent");
+
+                        // The `#' alternate flag means "do not remove trailing
+                        // zeros" and "always keep the radix point"; %g without
+                        // it removes both.
+                        let trim = !alternate;
+
+                        if exp < -4 || exp >= p as isize {
                             fmt_float_exp(
-                                w, exp_fmt, true, precision, float, left, pad_space, pad_zero,
+                                w,
+                                exp_fmt,
+                                trim,
+                                alternate,
+                                p - 1,
+                                float,
+                                left,
+                                pad_space,
+                                pad_zero,
                             )?;
                         } else {
-                            // Length of integral part will be the exponent of
-                            // the unused logarithm, unless the exponent is
-                            // negative which in case the integral part must
-                            // of course be 0, 1 in length
-                            let len = 1 + cmp::max(0, exp) as usize;
-                            let precision = precision.saturating_sub(len);
-                            fmt_float_normal(w, true, precision, float, left, pad_space, pad_zero)?;
+                            // P - (X + 1), which the guard above keeps >= 0
+                            let precision = (p as isize - 1 - exp) as usize;
+                            fmt_float_normal(
+                                w, trim, alternate, precision, float, left, pad_space, pad_zero,
+                            )?;
                         }
                     } else {
-                        fmt_float_nonfinite(w, float, fmtcase.unwrap())?;
+                        fmt_float_nonfinite(
+                            w,
+                            float,
+                            fmtcase.unwrap(),
+                            left,
+                            pad_space.max(pad_zero),
+                        )?;
                     }
                 }
                 FmtKind::String => {
@@ -1389,6 +1463,6 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
 /// Behavior is undefined if any of the following conditions are violated:
 /// - `format` must point to valid null-terminated string.
 /// - `ap` must follow the safety contract of variable arguments of C.
-pub(crate) unsafe fn printf<W: Write>(w: W, format: &CStr, ap: CustomVaList) -> c_int {
+pub unsafe fn printf<W: Write>(w: W, format: &CStr, ap: CustomVaList) -> c_int {
     unsafe { inner_printf(w, format, ap).unwrap_or(-1) }
 }

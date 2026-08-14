@@ -6,13 +6,32 @@ use printf::{CustomVaList, VaArg};
 use crate::relibc::platform;
 
 mod lookaheadreader;
-mod printf;
+pub mod printf;
 mod scanf;
 
 #[cfg(test)]
 mod printf_tests;
 #[cfg(test)]
 mod sscanf_tests;
+
+/// snprintf() with a caller-built argument list.
+///
+/// The typed helpers below cover the conversions the library itself needs.
+/// This one is the general escape hatch, used by the `fpack`/`funpack`
+/// binaries for the printf conversions Rust's `format!` cannot express
+/// (`%#8.2g`, `%#6.2f`, ...).  As with C's snprintf, the output is truncated
+/// to `n` bytes (including the NUL) and the return value is the number of
+/// bytes that *would* have been written.
+pub fn snprintf_va(s: &mut [c_char], n: size_t, format: &[c_char], args: CustomVaList) -> c_int {
+    let n = n.min(s.len());
+    unsafe {
+        printf::printf(
+            &mut platform::StringWriter(s.as_mut_ptr().cast::<u8>(), n),
+            CStr::from_bytes_until_nul(cast_slice(format)).unwrap(),
+            args,
+        )
+    }
+}
 
 pub(crate) fn sprintf_f64(s: &mut [c_char], format: &[c_char], val: f64) -> c_int {
     unsafe {
