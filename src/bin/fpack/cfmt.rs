@@ -162,9 +162,13 @@ mod tests {
         assert_eq!(not_int(1), all_ones - 1);
         assert_eq!(not_int(0x8000_0000), 0x7fff_ffff);
         assert_eq!(not_int(0xffff_ffff), 0);
-        /* bits above 32 are discarded by the (int) cast (c_ulong is only
-        wide enough to hold them where `unsigned long' is 64-bit) */
-        #[cfg(not(target_pointer_width = "32"))]
-        assert_eq!(not_int(0x1_ffff_ffff), 0);
+        /* bits above 32 are discarded by the (int) cast.  Only reachable
+        where `unsigned long' is wider than 32 bits, which is not the case on
+        windows even at 64-bit -- hence the runtime check rather than a
+        target_pointer_width cfg, and the cast rather than a literal that
+        would be out of range for a 32-bit c_ulong. */
+        if size_of::<c_ulong>() > 4 {
+            assert_eq!(not_int(0x1_ffff_ffff_u64 as c_ulong), 0);
+        }
     }
 }
