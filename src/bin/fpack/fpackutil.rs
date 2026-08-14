@@ -28,10 +28,11 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use tempfile::TempPath;
 
 use rsfitsio::aliases::rust_api::{
-    fits_close_file, fits_copy_hdu, fits_copy_header, fits_create_file, fits_create_img,
-    fits_delete_file, fits_delete_hdu, fits_file_name, fits_get_chksum, fits_get_compression_type,
-    fits_get_hdu_num, fits_get_hdu_type, fits_get_hduaddr, fits_get_hduaddrll, fits_get_img_param,
-    fits_get_num_cols, fits_get_num_hdus, fits_get_num_rowsll, fits_get_version, fits_img_compress,
+    fits_close_file, fits_compress_table, fits_copy_hdu, fits_copy_header, fits_create_file,
+    fits_create_img, fits_delete_file, fits_delete_hdu, fits_file_name, fits_get_chksum,
+    fits_get_compression_type, fits_get_hdu_num, fits_get_hdu_type, fits_get_hduaddr,
+    fits_get_hduaddrll, fits_get_img_param, fits_get_num_cols, fits_get_num_hdus,
+    fits_get_num_rowsll, fits_get_version, fits_img_compress, fits_img_decompress,
     fits_img_stats_float, fits_img_stats_int, fits_img_stats_short, fits_is_compressed_image,
     fits_movabs_hdu, fits_movnam_hdu, fits_movrel_hdu, fits_open_file, fits_read_img_int,
     fits_read_img_sht, fits_read_key, fits_read_keyword, fits_read_pix, fits_read_subset,
@@ -2238,11 +2239,7 @@ pub(crate) fn fp_pack_hdu(
             /* data is less than 1 FITS block in size, so don't compress */
             fits_copy_hdu(infptr, outfptr, 0, &mut stat);
         } else {
-            // SAFETY: fits_compress_table has no fully-safe form yet; both
-            // arguments are ordinary &mut fitsfile.
-            unsafe {
-                rsfitsio::imcompress::fits_compress_table_safer(infptr, outfptr, &mut stat);
-            }
+            fits_compress_table(infptr, outfptr, &mut stat);
         }
 
         *status = stat;
@@ -2460,11 +2457,7 @@ pub(crate) fn fp_unpack_hdu(
     /* =============================================================== */
     } else if fits_is_compressed_image(infptr, status) != 0 {
         /* uncompress the compressed image HDU */
-        // SAFETY: fits_img_decompress has no fully-safe form yet; both
-        // arguments are ordinary &mut fitsfile.
-        unsafe {
-            rsfitsio::imcompress::fits_img_decompress_safer(infptr, outfptr, status);
-        }
+        fits_img_decompress(infptr, outfptr, status);
     } else {
         /* not a compressed image HDU, so just copy it to the output */
         fits_copy_hdu(infptr, outfptr, 0, status);
@@ -2817,10 +2810,7 @@ pub(crate) fn fp_test_hdu(
 
         marktime(&mut stat);
 
-        // SAFETY: see fp_unpack_hdu.
-        unsafe {
-            rsfitsio::imcompress::fits_img_decompress_safer(outfptr, outfptr2, &mut stat);
-        }
+        fits_img_decompress(outfptr, outfptr2, &mut stat);
 
         /* get elapsped times */
         gettime(&mut elapse, &mut unpackcpu, &mut stat);
@@ -2962,10 +2952,7 @@ pub(crate) fn fp_test_table(
 
     marktime(&mut stat);
     stat = -999; /* set special flag value */
-    // SAFETY: see fp_pack_hdu.
-    unsafe {
-        rsfitsio::imcompress::fits_compress_table_safer(infptr, outfptr, &mut stat);
-    }
+    fits_compress_table(infptr, outfptr, &mut stat);
 
     /* get elapsped times */
     gettime(&mut elapse, &mut cpu, &mut stat);

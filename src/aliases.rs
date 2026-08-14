@@ -1371,13 +1371,13 @@ pub mod rust_api {
     // Exposed by no aliases
     pub use crate::fitscore::fits_is_compressed_image_safe as fits_is_compressed_image;
 
-    /* image and table compression.  fits_img_decompress, fits_img_decompress_header
-    and fits_compress_table only have `_safer` (unsafe) forms, so they are not
-    aliased here -- call them through `rsfitsio::imcompress` inside an `unsafe`
-    block.  Likewise fits_get_tile_dim, which is `fits_get_tile_dim_safer`. */
+    /* image and table compression.  fits_get_tile_dim is not aliased: it only
+    has a `_safer` (unsafe) form. */
     pub use crate::imcompress::{
+        fits_compress_table_safe as fits_compress_table,
         fits_get_compression_type_safe as fits_get_compression_type,
         fits_img_compress_safe as fits_img_compress,
+        fits_img_decompress_safe as fits_img_decompress,
         fits_set_compression_type_safe as fits_set_compression_type,
         fits_set_dither_offset_safe as fits_set_dither_offset,
         fits_set_hcomp_scale_safe as fits_set_hcomp_scale,
