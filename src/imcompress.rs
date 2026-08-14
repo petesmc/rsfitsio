@@ -58,7 +58,7 @@ use libc::realloc;
 
 use bytemuck::{cast, cast_slice, cast_slice_mut};
 
-use crate::pliocomp::{pl_l2pi, pl_p2li};
+use crate::pliocomp::{pl_l2pi, pl_p2li, pl_p2li_max_len};
 
 use crate::fitscore::{
     ffcmrk_safe, ffcrhd_safe, ffgcno_safe, ffgdesll_safe, ffghadll_safe, ffgidm_safe, ffgipr_safe,
@@ -2014,17 +2014,15 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
         }
     } else if comptype == PLIO_1 {
         /* DEVIATION from CFITSIO: the C falls through to `nx * sizeof(int)'
-        here, i.e. 4 bytes -- two 16-bit line-list words -- per pixel.  PLIO's
-        worst case is four words per pixel: two to change the high value when
-        it moves by more than I_DATAMAX, one ZN for the gap, and one HN for the
-        range, all of which a single pixel can trigger.  Poorly-compressible
-        16-bit data therefore overruns the buffer; in the C that is a heap
-        overflow (fpack -p aborts with "malloc(): corrupted top size"), and
-        here it would be a panic.  Allocate the real worst case instead: the
-        7-word header plus four words per pixel.  The buffer is scratch, so
-        enlarging it does not change a single byte of the compressed output.
-        See notes/CFITSIO_BUGS_FPACK.md. */
-        (7 + 4 * nx) * mem::size_of::<c_short>() as c_int
+        here, i.e. two 16-bit line-list words per pixel.  PLIO's worst case is
+        three -- a two-word I_SH pair to move the high value by more than
+        I_DATAMAX, plus a one-word I_HN -- so poorly-compressible 16-bit data
+        overruns the buffer.  In the C that is a heap overflow (fpack -p aborts
+        with "malloc(): corrupted top size"); here it would be a panic.  Ask
+        pliocomp for the bound rather than restating it.  The buffer is
+        scratch, so enlarging it does not change a byte of the output.  See
+        notes/CFITSIO_BUGS_FPACK.md and heasarc/cfitsio#136 / PR #174. */
+        (pl_p2li_max_len(nx as usize) * mem::size_of::<c_short>()) as c_int
     } else {
         nx * mem::size_of::<c_int>() as c_int
     }
@@ -2752,7 +2750,17 @@ unsafe fn imcomp_compress_tile(
                     }
                 }
 
-                nelem = pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) as c_int;
+                /* cbuf is sized by imcomp_calc_max_elem, which asks pliocomp
+                for the worst case, so this cannot come back None; report a
+                compression error rather than unwrapping if it ever does. */
+                nelem = match pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) {
+                    Some(n) => n as c_int,
+                    None => {
+                        ffpmsg_str("PLIO line list did not fit the tile buffer");
+                        *status = DATA_COMPRESSION_ERR;
+                        return *status;
+                    }
+                };
 
                 if nelem < 0 {
                     /* data compression error condition */

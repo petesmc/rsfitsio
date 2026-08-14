@@ -11,9 +11,17 @@ use pliocomp;
 ///
 /// Returns
 ///
-/// * The length of the list is returned as the function value
-pub fn pl_p2li(pxsrc: &[i32], xs: i32, lldst: &mut [i16], npix: usize) -> usize {
+/// * The length of the list, or `None` if `lldst` is too small to hold it.
+///   Size it with [`pl_p2li_max_len`] and it cannot be.
+pub fn pl_p2li(pxsrc: &[i32], xs: i32, lldst: &mut [i16], npix: usize) -> Option<usize> {
     pliocomp::pl_p2li(pxsrc, xs, lldst, npix)
+}
+
+/// The worst-case length, in 16-bit words, of the line list `pl_p2li` produces
+/// for `npix` pixels: the counterpart of `imcomp_calc_max_elem`.  An encode
+/// buffer sized with this cannot overflow.
+pub fn pl_p2li_max_len(npix: usize) -> usize {
+    pliocomp::pl_p2li_max_len(npix)
 }
 
 /// Translate a PLIO line list into an integer pixel array.
@@ -48,7 +56,7 @@ mod tests {
         let siz = input.len();
         let mut linelist = [0i16; 100];
 
-        let nbytes = pl_p2li(input, 0, &mut linelist, siz);
+        let nbytes = pl_p2li(input, 0, &mut linelist, siz).expect("buffer was sized with pl_p2li_max_len");
         assert!(nbytes > 0, "pl_p2li returned zero-length list");
 
         let mut output = vec![0i32; siz];
@@ -64,7 +72,7 @@ mod tests {
         let mut linelist = [0i16; 100];
 
         // Encoding zero pixels produces an empty (zero-length) line list.
-        assert_eq!(pl_p2li(&pixels, 0, &mut linelist, 0), 0);
+        assert_eq!(pl_p2li(&pixels, 0, &mut linelist, 0), Some(0));
     }
 
     #[test]
@@ -88,7 +96,7 @@ mod tests {
         let mut linelist = [0i16; 100];
         let mut output = [0i32; 3];
 
-        assert!(pl_p2li(&pixels, 0, &mut linelist, 3) > 0);
+        assert!(pl_p2li(&pixels, 0, &mut linelist, 3).unwrap() > 0);
         assert_eq!(pl_l2pi(&linelist, 0, &mut output, 3), 3);
 
         assert_eq!(output[0], 0);
@@ -103,7 +111,7 @@ mod tests {
         let mut linelist = [0i16; 100];
         let mut output = [0i32; 5];
 
-        assert!(pl_p2li(&pixels, 0, &mut linelist, 10) > 0);
+        assert!(pl_p2li(&pixels, 0, &mut linelist, 10).unwrap() > 0);
         assert_eq!(pl_l2pi(&linelist, 0, &mut output, 5), 5);
 
         for i in 0..5 {
@@ -128,7 +136,7 @@ mod tests {
         let mut linelist = [0i16; 100];
         let mut output = [0i32; 10];
 
-        assert!(pl_p2li(&pixels, 0, &mut linelist, 5) > 0);
+        assert!(pl_p2li(&pixels, 0, &mut linelist, 5).unwrap() > 0);
         assert_eq!(pl_l2pi(&linelist, 0, &mut output, 10), 10);
 
         for i in 0..5 {
