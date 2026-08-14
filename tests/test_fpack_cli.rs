@@ -540,30 +540,43 @@ fn test_funpack_gzips_its_output() {
     );
 }
 
-/// `-S` writes the FITS stream to stdout, and `-` reads one from stdin.
+/// `-S` writes the FITS stream to stdout.
+///
+/// The stream must be byte-identical to the file `fpack` writes without `-S`.
+/// That is what catches a stdout path that mangles the bytes: writing through
+/// the C runtime on windows, where its stdout is in text mode, turns every
+/// 0x0A into 0x0D 0x0A and silently corrupts the file.
 #[test]
-fn test_stdout_and_stdin_streams() {
+fn test_stdout_stream_matches_the_file() {
     let dir = fixture(SHORT_IMG);
     let original = std::fs::read(dir.path().join("a.fits")).unwrap();
 
+    /* the same input packed to a file, for comparison */
+    std::fs::copy(dir.path().join("a.fits"), dir.path().join("b.fits")).unwrap();
+    let o = run(FPACK, dir.path(), &["-C", "-q0", "4", "b.fits"]);
+    assert_eq!(status(&o), 0, "{}", stdout(&o));
+    let on_disk = std::fs::read(dir.path().join("b.fits.fz")).unwrap();
+
     let o = run(FPACK, dir.path(), &["-C", "-q0", "4", "-S", "a.fits"]);
     assert_eq!(status(&o), 0, "{}", String::from_utf8_lossy(&o.stderr));
-    assert!(!o.stdout.is_empty(), "-S wrote nothing to stdout");
-    assert_eq!(
-        &o.stdout[..6],
-        b"SIMPLE",
-        "the stdout stream should be a FITS file"
-    );
     assert!(
         !dir.path().join("a.fits.fz").exists(),
         "-S must not also write a file"
     );
+    assert_eq!(
+        o.stdout.len(),
+        on_disk.len(),
+        "the -S stream is {} bytes where the file is {}",
+        o.stdout.len(),
+        on_disk.len()
+    );
+    assert_eq!(o.stdout, on_disk, "the -S stream differs from the file");
 
-    /* feed it back to funpack through a file, then check the pixels survived */
-    std::fs::write(dir.path().join("b.fits.fz"), &o.stdout).unwrap();
-    let o = run(FUNPACK, dir.path(), &["-C", "b.fits.fz"]);
+    /* and it is readable: feed it back through funpack */
+    std::fs::write(dir.path().join("c.fits.fz"), &o.stdout).unwrap();
+    let o = run(FUNPACK, dir.path(), &["-C", "c.fits.fz"]);
     assert_eq!(status(&o), 0, "{}", stdout(&o));
-    assert_eq!(std::fs::read(dir.path().join("b.fits")).unwrap(), original);
+    assert_eq!(std::fs::read(dir.path().join("c.fits")).unwrap(), original);
 }
 
 /// `-E` unpacks only the named or numbered HDUs.

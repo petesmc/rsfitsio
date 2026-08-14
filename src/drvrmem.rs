@@ -6,7 +6,7 @@
 
 use core::ffi::CStr;
 use core::slice;
-use std::io::{Read, Seek, SeekFrom, stdin};
+use std::io::{Read, Seek, SeekFrom, Write as _, stdin};
 
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
@@ -21,7 +21,7 @@ use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_v
 use crate::helpers::cfile::CFile;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use crate::zuncompress::zuncompress2mem;
-use libc::{EOF, fclose, fgetc, fopen, fread, fwrite, memcmp, memcpy, memset, realloc, ungetc};
+use libc::{EOF, fclose, fgetc, fopen, fread, memcmp, memcpy, memset, realloc, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -593,14 +593,17 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
 
         let mut m = MEM_TABLE.lock().unwrap();
 
-        /* copy from memory to standard out.  explicit LONGLONG->size_t cast */
-        if fwrite(
-            m[handle as usize].memaddr.cast::<c_void>(),
-            1,
-            m[handle as usize].fitsfilesize as usize,
-            STDOUT!(),
-        ) != m[handle as usize].fitsfilesize as usize
-        {
+        /* Copy from memory to standard out.
+        DEVIATION: the C fwrite()s to the CRT's stdout, which on windows is in
+        text mode and so turns every 0x0A of the FITS stream into 0x0D 0x0A.
+        Rust's stdout does no translation, and is the same handle fp_msg and
+        the stream driver write through. */
+        let n = m[handle as usize].fitsfilesize as usize;
+        // SAFETY: memaddr owns `memsize' bytes, of which `fitsfilesize' hold
+        // the file; both are set when the memory file is created.
+        let bytes = slice::from_raw_parts(m[handle as usize].memaddr, n);
+        let mut out = std::io::stdout();
+        if out.write_all(cast_slice(bytes)).is_err() || out.flush().is_err() {
             ffpmsg_str("failed to copy memory file to stdout (stdout_close)");
             status = WRITE_ERROR;
         }
