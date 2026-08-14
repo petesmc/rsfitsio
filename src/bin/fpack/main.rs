@@ -6,15 +6,10 @@
  * Calls fits_img_compress in the CFITSIO library by W. Pence, HEASARC
  */
 
-// The C's names are its own: fpstate/imgstats are lower-case types, and fpvar
-// and fpptr are the locals it uses everywhere.
+// The C's names, its dead stores, and the items only the *other* binary uses
+// out of the two shared modules.
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
-// The C is full of dead stores -- `origdata = 0;` immediately before the real
-// assignment, `compratio = 0.;` twice in a row -- which are kept so the
-// transpile stays line-for-line with fpackutil.c.
 #![allow(unused_assignments)]
-// fpack_h.rs and fpackutil.rs are shared by both binaries, so each one
-// carries items only the other uses (FPACK/FUNPACK, the atoi/atof shims).
 #![allow(dead_code)]
 
 mod cfmt;
@@ -37,9 +32,8 @@ use crate::fpackutil::{
 
 /* ================================================================== */
 pub fn main() -> ExitCode {
-    /* C: `exit (n)' from anywhere in the call tree; see fpack_h.rs.  main()
-    turns the propagated code back into the process exit status -- exit(-1) and
-    ExitCode::from(255) are the same 255 to the shell. */
+    /* C: `exit (n)'; see fpack_h.rs.  exit(-1) and ExitCode::from(255) are
+    the same 255 to the shell. */
     match run() {
         Ok(()) => ExitCode::from(0),
         Err(FpExit(n)) => ExitCode::from(n as u8),
@@ -425,11 +419,9 @@ pub(crate) fn fp_get_param(argc: c_int, argv: &Argv, fpptr: &mut fpstate) -> FpR
                 continue;
             }
 
-            /* DEVIATION (upstream bug 1): the C stores fpptr->ntile[ndim]
-            *before* the `if (++ndim > MAX_COMPRESS_DIM)' check, so a seventh
-            dimension writes one `long' past the end of the array.  The bounds
-            check is hoisted above the store; it still fires on the same
-            (seventh) dimension, with the same message and exit status. */
+            /* DEVIATION (upstream bug 1): the C stores ntile[ndim] before
+            checking it, so a seventh dimension writes past the array.  The
+            check is hoisted; it still fires on the same dimension. */
             if ndim >= MAX_COMPRESS_DIM {
                 fp_msg_str("Error: too many dimensions for `-t', max=");
                 fp_msg_str(&format!("{MAX_COMPRESS_DIM}\n"));

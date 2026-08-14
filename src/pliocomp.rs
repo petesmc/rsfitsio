@@ -56,7 +56,8 @@ mod tests {
         let siz = input.len();
         let mut linelist = [0i16; 100];
 
-        let nbytes = pl_p2li(input, 0, &mut linelist, siz).expect("buffer was sized with pl_p2li_max_len");
+        let nbytes =
+            pl_p2li(input, 0, &mut linelist, siz).expect("buffer was sized with pl_p2li_max_len");
         assert!(nbytes > 0, "pl_p2li returned zero-length list");
 
         let mut output = vec![0i32; siz];

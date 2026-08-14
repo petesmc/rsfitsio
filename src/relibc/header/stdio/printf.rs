@@ -457,9 +457,8 @@ fn abs(float: c_double) -> c_double {
     }
 }
 
-/// `trim` strips trailing zeros and a then-trailing point (%g without `#`).
-/// `force_point` keeps a radix point that would otherwise not appear at all
-/// (the `#' alternate flag: `%#.0f' of 1.0 is "1.", not "1").
+/// `trim` strips trailing zeros and a then-trailing point (%g without `#`);
+/// `force_point` keeps a point that would otherwise not appear at all.
 fn float_string(float: c_double, precision: usize, trim: bool, force_point: bool) -> String {
     let mut string = format!("{float:.precision$}");
     if trim && string.contains('.') {
@@ -478,11 +477,6 @@ fn float_string(float: c_double, precision: usize, trim: bool, force_point: bool
     }
     string
 }
-
-/* `float_exp' used to normalize the mantissa by repeated division to derive
-the exponent for %g's style choice.  Both callers now take the exponent from
-Rust's correctly-rounded exponential formatting instead (see FmtKind::Scientific
-and FmtKind::AnyNotation), so it has been removed. */
 
 fn fmt_float_exp<W: Write>(
     w: &mut W,
@@ -573,11 +567,8 @@ fn fmt_float_normal<W: Write>(
     Ok(string.len())
 }
 
-/// Write ±infinity or ±NaN representation for any floating-point style.
-///
-/// C pads these to the field width with *spaces* even when the `0' flag is
-/// given (C99 7.19.6.1: the 0 flag is ignored for infinities and NaNs), and
-/// honours `-' for left alignment.
+/// Write ±infinity or ±NaN for any floating-point style.  C pads these with
+/// *spaces* even under the `0' flag (C99 7.19.6.1).
 fn fmt_float_nonfinite<W: Write>(
     w: &mut W,
     float: c_double,
@@ -1010,28 +1001,19 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                     if float.is_finite() {
                         let exp_fmt = b'E' | (fmt & 32);
 
-                        // C99 7.19.6.1: "Let P equal the precision if nonzero,
-                        // 6 if the precision is omitted, or 1 if the precision
-                        // is zero."
+                        // C99 7.19.6.1: P is the precision, 6 if omitted, 1 if zero
                         let p = match precision {
                             Some(0) => 1,
                             Some(p) => p,
                             None => 6,
                         };
 
-                        // "...if a conversion with style E would have an
-                        // exponent of X: if P > X >= -4, the conversion is with
-                        // style f and precision P - (X + 1); otherwise with
-                        // style e and precision P - 1."
-                        //
-                        // X is the exponent *after* rounding to P significant
-                        // digits, so it is taken from Rust's exponential
-                        // formatting (which is correctly rounded) rather than by
-                        // normalizing the mantissa with repeated division as
-                        // this code used to.  That distinction is visible: at
-                        // P = 3, 9.999e-5 rounds to 1.00e-04, so C prints it in
-                        // fixed notation as 0.000100 -- dividing first yields
-                        // X = -5 and the wrong style.
+                        // If a style-E conversion would have exponent X, then
+                        // P > X >= -4 selects style f with precision P-(X+1),
+                        // else style e with precision P-1.  X is the exponent
+                        // *after* rounding to P digits, hence taking it from
+                        // Rust's correctly-rounded exponential formatting: at
+                        // P=3, 9.999e-5 rounds to 1.00e-04 and prints fixed.
                         let rounded = format!("{:.*e}", p - 1, float);
                         let exp: isize = rounded[rounded
                             .find('e')
@@ -1040,9 +1022,7 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
                             .parse()
                             .expect("exponential formatting has a valid exponent");
 
-                        // The `#' alternate flag means "do not remove trailing
-                        // zeros" and "always keep the radix point"; %g without
-                        // it removes both.
+                        // `#' keeps the trailing zeros and the radix point
                         let trim = !alternate;
 
                         if exp < -4 || exp >= p as isize {

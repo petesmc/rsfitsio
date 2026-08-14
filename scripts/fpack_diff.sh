@@ -9,30 +9,25 @@
 # status and -- where one is produced -- the output FITS byte for byte, and it
 # checks that each implementation can read back what the other wrote.
 #
-# THREE NORMALISATIONS ARE MANDATORY, and each is applied below:
+# THREE NORMALISATIONS ARE MANDATORY, each applied below:
 #
-#   1. Dithering.  The default dither_offset of 0 means "seed from the system
-#      clock", so two runs of the same command do not agree with each other,
-#      never mind with the C.  Byte-comparison runs pass `-q0 <level>' (the
-#      digit is a *suffix* meaning "do not dither") or an explicit `-qN'.
-#
+#   1. Dithering.  dither_offset 0 means "seed from the system clock", so two
+#      runs of the same command do not even agree with each other.  Byte
+#      comparisons pass `-q0 <level>' (the digit is a *suffix* meaning "do not
+#      dither") or an explicit `-qN'.
 #   2. Checksums.  fits_write_chksum stamps CHECKSUM with a wall-clock
-#      timestamp in its comment.  Byte-comparison runs pass `-C'.
-#
-#   3. Timings.  `-T' reports elapsed and CPU seconds.  Those columns are
-#      masked before diffing; only the structure and the compression ratios
-#      are compared.
+#      timestamp in its comment, so byte comparisons pass `-C'.
+#   3. Timings.  `-T' reports elapsed and CPU seconds, so those columns are
+#      masked before diffing.
 #
 # Known differences, reported but not counted as failures:
 #
-#   * The CFITSIO version number in `-V' and `-H' output, when the C build and
-#     this crate are synced to different releases.
+#   * The CFITSIO version number in `-V'/`-H', when the two builds are synced
+#     to different releases.
 #   * The compressed payload of GZIP_1, GZIP_2 and HCOMPRESS: libz-rs and the
-#     `hcompress' crate emit valid but not byte-identical streams.  The
-#     round-trip checks below are what proves those correct.  RICE and
-#     NOCOMPRESS *are* expected to be byte-identical.
-# (PLIO used to be listed here; pliocomp 0.5.0 fixed its LL_LEN off-by-one and
-# its output is now byte-identical to CFITSIO's -- see notes/PLIOCOMP_LL_LEN_BUG.md.)
+#     `hcompress' crate emit valid but not byte-identical streams.  The round
+#     trips are what prove those correct.  RICE, PLIO and NOCOMPRESS *are*
+#     expected to be byte-identical.
 
 set -uo pipefail
 

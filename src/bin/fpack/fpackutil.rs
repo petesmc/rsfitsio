@@ -3,40 +3,19 @@
  * FPACK utility routines
  * R. Seaman, NOAO & W. Pence, NASA/GSFC
  *
- * Shared by both binaries, exactly as the C links fpackutil.o into both fpack
- * and funpack (Makefile.in:1201-1203).  Nothing here calls fp_usage/fp_help
- * (fpack.c) or fu_usage/fu_help (funpack.c), so the dependency is one-way and
- * `funpack/main.rs' can #[path]-include this module unchanged.
+ * Shared by both binaries, as the C links fpackutil.o into both.  Nothing here
+ * calls fp_usage/fp_help or fu_usage/fu_help, so funpack/main.rs can
+ * #[path]-include it unchanged.
  *
- * DEVIATIONS from the C, all of them forced and each marked at its site:
+ * DEVIATIONS from the C, each also marked at its site:
  *
- *   exit()      -> Err(FpExit(n)); see the note in fpack_h.rs.
- *
- *   temp files  The C names them with fp_tmpnam(), records them in three
- *               globals, and installs a SIGINT/SIGTERM/SIGHUP handler
- *               (abort_fpack) whose only job is to remove them.  fp_tmpnam is
- *               transpiled as-is because its names show up in the C's error
- *               messages, but each name is then wrapped in a
- *               tempfile::TempPath, which unlinks it when it goes out of
- *               scope.  Because every error now propagates as Err rather than
- *               calling exit(), that covers the abort paths the signal handler
- *               used to, deterministically and without a handler reading
- *               global state.  abort_fpack and the three globals are not
- *               ported.
- *
- *   system()    funpack -Z shells out to `gzip -1 <file>'.  Here the file is
- *               streamed through flate2 (zlib-rs) at level 1 instead.  The C's
- *               `valchar' whitelist of the output file name existed only to
- *               keep that shell safe and is dropped with it.
- *
- *   bug fixes   Only where C's behaviour is undefined and Rust therefore
- *               cannot reproduce it: the tile-dimension overflow, the
- *               unbounded fits_file_name() copies, and the uninitialised
- *               imgstats read.  Everything else upstream gets wrong -- the
- *               stale naxes[], the 1-D axis length, fp_iNstat's ny, the
- *               truncated BINTABLE compare -- is reproduced faithfully so that
- *               this stays byte-compatible with the C, and is written up in
- *               notes/CFITSIO_BUGS_FPACK.md instead.
+ *   exit()      -> Err(FpExit(n)); see fpack_h.rs.
+ *   temp files  tempfile::TempPath instead of the abort_fpack signal handler
+ *               and its three globals, which are not ported.
+ *   system()    funpack -Z streams through flate2 rather than `gzip -1'.
+ *   bug fixes   Only where the C is undefined and Rust cannot reproduce it.
+ *               Everything else upstream gets wrong is reproduced faithfully
+ *               and written up in notes/CFITSIO_BUGS_FPACK.md.
  */
 
 use std::cell::{Cell, RefCell};
@@ -80,11 +59,8 @@ use rsfitsio::{KeywordDatatype, KeywordDatatypeMut, NullValue, STDERR, bb, cs};
 use crate::cfmt::{dbl, not_int};
 use crate::fpack_h::*;
 
-/* nearest integer function
- *
- * DEVIATION: C's (int)/(short) conversion of an out-of-range double is
- * undefined; Rust's `as' saturates.  No fpack input reaches that range after
- * the rescale division, so this only replaces UB with a defined result. */
+/* nearest integer function.  DEVIATION: C's conversion of an out-of-range
+double is undefined; Rust's `as' saturates. */
 #[allow(non_snake_case)]
 fn NINT(x: f64) -> c_int {
     if x >= 0. {
@@ -110,20 +86,13 @@ thread_local! {
     static XSAMPLE: Cell<c_int> = const { Cell::new(4100) };
     static YSAMPLE: Cell<c_int> = const { Cell::new(4100) };
 
-    /* define variables for measuring elapsed time.  The C keeps `scpu'/`ecpu'
-    (clock_t) plus startsec/startmilli (from gettimeofday); Instant covers the
-    latter pair and is monotonic, which gettimeofday is not, and the CPU clock
-    is kept in seconds so that CLOCKS_PER_SEC never has to be named. */
+    /* elapsed and CPU time; the C keeps scpu/ecpu plus startsec/startmilli */
     static SCPU: Cell<f64> = const { Cell::new(0.0) };
     static START: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
-/// C: `clock() / CLOCKTICKS`, in seconds.
-///
-/// Unlike the elapsed-time split in `gettime` below this one cannot be a
-/// runtime `cfg!()`: libc exposes `clock()` on windows but not on linux-gnu,
-/// where `clock_gettime(CLOCK_PROCESS_CPUTIME_ID)` is the POSIX spelling, so
-/// only one of the two bodies can compile on a given target.
+/// C: `clock() / CLOCKTICKS`, in seconds.  Not a runtime `cfg!()` because libc
+/// exposes `clock()` on windows but not on linux-gnu.
 #[cfg(unix)]
 fn cpu_seconds() -> f64 {
     let mut ts = libc::timespec {
@@ -153,28 +122,24 @@ fn cpu_seconds() -> f64 {
  * small helpers the C gets from <stdio.h>/<string.h>
  * ------------------------------------------------------------------------ */
 
-/// The bytes of a NUL-terminated `[c_char]` buffer, without the NUL.
+/// The bytes of a NUL-terminated buffer, without the NUL.
 pub(crate) fn cbytes(s: &[c_char]) -> &[u8] {
     &cast_slice(s)[..strlen_safe(s)]
 }
 
-/// A `[c_char]` buffer as a filesystem path.  Filenames are bytes on unix and
-/// UTF-16 on windows; going through `String::from_utf8_lossy` is the same
-/// compromise `std::env::args()` already makes for the command line.
+/// A `[c_char]` buffer as a filesystem path.
 fn cpath(s: &[c_char]) -> PathBuf {
     PathBuf::from(String::from_utf8_lossy(cbytes(s)).into_owned())
 }
 
-/// Copy `s` into `dst` (NUL-terminated), truncating rather than overrunning.
-/// C's `strncpy(dst, s, N-1); dst[N-1] = 0;` idiom.
+/// C: `strncpy(dst, s, N-1); dst[N-1] = 0;`
 fn strncpy_trunc(dst: &mut [c_char], s: &[c_char]) {
     let n = strlen_safe(s).min(dst.len() - 1);
     dst[..n].copy_from_slice(&s[..n]);
     dst[n] = 0;
 }
 
-/* the C's argv, as NUL-terminated byte buffers, so that `argv[iarg][0]' and
-strlen(argv[iarg]) transpile unchanged */
+/* argv as NUL-terminated buffers, so argv[iarg][0] transpiles unchanged */
 pub(crate) type Argv = Vec<Vec<c_char>>;
 
 pub(crate) fn c_argv() -> Argv {
@@ -205,8 +170,7 @@ fn fp_msg_bytes(msg: &[u8]) -> c_int {
     0
 }
 
-/// `printf(...)` of already-formatted text.  Separate from fp_msg only so the
-/// call sites read like the C, which uses printf directly for its reports.
+/// `printf(...)` of already-formatted text.
 fn pf(text: &str) {
     fp_msg_bytes(text.as_bytes());
 }
@@ -233,12 +197,8 @@ pub(crate) fn fp_noop() -> c_int {
     0
 }
 /*--------------------------------------------------------------------------*/
-/// C: `void fp_abort_output (fitsfile *infptr, fitsfile *outfptr, int stat)`,
-/// which ends in `exit (stat)`.  It therefore always fails, and returning the
-/// exit code lets callers write `return Err(fp_abort_output(...))`.
-///
-/// Both files are taken by value because the C closes one and deletes the
-/// other; neither is usable afterwards.
+/// C: `fp_abort_output(...)`, which ends in `exit (stat)` -- hence the FpExit
+/// return.  Both files are taken by value: one is closed, the other deleted.
 pub(crate) fn fp_abort_output(
     infptr: Option<Box<fitsfile>>,
     mut outfptr: Option<Box<fitsfile>>,
@@ -248,12 +208,9 @@ pub(crate) fn fp_abort_output(
     let mut hdunum = 0;
 
     if let Some(mut infptr) = infptr {
-        /* DEVIATION (upstream bug 2): the C passes the 513-byte global
-        `tempfilename' to fits_file_name(), which is an unbounded strcpy() of a
-        name that may be up to FLEN_FILENAME.  Use a correctly sized buffer.
-        That also disposes of upstream bug 3 -- the C was overwriting the very
-        temp-file name its signal handler needed -- since the temp names are
-        owned by TempPath here rather than by a global. */
+        /* DEVIATION (upstream bugs 2 and 3): the C copies into the 513-byte
+        global `tempfilename', which is both too small and the name its signal
+        handler needed. */
         let mut filename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         fits_file_name(&mut infptr, &mut filename, &mut status);
         fits_get_hdu_num(&mut infptr, &mut hdunum);
@@ -302,12 +259,9 @@ pub(crate) fn fp_access(filename: &[c_char]) -> c_int {
     }
 }
 /*--------------------------------------------------------------------------*/
-/// C: `int fp_tmpnam(char *suffix, char *rootname, char *tmpnam)`.
-///
-/// Transpiled verbatim -- including its check-then-use race, which is inherent
-/// to producing a *name* for CFITSIO to create -- because the names it builds
-/// appear in the C's messages.  Callers wrap the result in a `TempPath` so it
-/// is removed however they leave scope; see the module header.
+/// C: `fp_tmpnam(suffix, rootname, tmpnam)`, transpiled verbatim -- including
+/// its check-then-use race -- because its names appear in the C's messages.
+/// Callers wrap the result in a `TempPath`.
 pub(crate) fn fp_tmpnam(suffix: &[c_char], rootname: &[c_char], tmpnam: &mut [c_char]) -> FpResult {
     /* create temporary file name */
 
@@ -349,7 +303,7 @@ pub(crate) fn fp_tmpnam(suffix: &[c_char], rootname: &[c_char], tmpnam: &mut [c_
     Ok(())
 }
 
-/// `fp_tmpnam` plus the RAII guard that replaces `abort_fpack`.
+/// `fp_tmpnam` plus the guard that replaces `abort_fpack`.
 fn fp_tmpnam_guard(
     suffix: &[c_char],
     rootname: &[c_char],
@@ -481,18 +435,13 @@ pub(crate) fn fp_list(argc: c_int, argv: &Argv, fpvar: fpstate) -> FpResult<c_in
     Ok(0)
 }
 /*--------------------------------------------------------------------------*/
-/// C takes `fitsfile *infptr`; here it is the owning `Option` because
-/// `fp_abort_output` closes the file, which needs ownership.
+/// Takes the owning `Option` because `fp_abort_output` closes the file.
 pub(crate) fn fp_info_hdu(infptr: &mut Option<Box<fitsfile>>) -> FpResult<c_int> {
-    /* NOTE (upstream bug 5): `naxes' is declared once here but read again on
-    every pass of the hdupos loop below, and fits_get_img_param only fills the
-    first `naxis' entries, so a low-dimension HDU inherits the previous HDU's
-    higher axes.  Reproduced deliberately -- see notes/CFITSIO_BUGS_FPACK.md. */
+    /* NOTE (upstream bug 5): declared once but reread every pass, so a
+    low-dimension HDU inherits the previous one's axes.  Reproduced. */
     let mut naxes: [c_long; 9] = [1, 1, 1, 1, 1, 1, 1, 1, 1];
     let mut val: [c_char; SZ_CARD] = [0; SZ_CARD];
-    /* DEVIATION: the C's `com[SZ_CARD]' is an 81-byte buffer for a value
-    ffgkey never fills past FLEN_COMMENT; the safe signature is typed to that
-    length.  The comment is never read. */
+    /* DEVIATION: FLEN_COMMENT rather than the C's SZ_CARD; never read. */
     let mut com: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut naxis: c_int = 0;
     let mut hdutype: c_int = 0;
@@ -532,8 +481,7 @@ pub(crate) fn fp_info_hdu(infptr: &mut Option<Box<fitsfile>>) -> FpResult<c_int>
             return Err(fp_abort_output(infptr.take(), None, stat));
         } else if hdutype == IMAGE_HDU {
             /* that is, if XTENSION != "IMAGE" AND != "BINTABLE" */
-            /* NOTE (upstream bug 9): the C compares only 5 characters of
-            "BINTABLE".  Reproduced. */
+            /* NOTE (upstream bug 9): only 5 characters of "BINTABLE" */
             if strncmp_safe(&val[1..], cs!(c"IMAGE"), 5) != 0
                 && strncmp_safe(&val[1..], cs!(c"BINTABLE"), 5) != 0
             {
@@ -567,8 +515,7 @@ pub(crate) fn fp_info_hdu(infptr: &mut Option<Box<fitsfile>>) -> FpResult<c_int>
             if naxis == 0 {
                 pf(" [no_pixels]");
             } else if naxis == 1 {
-                /* NOTE (upstream bug 4): should be naxes[0]; a 1-D image of
-                length 100 is reported as "[1]".  Reproduced. */
+                /* NOTE (upstream bug 4): should be naxes[0] */
                 pf(&format!(" [{}]", naxes[1]));
             } else {
                 pf(&format!(" [{}", naxes[0]));
@@ -756,8 +703,7 @@ pub(crate) fn fp_preflight(
             }
 
             /* construct output file name */
-            /* NOTE (upstream bug 12): this strcpy() discards the prefix just
-            copied in above whenever the input is stdin.  Reproduced. */
+            /* NOTE (upstream bug 12): discards the prefix copied in above */
             if infits[0] == bb(b'-') {
                 strcpy_safe(&mut outfits, cs!(c"output.fits"));
             } else {
@@ -968,9 +914,8 @@ pub(crate) fn fp_loop(argc: c_int, argv: &Argv, unpack: c_int, fpvar: fpstate) -
         match File::create(cpath(&fpvar.outfile)) {
             Ok(f) => OUTREPORT.with_borrow_mut(|r| *r = Some(BufWriter::new(f))),
             Err(_) => {
-                /* C: outreport = fopen(...) and never checks; a NULL stream
-                then makes every fprintf a no-op on glibc.  Match that by
-                leaving OUTREPORT as None. */
+                /* the C never checks fopen; a NULL stream makes every
+                fprintf a no-op, which None reproduces */
             }
         }
         report(
@@ -981,14 +926,12 @@ pub(crate) fn fp_loop(argc: c_int, argv: &Argv, unpack: c_int, fpvar: fpstate) -
         );
     }
 
-    /* DEVIATION: the C zeroes tempfilename/tempfilename2/tempfilename3 here
-    and installs abort_fpack on SIGINT/SIGTERM/SIGHUP to remove them.  Each
-    temp file is a TempPath below instead; see the module header. */
+    /* DEVIATION: the C installs abort_fpack here to remove its three temp
+    files; each is a TempPath below instead. */
 
     iarg = fpvar.firstfile;
     'files: while iarg < argc {
-        /* the temp files created on this pass; dropping them unlinks them,
-        which is what abort_fpack existed to do */
+        /* dropping these unlinks them, as abort_fpack did */
         let tempfile1: TempPath;
         let tempfile2: TempPath;
         #[allow(unused_assignments)]
@@ -1276,13 +1219,9 @@ pub(crate) fn fp_loop(argc: c_int, argv: &Argv, unpack: c_int, fpvar: fpstate) -
         iraf_infile = 0;
 
         if fpvar.do_gzip_file != 0 {
-            /* gzip the output file
-             *
-             * DEVIATION: the C builds "gzip -1 <outfits>" and hands it to
-             * system(), after checking every character of the name against a
-             * whitelist so the shell cannot be tricked.  No shell is involved
-             * here -- the file is streamed through flate2 -- so the whitelist
-             * and the length check that sized the command buffer go with it. */
+            /* gzip the output file.  DEVIATION: the C hands "gzip -1 <file>"
+            to system() behind a filename whitelist; there is no shell here, so
+            the whitelist goes with it. */
             if let Err(e) = gzip_file(&outfits) {
                 fp_msg_str("\nError gzipping output file ");
                 fp_msg(&outfits);
@@ -1316,17 +1255,13 @@ fn read_answer() -> u8 {
     line.as_bytes().first().copied().unwrap_or(0)
 }
 
-/// Replacement for `system("gzip -1 <file>")`: compress `file` to `file.gz` at
-/// level 1 and remove the original, streaming so that the whole output file
-/// never has to be held in memory.
+/// Replacement for `system("gzip -1 <file>")`, streamed rather than buffered.
 fn gzip_file(file: &[c_char]) -> std::io::Result<()> {
     use flate2::Compression;
     use flate2::write::GzEncoder;
 
     let src = cpath(file);
-    /* build the ".gz" name from the path, not by strcat into the caller's
-    buffer -- fp_loop's `outfits' has room to spare but nothing in the
-    signature says so */
+    /* from the path, not by strcat into the caller's buffer */
     let mut dst = src.clone().into_os_string();
     dst.push(".gz");
     let dst = PathBuf::from(dst);
@@ -1428,9 +1363,8 @@ pub(crate) fn fp_unpack(infits: &[c_char], outfits: &[c_char], fpvar: fpstate) -
     let mut single = 0;
     let mut hduname: [c_char; SZ_STR] = [0; SZ_STR];
 
-    /* the C walks fpvar.extname with `hduloc'/`loc' char pointers, writing NULs
-    over the commas as it goes; fpvar is a by-value copy so that is local.  Here
-    the same walk is an index into a local copy of extname. */
+    /* the C walks fpvar.extname with char pointers, writing NULs over the
+    commas; here that walk is an index into a local copy */
     let mut extname: [c_char; SZ_STR] = fpvar.extname;
     let mut hduloc: usize = 0;
 
@@ -1875,9 +1809,8 @@ pub(crate) fn fp_test(
                 }
             }
 
-            /* C: if (!rescale_flag) infptr = inputfptr; else infptr = tempfile.
-            Two owning handles cannot share one `&mut', so `infptr' is re-derived
-            at each use instead. */
+            /* C: infptr aliases either inputfptr or tempfile.  Two owning
+            handles cannot share one &mut, so it is re-derived at each use. */
 
             /* compute basic statistics about the input image */
             {
@@ -2212,8 +2145,7 @@ pub(crate) fn fp_test(
     Ok(0)
 }
 
-/// C: `snprintf(buf, sizeof buf, ...)` -- write `text` into `buf`, truncated
-/// and NUL-terminated.
+/// C: `snprintf(buf, sizeof buf, ...)`
 fn snprintf_into(buf: &mut [c_char], text: &str) {
     let src: &[c_char] = cast_slice(text.as_bytes());
     let n = src.len().min(buf.len() - 1);
@@ -2541,9 +2473,8 @@ pub(crate) fn fp_unpack_hdu(
     0
 }
 /*--------------------------------------------------------------------------*/
-/// DEVIATION: the C guards each of the four output pointers with
-/// `if (row_elapse)` / `if (whole_elapse)`; neither call site passes NULL, so
-/// they are plain `&mut` here and the guards are gone.
+/// DEVIATION: the C guards each output pointer against NULL; no call site
+/// passes one, so they are plain `&mut` here.
 pub(crate) fn fits_read_image_speed(
     infptr: &mut fitsfile,
     whole_elapse: &mut f32,
@@ -3144,9 +3075,8 @@ pub(crate) fn fp_i2stat(
         lpixel[1] = i2;
     }
     /* NOTE (upstream bug 6): for a 1-D image the block above never runs, so
-    i1/i2 still hold the *x* extent and ny comes out equal to nx.  npix is then
-    nx*nx and the statistics run over a buffer only nx of which was read -- the
-    rest being the calloc zeros this vec![0] reproduces.  Reproduced. */
+    ny comes out equal to nx and the statistics run over nx*nx elements of a
+    buffer only nx of which was read.  Reproduced. */
     ny = i2 - i1 + 1;
 
     npix = nx * ny;
@@ -3677,10 +3607,8 @@ pub(crate) fn fp_i4rescale(
     *status
 }
 
-/* DEVIATION: `void abort_fpack(int sig)' -- the SIGINT/SIGTERM/SIGHUP handler
-that removed the three temp-file globals -- is not ported.  Every temp file is
-a TempPath owned by the function that created it, so it is unlinked on both the
-normal and the error path; see the module header. */
+/* DEVIATION: `abort_fpack', the signal handler that removed the three
+temp-file globals, is not ported; TempPath covers both paths. */
 
 #[cfg(test)]
 pub(crate) mod tests {

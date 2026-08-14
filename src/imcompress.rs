@@ -2013,15 +2013,8 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
             (f64::from(nx) * 4.4 + 26.0) as c_int /* will be compressing 32-bit int array */
         }
     } else if comptype == PLIO_1 {
-        /* DEVIATION from CFITSIO: the C falls through to `nx * sizeof(int)'
-        here, i.e. two 16-bit line-list words per pixel.  PLIO's worst case is
-        three -- a two-word I_SH pair to move the high value by more than
-        I_DATAMAX, plus a one-word I_HN -- so poorly-compressible 16-bit data
-        overruns the buffer.  In the C that is a heap overflow (fpack -p aborts
-        with "malloc(): corrupted top size"); here it would be a panic.  Ask
-        pliocomp for the bound rather than restating it.  The buffer is
-        scratch, so enlarging it does not change a byte of the output.  See
-        notes/CFITSIO_BUGS_FPACK.md and heasarc/cfitsio#136 / PR #174. */
+        /* DEVIATION: the C has no PLIO case and falls through to two words per
+        pixel, where the worst case is three -- heasarc/cfitsio#136. */
         (pl_p2li_max_len(nx as usize) * mem::size_of::<c_short>()) as c_int
     } else {
         nx * mem::size_of::<c_int>() as c_int
@@ -2750,9 +2743,7 @@ unsafe fn imcomp_compress_tile(
                     }
                 }
 
-                /* cbuf is sized by imcomp_calc_max_elem, which asks pliocomp
-                for the worst case, so this cannot come back None; report a
-                compression error rather than unwrapping if it ever does. */
+                /* cbuf is sized for the worst case, so None is unreachable */
                 nelem = match pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) {
                     Some(n) => n as c_int,
                     None => {
@@ -2912,10 +2903,7 @@ unsafe fn imcomp_compress_tile(
                         }
                     }
 
-                    /* C: `bzlen = (unsigned int) clen', in bytes; `clen' counts
-                    c_shorts here, so the byte capacity is twice it.  Understating
-                    it makes BZ2_bzBuffToBuffCompress fail on data that does not
-                    compress to under half the buffer. */
+                    /* clen counts c_shorts here; the C's is in bytes */
                     let mut bzlen: c_uint = (clen * 2) as c_uint;
 
                     /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
@@ -2995,20 +2983,12 @@ unsafe fn imcomp_compress_tile(
 
                 ihcompscale = (hcompscale + 0.5) as c_int;
 
-                /* C: `hcomp_len = clen', where clen counts *bytes*.  `clen'
-                counts c_shorts here, so the byte capacity is twice it. */
+                /* clen counts c_shorts here; the C's is in bytes */
                 hcomp_len = (clen * 2) as c_long; /* allocated size of the buffer */
 
-                /* C: fits_hcompress(..., &hcomp_len, status) takes the buffer
-                capacity in and hands the compressed length back out, and
-                ffpclb then writes exactly that many bytes.  HCEncoder returns
-                no length -- but it writes through a std::io::Write, and
-                `impl Write for &mut [u8]' advances the slice as it goes, so
-                the length is the number of bytes it consumed.  Leaving
-                hcomp_len at the buffer capacity (as this used to) stored a
-                fixed-size row of half the buffer regardless of what was
-                actually encoded, and the resulting stream could not be
-                decompressed by either implementation. */
+                /* The C gets the compressed length back from fits_hcompress.
+                HCEncoder returns none, so take it from how far it advanced the
+                output slice -- `Write for &mut [u8]' consumes as it writes. */
                 let mut out: &mut [u8] = cast_slice_mut(&mut cbuf);
                 let capacity = out.len();
 
@@ -12072,11 +12052,9 @@ pub fn fits_uncompress_table_safe(
         fits_copy_header(infptr, outfptr, status);
 
         /* reset the NAXIS1, NAXIS2. and PCOUNT keywords to the original */
-        /* C: strncpy(card, "NAXIS1 ", 7) -- the literal is seven characters,
-        the trailing space included, so it overwrites "ZNAXIS1" in place and
-        leaves the "= value / comment" that follows it untouched.  A
-        six-character literal makes strncpy NUL-pad to n instead, which
-        truncates the card to a bare keyword with no value. */
+        /* Seven characters including the trailing space: it overwrites
+        "ZNAXIS1" in place.  A shorter literal makes strncpy NUL-pad to n,
+        truncating the card to a valueless keyword. */
         fits_read_card(outfptr, cs!(c"ZNAXIS1"), &mut card, status);
         strncpy_safe(&mut card, cs!(c"NAXIS1 "), 7);
         fits_update_card(outfptr, cs!(c"NAXIS1"), &card, status);
@@ -12305,11 +12283,10 @@ pub fn fits_uncompress_table_safe(
                     /* size in bytes of the uncompressed column of bytes */
                     fullsize = (cmajor_colstart[ii + 1] - cmajor_colstart[ii]) as usize;
 
-                    /* cm_buffer is sized `fullsize + addspace * rowspertile'
-                    (as in the C), which does not cover the payload of a
-                    variable-length string column -- the under-allocation
-                    behind heasarc/cfitsio#134.  The C grows past the end of
-                    the buffer there; refuse instead. */
+                    /* cm_buffer is sized as the C sizes it, which does not
+                    cover a variable-length string payload -- the
+                    under-allocation behind heasarc/cfitsio#134.  The C grows
+                    past the end of it; refuse instead. */
                     if (cmajor_colstart[ii] as usize) + fullsize > cm_buffer.len() {
                         ffpmsg_str("Compressed table column does not fit the transposed buffer");
                         ffpmsg_str(
@@ -12319,11 +12296,8 @@ pub fn fits_uncompress_table_safe(
                         return *status;
                     }
 
-                    /* C: cptr = cm_buffer + cmajor_colstart[ii];
-                    This used to slice `cmajor_colstart' -- the table of column
-                    offsets -- rather than the buffer those offsets are into,
-                    so every tile was decompressed over the offset table and
-                    the table data never reached cm_buffer at all. */
+                    /* cm_buffer indexed by the column offset, not a slice of
+                    the offset table itself */
                     let cptr = &mut cm_buffer[cmajor_colstart[ii] as usize..];
 
                     match colcode[ii] as u8 {
@@ -12331,11 +12305,8 @@ pub fn fits_uncompress_table_safe(
                             if zctype[ii] == RICE_1 {
                                 let mut rcd = RCDecoder::new();
                                 rcd.set_log_fn(ffpmsg_str);
-                                /* the C passes a bare `(unsigned short *) cptr'
-                                and a separate count; the decoder here asserts
-                                its output slice is exactly `nx' long, so it
-                                must be bounded to this column's span rather
-                                than the rest of the buffer */
+                                /* the decoder asserts its output slice is
+                                exactly nx long */
                                 match rcd.decode_short(
                                     cast_slice(&ptr),
                                     fullsize / 2_usize,
@@ -12362,14 +12333,9 @@ pub fn fits_uncompress_table_safe(
                                     vla_repeat.try_into().unwrap(),
                                     &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
-                                    /* C passes `realloc' here, but `cptr' is an
-                                    interior pointer of cm_buffer, and
-                                    reallocating a pointer that is not the start
-                                    of an allocation is undefined behaviour --
-                                    heasarc/cfitsio#134, where it reads past the
-                                    end of the heap.  Without a grow callback
-                                    an oversized payload is a clean
-                                    DATA_DECOMPRESSION_ERR instead. */
+                                    /* no grow callback: cptr is an interior
+                                    pointer of cm_buffer, and the C's realloc of
+                                    one is heasarc/cfitsio#134 */
                                     None,
                                     Some(&mut dlen),
                                     status,
@@ -12407,14 +12373,9 @@ pub fn fits_uncompress_table_safe(
                                     vla_repeat.try_into().unwrap(),
                                     &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
-                                    /* C passes `realloc' here, but `cptr' is an
-                                    interior pointer of cm_buffer, and
-                                    reallocating a pointer that is not the start
-                                    of an allocation is undefined behaviour --
-                                    heasarc/cfitsio#134, where it reads past the
-                                    end of the heap.  Without a grow callback
-                                    an oversized payload is a clean
-                                    DATA_DECOMPRESSION_ERR instead. */
+                                    /* no grow callback: cptr is an interior
+                                    pointer of cm_buffer, and the C's realloc of
+                                    one is heasarc/cfitsio#134 */
                                     None,
                                     Some(&mut dlen),
                                     status,
@@ -12445,14 +12406,9 @@ pub fn fits_uncompress_table_safe(
                                     vla_repeat.try_into().unwrap(),
                                     &mut cptr.as_mut_ptr().cast::<u8>(),
                                     &mut fullsize,
-                                    /* C passes `realloc' here, but `cptr' is an
-                                    interior pointer of cm_buffer, and
-                                    reallocating a pointer that is not the start
-                                    of an allocation is undefined behaviour --
-                                    heasarc/cfitsio#134, where it reads past the
-                                    end of the heap.  Without a grow callback
-                                    an oversized payload is a clean
-                                    DATA_DECOMPRESSION_ERR instead. */
+                                    /* no grow callback: cptr is an interior
+                                    pointer of cm_buffer, and the C's realloc of
+                                    one is heasarc/cfitsio#134 */
                                     None,
                                     Some(&mut dlen),
                                     status,
@@ -12468,7 +12424,7 @@ pub fn fits_uncompress_table_safe(
                                 vla_repeat.try_into().unwrap(),
                                 &mut cptr.as_mut_ptr().cast::<u8>(),
                                 &mut fullsize,
-                                /* see the note above: no interior-pointer realloc */
+                                /* no interior-pointer realloc; see above */
                                 None,
                                 Some(&mut dlen),
                                 status,

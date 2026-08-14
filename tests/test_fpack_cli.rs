@@ -1,13 +1,7 @@
-//! End-to-end tests for the `fpack` and `funpack` binaries.
-//!
-//! These drive the real executables through `std::process::Command`, so exit
-//! status, stdout and stderr are all under test -- which is the only way to
-//! reach the paths the C reports with `exit()`.  Everything below the CLI is
-//! covered by the `#[cfg(test)]` modules inside `src/bin/fpack/`.
-//!
-//! The expectations here were checked against the C `fpack`/`funpack` built
-//! from cfitsio/utilities; `scripts/fpack_diff.sh` re-runs that comparison
-//! over a wider matrix when the C binaries are available.
+//! End-to-end tests for the `fpack` and `funpack` binaries, driving the real
+//! executables so exit status and both streams are covered.  Everything below
+//! the CLI is covered by the `#[cfg(test)]` modules inside `src/bin/fpack/`,
+//! and `scripts/fpack_diff.sh` compares against the C over a wider matrix.
 
 mod common;
 
@@ -50,9 +44,6 @@ fn status(o: &Output) -> i32 {
 
 /// C's `exit(-1)`, as the shell sees it.
 const EXIT_FAILURE: i32 = 255;
-
-/* A deterministic 2-D image of each pixel type.  `seed` varies the data so
-that the compressors have something to chew on rather than a constant. */
 
 fn pixels(seed: u32) -> Vec<i32> {
     let mut x = seed.wrapping_mul(2_654_435_761).wrapping_add(1);
@@ -107,11 +98,9 @@ fn make_image(path: &str, bitpix: c_int) {
     assert_eq!(status, 0, "failed to build the {bitpix} fixture");
 }
 
-/// A tempdir holding a non-negative `SHORT_IMG` `a.fits`.
-///
-/// PLIO only accepts non-negative values, and `USHORT_IMG` would drag in the
-/// BZERO scaling that `test_c_packed_ushort_is_unreadable` is about, so the
-/// PLIO cases use this instead.
+/// A non-negative `SHORT_IMG` fixture, for the PLIO cases: PLIO rejects
+/// negatives, and `USHORT_IMG` would drag in the BZERO scaling that
+/// `test_c_packed_ushort_is_unreadable` is about.
 fn nonneg_fixture() -> TempDir {
     use bytemuck::cast_slice;
     use std::ffi::CString;
@@ -252,14 +241,8 @@ fn test_seventh_tile_dimension_is_refused() {
 /* round trips                                                             */
 /* ---------------------------------------------------------------------- */
 
-/// fpack then funpack, and the bytes must come back unchanged.
-///
-/// `-C` suppresses the checksum keywords, whose comment carries a wall-clock
-/// timestamp.  `flags` must select a genuinely lossless combination: integer
-/// images are lossless under every algorithm, but floating-point images are
-/// quantized unless `-q 0` is given, and `-q 0` in turn is only allowed with
-/// GZIP.  `-q0` (the digit is a *suffix*) merely turns off the random
-/// dithering, which is what makes a run reproducible.
+/// fpack then funpack, and the bytes must come back unchanged.  `-C` drops the
+/// timestamped checksum cards; `flags` must select a lossless combination.
 fn assert_lossless_round_trip(bitpix: c_int, flags: &[&str]) {
     let dir = fixture(bitpix);
     let original = std::fs::read(dir.path().join("a.fits")).unwrap();
@@ -284,8 +267,7 @@ fn assert_lossless_round_trip(bitpix: c_int, flags: &[&str]) {
         "fpack should leave the input alone without -F or -D"
     );
 
-    /* funpack refuses to overwrite an existing output, so clear the way --
-    the same thing `funpack -D' would have done. */
+    /* funpack refuses to overwrite an existing output */
     std::fs::remove_file(dir.path().join("a.fits")).unwrap();
 
     let o = run(FUNPACK, dir.path(), &["-C", "a.fits.fz"]);
@@ -342,13 +324,10 @@ fn test_plio_refuses_negative_pixels() {
     assert_ne!(status(&o), 0, "PLIO should refuse negative pixel values");
 }
 
-/// The default for a floating-point image is to quantize it, which is lossy
-/// on purpose: `-q 4` sets the quantization step to a quarter of the
-/// *estimated background noise*, so the error it introduces is small only for
-/// data that actually has a smooth background.  This uses a gradient with a
-/// small ripple -- what a real image looks like -- rather than the uniform
-/// noise the lossless fixtures use, where a quarter of the noise sigma is a
-/// large number and the drift would be tens of counts by design.
+/// Quantizing a float image is lossy on purpose: `-q 4` is a quarter of the
+/// *estimated background noise*, so the error is small only for data with a
+/// smooth background -- hence the gradient rather than the noise the lossless
+/// fixtures use.
 #[test]
 fn test_quantized_float_round_trip_is_close() {
     use bytemuck::cast_slice;
@@ -535,9 +514,7 @@ fn test_funpack_ambiguous_input() {
     assert!(stdout(&o).contains("Error: ambiguous input file name"));
 }
 
-/// `funpack -Z` gzips its output.  The C shells out to `gzip -1`; this port
-/// streams it through flate2 instead, so the observable contract -- a
-/// `.gz` beside no plain output -- is what gets tested.
+/// `funpack -Z` gzips its output; the C shells out to `gzip -1`.
 #[test]
 fn test_funpack_gzips_its_output() {
     let dir = fixture(SHORT_IMG);
@@ -618,9 +595,7 @@ fn test_funpack_extension_list() {
 /* ---------------------------------------------------------------------- */
 
 /// `-T` benchmarks every algorithm and leaves the input untouched.  The
-/// numbers are timings, so only the report's structure can be asserted here;
-/// `scripts/fpack_diff.sh` masks the timing columns and diffs the rest
-/// against the C.
+/// numbers are timings, so only the structure is asserted here.
 #[test]
 fn test_report_leaves_files_unchanged() {
     let dir = fixture(SHORT_IMG);
@@ -679,16 +654,10 @@ fn test_report_file() {
 /* interoperability with the C implementation                              */
 /* ---------------------------------------------------------------------- */
 
-/// A file packed here must be readable by the C `funpack`, and vice versa.
-///
-/// Ignored by default because it needs the C binaries; point `C_FPACK` and
-/// `C_FUNPACK` at them and run with `--ignored`.  `scripts/fpack_diff.sh`
-/// does the same over a much wider matrix.
-///
-/// Every algorithm must interoperate in both directions.  PLIO was the one
-/// exception until pliocomp 0.5.0 fixed its `LL_LEN` off-by-one; the empty
-/// `expected` list below is what keeps that fixed.  See
-/// `notes/PLIOCOMP_LL_LEN_BUG.md`.
+/// A file packed here must be readable by the C `funpack`, and vice versa, for
+/// every algorithm.  PLIO was the one exception until pliocomp 0.5.0 fixed its
+/// `LL_LEN` off-by-one, so the empty `expected` list is what keeps that fixed.
+/// Needs `C_FPACK`/`C_FUNPACK`; run with `--ignored`.
 #[test]
 #[ignore = "needs the C fpack/funpack; set C_FPACK and C_FUNPACK"]
 fn test_interoperates_with_the_c_implementation() {
@@ -769,12 +738,7 @@ fn test_c_packed_ushort_is_unreadable() {
     }
 }
 
-/// `fpack -tableonly` / `funpack` on a compressed binary table, over the
-/// column types the transposer branches on.
-///
-/// This was broken in both directions until five defects in
-/// `fits_uncompress_table`/`fits_compress_table` were fixed; see the notes on
-/// each in `src/imcompress.rs`.
+/// Compressed binary tables, over the column types the transposer branches on.
 #[test]
 fn test_compressed_table_round_trip() {
     for flag in ["-tableonly", "-table"] {
@@ -807,13 +771,9 @@ fn test_compressed_table_round_trip() {
     }
 }
 
-/// A table whose variable-length string column does not fit the transposed
-/// buffer must be refused, not written past the end of it.
-///
-/// `cm_buffer` is sized as the C sizes it -- for the descriptors, not the
-/// payload -- so `testprog.fit` overruns it.  The C `funpack` aborts with a
-/// heap overflow there (heasarc/cfitsio#134); this must report
-/// `DATA_DECOMPRESSION_ERR` instead.
+/// A variable-length string column too large for the transposed buffer must be
+/// refused, not written past the end of it.  The C aborts with a heap overflow
+/// here (heasarc/cfitsio#134).
 #[test]
 fn test_oversized_vla_column_is_refused_not_overrun() {
     let c_fpack = match std::env::var("C_FPACK") {
@@ -839,16 +799,14 @@ fn test_oversized_vla_column_is_refused_not_overrun() {
     std::fs::remove_file(dir.path().join("a.fits")).unwrap();
 
     let o = run(FUNPACK, dir.path(), &["-C", "a.fits.fz"]);
-    /* a normal exit, not a signal -- the C dies here with SIGABRT.  The status
-    is CFITSIO's 414 (DATA_DECOMPRESSION_ERR) truncated to a byte. */
+    /* a normal exit, not a signal -- the C dies here with SIGABRT */
     assert!(
         o.status.code().is_some(),
         "funpack was killed by a signal: {:?}",
         o.status
     );
     assert_ne!(status(&o), 0, "an oversized VLA column must be refused");
-    /* fp_abort_output names the file on stdout; the CFITSIO error stack,
-    which carries the explanation, goes to stderr via fits_report_error */
+    /* the CFITSIO error stack goes to stderr */
     let stderr = String::from_utf8_lossy(&o.stderr);
     assert!(
         stderr.contains("cfitsio#134"),
@@ -857,8 +815,7 @@ fn test_oversized_vla_column_is_refused_not_overrun() {
     );
 }
 
-/// A binary table with more than one FITS block of data, so that fpack will
-/// actually compress it rather than copying it verbatim.
+/// A binary table over one FITS block, so fpack compresses rather than copies.
 fn make_binary_table(path: &str) {
     use bytemuck::cast_slice;
     use rsfitsio::c_types::c_char;
@@ -870,8 +827,7 @@ fn make_binary_table(path: &str) {
     let mut status: c_int = 0;
     let mut fptr: Option<Box<fitsfile>> = None;
 
-    /* one column per branch of the transpose: TSHORT and TLONG/TFLOAT and
-    TDOUBLE take the GZIP_2 byte-shuffling paths, the rest are copied whole */
+    /* one column per branch of the transpose */
     let nrows: LONGLONG = 400;
     let ttype: [&[c_char]; 5] = [
         cast_slice(c"IVAL".to_bytes_with_nul()),

@@ -1,18 +1,7 @@
-/* C printf conversions that Rust's format!() cannot express.
- *
- * fpack's report output (fp_test, fp_test_hdu, fp_info_hdu) is printf with
- * conversions like `%#8.2g' and `%#10.4g'.  Rust has no %g at all: it cannot
- * pick between fixed and scientific by exponent, cannot strip trailing zeros,
- * and spells the specials `NaN'/`inf' rather than C's `nan'/`inf'.
- *
- * Everything format!() *can* do -- widths, precisions, `-' left alignment,
- * %d/%ld/%s -- is left to format!() at the call sites.  Only the double
- * conversions come through here, and they go to the crate's own C printf
- * (src/relibc/header/stdio/printf.rs) so that there is exactly one rounding
- * and one specials-spelling engine, and it is the C one.
- *
- *      C:     printf(" %#8.2g %#5.1f\n", sigma, xbits);
- *      Rust:  pf!(" {} {}\n", dbl(c"%#8.2g", sigma), dbl(c"%#5.1f", xbits));
+/* C printf conversions that Rust's format!() cannot express: %g in any form,
+ * and the `#' alternate flag.  Everything format!() can do is left to it at
+ * the call sites; the double conversions come through here so that there is
+ * one rounding and one specials-spelling engine, and it is the C one.
  */
 
 use std::ffi::CStr;
@@ -22,8 +11,7 @@ use rsfitsio::c_types::{c_char, c_long, c_ulong};
 use rsfitsio::relibc::header::stdio::printf::{CustomVaList, VaArg};
 use rsfitsio::relibc::header::stdio::snprintf_va;
 
-/* long enough for %f of any finite f64 (309 integer digits) plus sign,
-point, precision and NUL */
+/* long enough for %f of any finite f64 */
 const CFMT_BUF: usize = 512;
 
 /// One C floating-point conversion.  `spec` is the whole conversion exactly as
@@ -47,11 +35,8 @@ pub(crate) fn dbl(spec: &CStr, val: f64) -> String {
         .into_owned()
 }
 
-/// C: `(unsigned long) (~((int) hdusum))`, from fp_info_hdu.
-///
-/// The C narrows the checksum to `int` (wrapping, on every compiler CFITSIO
-/// supports), complements it, then widens back through the *signed* type, so
-/// the result sign-extends.  Spelling it out keeps that chain visible.
+/// C: `(unsigned long) (~((int) hdusum))`, from fp_info_hdu.  The narrowing to
+/// a signed int is what makes the result sign-extend.
 pub(crate) fn not_int(hdusum: c_ulong) -> c_ulong {
     (!(hdusum as u32 as i32)) as c_long as c_ulong
 }

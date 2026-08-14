@@ -7,13 +7,10 @@
  * The C header is just constants, two structs and the prototypes; the
  * prototypes are carried by Rust's module system instead.
  *
- * DEVIATION: the C reports every error by calling exit() from wherever it
- * happens to be -- fp_get_param(), fp_preflight(), fp_loop() and
- * fp_abort_output() all do it.  Here each of those `exit(n)' becomes
- * `return Err(FpExit(n))', the enclosing function returns FpResult, and
- * main() turns the error back into the same process exit status.  This keeps
- * every error path reachable from a unit test instead of killing the test
- * runner, and is the only structural change to the control flow.
+ * DEVIATION: each `exit(n)' becomes `return Err(FpExit(n))', propagated to
+ * main().  This keeps every error path reachable from a unit test instead of
+ * killing the test runner, and is the only structural change to the control
+ * flow.
  */
 
 use rsfitsio::c_types::{c_char, c_float, c_int, c_long};
@@ -73,8 +70,8 @@ pub(crate) struct fpstate {
 }
 
 impl Default for fpstate {
-    /* the C leaves fpstate uninitialised until fp_init() runs; fp_init() is
-    the only constructor either program uses, and it checks the magic. */
+    /* the C leaves fpstate uninitialised until fp_init(), which is the only
+    constructor either program uses and checks the magic */
     fn default() -> Self {
         fpstate {
             comptype: 0,

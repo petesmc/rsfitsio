@@ -7,14 +7,11 @@
 
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(unused_assignments)]
-// fpack_h.rs and fpackutil.rs are shared by both binaries, so each one
-// carries items only the other uses (FPACK/FUNPACK, the atoi/atof shims).
+// items only the *other* binary uses out of the two shared modules
 #![allow(dead_code)]
 
-/* The C links funpack.o against fpackutil.o and includes fpack.h
-(Makefile.in:1203).  Rust binaries cannot share a module tree, so the three
-shared files are pulled in by path -- the same sources, compiled a second
-time into this binary. */
+/* The C links funpack.o against fpackutil.o; Rust binaries cannot share a
+module tree, so the shared files are pulled in by path. */
 #[path = "../fpack/cfmt.rs"]
 mod cfmt;
 #[path = "../fpack/fpack_h.rs"]
