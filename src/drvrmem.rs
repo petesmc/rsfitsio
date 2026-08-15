@@ -552,10 +552,10 @@ pub(crate) fn stdin2file(handle: c_int) -> c_int {
         return FILE_NOT_OPENED;
     }
 
-    /* fill up the remainder of the buffer */
-    let mut nread = stdin_hdl
-        .read(cast_slice_mut(&mut recbuf[6..RECBUFLEN]))
-        .unwrap();
+    /* fill up the remainder of the buffer.  stdin is typically a pipe, where
+       short reads are the norm rather than the exception, so loop until the
+       buffer is full or the stream ends. */
+    let mut nread = read_fill(&mut stdin_hdl, cast_slice_mut(&mut recbuf[6..RECBUFLEN])).unwrap();
 
     nread += 6; /* add in the 6 characters in 'SIMPLE' */
 
@@ -661,7 +661,7 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
 
         let mut diskfile = diskfile.unwrap();
 
-        if diskfile.read(&mut buffer[..2]).unwrap() != 2 {
+        if read_fill(&mut diskfile, &mut buffer[..2]).unwrap() != 2 {
             /* read 2 bytes */
             return READ_ERROR;
         }
@@ -1118,7 +1118,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
         let ptr = (*m[*hdl as usize].memaddrptr).add(BL!()).cast::<u8>();
         let ptr_slice = slice::from_raw_parts_mut(ptr, datasize);
 
-        let tmp = diskfile.read(&mut ptr_slice[..datasize]).unwrap();
+        let tmp = read_fill(&mut diskfile, &mut ptr_slice[..datasize]).unwrap();
         if tmp != datasize {
             status = READ_ERROR;
         }
