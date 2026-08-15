@@ -1,7 +1,7 @@
 use core::ffi::CStr;
 use std::fs::File;
-use std::io::Read;
 
+use crate::wrappers::read_fill;
 use crate::c_types::*;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::fgets;
@@ -273,7 +273,9 @@ pub(crate) fn fits_read_ascii_region(
                 currLine.resize(2 * allocLen, 0);
             }
 
-            let _ = rgnFile.read(cast_slice_mut(&mut currLine[lineLen..]));
+            /* fill the buffer: a short read here would silently truncate a long
+               region line rather than continue reading it */
+            let _ = read_fill(&mut rgnFile, cast_slice_mut(&mut currLine[lineLen..]));
             allocLen += allocLen;
             lineLen += strlen_safe(&currLine[lineLen..]);
         }
