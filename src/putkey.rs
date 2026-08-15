@@ -6780,7 +6780,87 @@ mod tests {
         });
     }
 
-    // skipped: fftm2s_safe is todo!() (test_putkey_datetime relies on fftm2s/ffs2tm chains)
+    /// Mirrors test_putkey_datetime in ~/code/cfitsio/tests/test_putkey.c
+    #[test]
+    fn test_putkey_datetime() {
+        let mut status: c_int = 0;
+        let mut yr: c_int = 0;
+        let mut mon: c_int = 0;
+        let mut day: c_int = 0;
+        let mut hr: c_int = 0;
+        let mut min: c_int = 0;
+        let mut sec: c_double = 0.0;
+        let mut datestr = [0 as c_char; 11];
+        let mut timestr = [0 as c_char; 30];
+
+        /* ffdt2s - convert date to string (new format) */
+        fits_date2str(2024, 1, 15, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "2024-01-15");
+
+        /* ffdt2s - old format date (year 1900-1998) */
+        fits_date2str(1995, 6, 15, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&datestr), "15/06/95");
+
+        /* ffs2dt - convert string to date */
+        fits_str2date(
+            Some(&cc("2024-06-20")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!((yr, mon, day), (2024, 6, 20));
+
+        /* old-style date format */
+        fits_str2date(
+            Some(&cc("15/03/99")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!((yr, mon, day), (1999, 3, 15));
+
+        /* fftm2s - convert date-time to string */
+        fits_time2str(2024, 7, 4, 12, 30, 45.5, 3, &mut timestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(&from_buf(&timestr)[..19], "2024-07-04T12:30:45");
+
+        /* fftm2s with 0 decimals */
+        fits_time2str(2024, 8, 15, 10, 20, 30.0, 0, &mut timestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(&from_buf(&timestr)[..19], "2024-08-15T10:20:30");
+
+        /* fftm2s with negative decimals (date only) */
+        fits_time2str(2024, 9, 1, 0, 0, 0.0, -1, &mut timestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(from_buf(&timestr), "2024-09-01");
+
+        /* fftm2s with time only (year=month=day=0) */
+        fits_time2str(0, 0, 0, 14, 30, 45.5, 3, &mut timestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(&from_buf(&timestr)[..8], "14:30:45");
+
+        /* ffs2tm - convert string to date-time */
+        fits_str2time(
+            Some(&cc("2024-12-25T08:15:30.123")),
+            Some(&mut yr),
+            Some(&mut mon),
+            Some(&mut day),
+            Some(&mut hr),
+            Some(&mut min),
+            Some(&mut sec),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!((yr, mon, day), (2024, 12, 25));
+        assert_eq!((hr, min), (8, 15));
+        assert!((sec - 30.123).abs() < 1e-6, "second = {sec}");
+    }
 
     #[test]
     fn test_putkey_tdim() {
@@ -7041,7 +7121,57 @@ mod tests {
         });
     }
 
-    // skipped: ffphext_safe is todo!() (test_putkey_exthead)
+    /// Mirrors test_putkey_exthead in ~/code/cfitsio/tests/test_putkey.c
+    #[test]
+    fn test_putkey_exthead() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 2] = [50, 50];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f.as_deref_mut().unwrap(), &mut status);
+            fits_write_exthdr(
+                f.as_deref_mut().unwrap(),
+                &cc("IMAGE"),
+                16,
+                2,
+                &naxes,
+                0,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphext failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            /* the C stops there; check the keywords actually landed */
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            let mut hdutype: c_int = 0;
+            fits_movabs_hdu(
+                f.as_deref_mut().unwrap(),
+                2,
+                Some(&mut hdutype),
+                &mut status,
+            );
+            assert_eq!(status, 0);
+            assert_eq!(hdutype, IMAGE_HDU);
+
+            let mut bitpix: c_int = 0;
+            let mut naxis: c_int = 0;
+            let mut naxes_out = [0 as c_long; 2];
+            fits_get_img_type(f.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            fits_get_img_dim(f.as_deref_mut().unwrap(), &mut naxis, &mut status);
+            fits_get_img_size(f.as_deref_mut().unwrap(), 2, &mut naxes_out, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(bitpix, SHORT_IMG);
+            assert_eq!(naxis, 2);
+            assert_eq!(naxes_out, [50, 50]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
 
     #[test]
     fn test_putkey_updates() {
@@ -7418,7 +7548,37 @@ mod tests {
         assert_eq!(status, BAD_DATE);
     }
 
-    // skipped: fftm2s_safe is todo!() (test_putkey_time_errors)
+    /// Mirrors test_putkey_time_errors in ~/code/cfitsio/tests/test_putkey.c
+    #[test]
+    fn test_putkey_time_errors() {
+        let mut timestr = [0 as c_char; 40];
+
+        /* each out-of-range field must be rejected with BAD_DATE */
+        let cases: [(c_int, c_int, c_int, c_int, c_int, c_double, &str); 6] = [
+            (10000, 1, 1, 0, 0, 0.0, "year > 9999"),
+            (2024, 13, 1, 0, 0, 0.0, "month > 12"),
+            (2024, 1, 32, 0, 0, 0.0, "day > 31"),
+            (2024, 1, 1, 24, 0, 0.0, "hour > 23"),
+            (2024, 1, 1, 0, 60, 0.0, "minute > 59"),
+            (2024, 1, 1, 0, 0, 61.0, "second >= 61"),
+        ];
+
+        for (year, month, day, hour, minute, second, what) in cases {
+            let mut status: c_int = 0;
+            fits_time2str(
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                0,
+                &mut timestr,
+                &mut status,
+            );
+            assert_eq!(status, BAD_DATE, "fftm2s accepted {what}");
+        }
+    }
 
     #[test]
     fn test_putkey_verifydate_errors() {
@@ -7772,7 +7932,47 @@ mod tests {
         });
     }
 
-    // skipped: ffphext_safe is todo!() (test_putkey_extheader_3d)
+    /// Mirrors test_putkey_extheader_3d in ~/code/cfitsio/tests/test_putkey.c
+    #[test]
+    fn test_putkey_extheader_3d() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 3] = [10, 20, 5];
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            fits_create_hdu(f.as_deref_mut().unwrap(), &mut status);
+            fits_write_exthdr(
+                f.as_deref_mut().unwrap(),
+                &cc("IMAGE"),
+                32,
+                3,
+                &naxes,
+                0,
+                1,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphext failed");
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+
+            fits_open_file(&mut f, &name, READONLY, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            let mut bitpix: c_int = 0;
+            let mut naxis: c_int = 0;
+            let mut naxes_out = [0 as c_long; 3];
+            fits_get_img_type(f.as_deref_mut().unwrap(), &mut bitpix, &mut status);
+            fits_get_img_dim(f.as_deref_mut().unwrap(), &mut naxis, &mut status);
+            fits_get_img_size(f.as_deref_mut().unwrap(), 3, &mut naxes_out, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(bitpix, LONG_IMG);
+            assert_eq!(naxis, 3);
+            assert_eq!(naxes_out, [10, 20, 5]);
+            fits_close_file(f.take().unwrap(), &mut status);
+        });
+    }
 
     #[test]
     fn test_putkey_empty_string() {
@@ -7810,7 +8010,22 @@ mod tests {
         });
     }
 
-    // skipped: fftm2s_safe is todo!() (test_putkey_timeonly)
+    /// Mirrors test_putkey_timeonly in ~/code/cfitsio/tests/test_putkey.c
+    #[test]
+    fn test_putkey_timeonly() {
+        let mut status: c_int = 0;
+        let mut timestr = [0 as c_char; 40];
+
+        /* year = month = day = 0 selects the time-only format hh:mm:ss.ddd */
+        fits_time2str(0, 0, 0, 14, 30, 45.5, 3, &mut timestr, &mut status);
+        assert_eq!(status, 0);
+
+        let got = from_buf(&timestr);
+        assert!(got.len() >= 8, "too short: {got:?}");
+        assert_eq!(got.as_bytes()[2], b':');
+        assert_eq!(got.as_bytes()[5], b':');
+        assert_eq!(got, "14:30:45.500");
+    }
 
     #[test]
     fn test_putkey_date_edge_cases() {

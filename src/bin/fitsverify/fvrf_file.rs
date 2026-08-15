@@ -1,18 +1,18 @@
 /* Transpiled from cfitsio/utilities/fvrf_file.c
 
-   `static HduName **hduname' becomes a thread-local Vec<HduName>; the C's
-   malloc/calloc/free bookkeeping is dropped in favour of RAII.  */
+`static HduName **hduname' becomes a thread-local Vec<HduName>; the C's
+malloc/calloc/free bookkeeping is dropped in favour of RAII.  */
 
 use std::cell::{Cell, RefCell};
 
 use bytemuck::cast_slice;
-use rsfitsio::aliases::rust_api::{
-    fits_clear_errmsg, fits_get_hduaddrll, fits_movrel_hdu,
-};
+use rsfitsio::aliases::rust_api::{fits_clear_errmsg, fits_get_hduaddrll, fits_movrel_hdu};
 use rsfitsio::buffers::ffmbyt_safe;
 use rsfitsio::c_types::{c_char, c_int};
 use rsfitsio::cs;
-use rsfitsio::fitsio::{ASCII_TBL, BINARY_TBL, END_OF_FILE, FLEN_VALUE, IMAGE_HDU, LONGLONG, fitsfile};
+use rsfitsio::fitsio::{
+    ASCII_TBL, BINARY_TBL, END_OF_FILE, FLEN_VALUE, IMAGE_HDU, LONGLONG, fitsfile,
+};
 
 use crate::common::*;
 use crate::fvrf_misc::*;
@@ -53,10 +53,10 @@ fn init_hduname() {
 
 /* set the hduname memeber hdutype, extname, extver */
 pub(crate) fn set_hduname(
-    hdunum: c_int,             /* hdu number */
-    hdutype: c_int,            /* hdutype */
+    hdunum: c_int,              /* hdu number */
+    hdutype: c_int,             /* hdutype */
     extname: Option<&[c_char]>, /* extension name */
-    extver: c_int,             /* extension version */
+    extver: c_int,              /* extension version */
 ) {
     let i = (hdunum - 1) as usize;
     HDUNAME.with(|h| {
@@ -260,7 +260,7 @@ pub(crate) fn test_end(infits: &mut fitsfile, out: Out) {
     }
 
     /* try to move to what would be the first byte of the next extension.
-      If successfull, we have a problem... */
+    If successfull, we have a problem... */
 
     ffmbyt_safe(infits, dataend, 0, &mut status);
     if status == 0 {
@@ -281,8 +281,8 @@ pub(crate) fn test_end(infits: &mut fitsfile, out: Out) {
 *
 *******************************************************************************/
 pub(crate) fn init_report(
-    out: Out,               /* output file */
-    _rootnam: &[c_char],    /* input file name */
+    out: Out,            /* output file */
+    _rootnam: &[c_char], /* input file name */
 ) {
     let mut comm: [c_char; COMM_LEN] = [0; COMM_LEN];
     spf!(comm; "\n", totalhdu(), " Header-Data Units in this file.");

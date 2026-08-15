@@ -1,8 +1,8 @@
 /* Transpiled from cfitsio/utilities/fvrf_key.c
 
-   The C walks the card with `char *' cursors; here every cursor is an index
-   into the card slice, and the `char **pt' in/out cursor parameters become
-   `pt: &mut usize'.  */
+The C walks the card with `char *' cursors; here every cursor is an index
+into the card slice, and the `char **pt' in/out cursor parameters become
+`pt: &mut usize'.  */
 
 use rsfitsio::c_types::{c_char, c_int, c_ulong};
 use rsfitsio::fitsio::{FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE};
@@ -15,13 +15,13 @@ use crate::{scat, spf};
     Sec. 5.1 and 5.2.
 */
 pub(crate) fn fits_parse_card(
-    out: Out,                          /* output file pointer */
-    kpos: c_int,                       /* keyposition starting from 1 */
-    card: &mut [c_char],               /* key card */
+    out: Out,                           /* output file pointer */
+    kpos: c_int,                        /* keyposition starting from 1 */
+    card: &mut [c_char],                /* key card */
     kname: &mut [c_char; FLEN_KEYWORD], /* key name */
-    ktype: &mut kwdtyp,                /* key type */
-    kvalue: &mut [c_char; FLEN_VALUE], /* key value */
-    kcomm: &mut [c_char],              /* comment */
+    ktype: &mut kwdtyp,                 /* key type */
+    kvalue: &mut [c_char; FLEN_VALUE],  /* key value */
+    kcomm: &mut [c_char],               /* comment */
 ) -> c_int {
     let mut vind: [c_char; 3] = [0; 3];
     let mut p: usize;
@@ -75,11 +75,7 @@ pub(crate) fn fits_parse_card(
     /* Whether the characters in keyword name are valid */
     while kname[p] != 0 {
         let c = kname[p] as u8;
-        if !(b'A'..=b'Z').contains(&c)
-            && !(b'0'..=b'9').contains(&c)
-            && c != b'-'
-            && c != b'_'
-        {
+        if !(b'A'..=b'Z').contains(&c) && !(b'0'..=b'9').contains(&c) && c != b'-' && c != b'_' {
             spf!(errmes;
                 "Keyword #", kpos, ": Name \"", CS(kname), "\" contains char \"", CHR(kname[p]),
                 "\" which is not upper case letter, digit, \"-\", or \"_\".");
@@ -234,10 +230,10 @@ pub(crate) fn fits_parse_card(
 
 /* parse And test the string keys */
 pub(crate) fn get_str(
-    card: &[c_char],      /* card string from character 11*/
-    pt: &mut usize,       /* cursor into card */
+    card: &[c_char],       /* card string from character 11*/
+    pt: &mut usize,        /* cursor into card */
     kvalue: &mut [c_char], /* key value string */
-    stat: &mut c_ulong,   /* error number */
+    stat: &mut c_ulong,    /* error number */
 ) {
     let mut pi: usize;
     let mut prev: u8; /* previous char */
@@ -328,7 +324,10 @@ pub(crate) fn get_num(
     pi = p;
     *ktype = kwdtyp::INT_KEY;
 
-    if card[p] as u8 != b'+' && card[p] as u8 != b'-' && !isdigit_c(card[p]) && card[p] as u8 != b'.'
+    if card[p] as u8 != b'+'
+        && card[p] as u8 != b'-'
+        && !isdigit_c(card[p])
+        && card[p] as u8 != b'.'
     {
         *stat |= BAD_NUM;
         return;
@@ -390,8 +389,8 @@ pub(crate) fn get_cmp(
     let mut p: usize;
     let mut pr_beg: usize;
     /* pr_end / pi_beg are left unset by the C when there is no ',' in the
-       value; it then dereferences a NULL pr_end.  Here they stay None and the
-       terminating writes are skipped. */
+    value; it then dereferences a NULL pr_end.  Here they stay None and the
+    terminating writes are skipped. */
     let mut pr_end: Option<usize> = None;
     let mut pi_beg: Option<usize> = None;
     let mut pi_end: usize = 0;
@@ -543,11 +542,11 @@ pub(crate) fn get_unknown(
 
 /* routine to print out the error of keyword value/comment */
 pub(crate) fn pr_kval_err(
-    out: Out,          /* output  FILE */
-    kpos: c_int,       /* keyposition starting from 1 */
-    kname: &[c_char],  /* keyword name */
-    kval: &[c_char],   /* keyword value */
-    errnum: c_ulong,   /* error number */
+    out: Out,         /* output  FILE */
+    kpos: c_int,      /* keyposition starting from 1 */
+    kname: &[c_char], /* keyword name */
+    kval: &[c_char],  /* keyword value */
+    errnum: c_ulong,  /* error number */
 ) {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
@@ -857,7 +856,6 @@ pub(crate) fn check_fixed_str(card: &[c_char], out: Out) -> c_int {
     1
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -885,7 +883,13 @@ mod tests {
         let mut kcomm = [0 as c_char; COMM_LEN];
         /* Out::Null suppresses reporting so only the parse result is under test */
         let r = fits_parse_card(
-            Out::Null, 1, &mut c, &mut kname, &mut ktype, &mut kvalue, &mut kcomm,
+            Out::Null,
+            1,
+            &mut c,
+            &mut kname,
+            &mut ktype,
+            &mut kvalue,
+            &mut kcomm,
         );
         (
             r,
@@ -986,13 +990,19 @@ mod tests {
         let mut kvalue = [0 as c_char; FLEN_VALUE];
         let mut kcomm = [0 as c_char; COMM_LEN];
         let r = fits_parse_card(
-            Out::Null, 1, &mut c, &mut kname, &mut ktype, &mut kvalue, &mut kcomm,
+            Out::Null,
+            1,
+            &mut c,
+            &mut kname,
+            &mut ktype,
+            &mut kvalue,
+            &mut kcomm,
         );
         assert_eq!(r, 1);
     }
 
     /* Fixed-format checks: the value has to end in column 30 for integers and
-       sit in column 30 for logicals. */
+    sit in column 30 for logicals. */
     #[test]
     fn test_check_fixed_int() {
         reset_err_wrn();
@@ -1040,7 +1050,11 @@ mod tests {
     #[test]
     fn test_check_type_helpers() {
         reset_err_wrn();
-        let mut k = FitsKey { ktype: kwdtyp::INT_KEY, kindex: 1, ..Default::default() };
+        let mut k = FitsKey {
+            ktype: kwdtyp::INT_KEY,
+            kindex: 1,
+            ..Default::default()
+        };
         set_cstr(&mut k.kname, b"NAXIS");
         set_cstr(&mut k.kvalue, b"2");
         assert_eq!(check_int(&k, Out::Null), 1);
