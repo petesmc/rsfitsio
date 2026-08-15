@@ -56,9 +56,12 @@ $env:Path += ';C:\code\rsfitsio\target\debug'
 ## Miri
 
 ```
-RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo miri test -- -- tests::test_write_image
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo +nightly miri test -- -- tests::test_write_image
 
-MIRIFLAGS="-Zmiri-disable-isolation" cargo miri test
+MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test
 
-RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo miri run --bin testprog
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo +nightly miri run --bin testprog
+
+#To run all tests in parallel and not fail on the first
+RUST_BACKTRACE=1 MIRIFLAGS="-Zmiri-env-forward=RUST_BACKTRACE -Zmiri-disable-isolation -Zmiri-backtrace=full" cargo +nightly miri nextest run --no-fail-fast
 ```

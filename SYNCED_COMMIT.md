@@ -1,1 +1,1 @@
-Synced commit: 65a3d621e11519fb171083fe890e4f5c82b2ba49 
+Synced commit: d6d27653740864a0483e74cff23c53e34e1dceee (cfitsio 4.7.0)
