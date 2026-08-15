@@ -19,7 +19,9 @@
 - [ ] Fix USHORT decompression: a BZERO=32768 image compressed by the C fpack
       fails to uncompress with NUM_OVERFLOW under every algorithm. Pinned by
       the ignored test_c_packed_ushort_is_unreadable
-- [ ] Report the CFITSIO defects in notes/CFITSIO_BUGS_FPACK.md upstream
+- [ ] Report the CFITSIO defects the fpack/funpack port turned up. Two are
+      already filed upstream (heasarc/cfitsio#134 and #136); the rest are
+      marked NOTE (upstream bug N) in src/bin/fpack/
 - [ ] Restructure modules, ::api ??
 - [X] Every extern function should be a wrapper around a safe interface
 - [X] Fix broken testprog.out comparison

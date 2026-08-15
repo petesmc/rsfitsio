@@ -14,8 +14,8 @@
  *               and its three globals, which are not ported.
  *   system()    funpack -Z streams through flate2 rather than `gzip -1'.
  *   bug fixes   Only where the C is undefined and Rust cannot reproduce it.
- *               Everything else upstream gets wrong is reproduced faithfully
- *               and written up in notes/CFITSIO_BUGS_FPACK.md.
+ *               Everything else upstream gets wrong is reproduced faithfully,
+ *               marked NOTE (upstream bug N) at its site.
  */
 
 use std::cell::{Cell, RefCell};
