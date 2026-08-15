@@ -48,8 +48,16 @@
       --no-fail-fast -j 8` (cap the threads: the default fans out to one miri
       process per core at ~1.1GB each and thrashes swap). All of the findings
       below are Stacked Borrows violations, i.e. real aliasing UB that LLVM's
-      `noalias` is entitled to miscompile, not miri pedantry. Root causes, in
-      rough order of severity:
+      `noalias` is entitled to miscompile, not miri pedantry. A full run takes
+      ~3.8h and reports 2287 passed / 485 failed: 435 UB, 42 unsupported
+      operations, 8 alignment panics. Counts below are failing tests per site.
+      Root causes, in order of blast radius:
+      * eval_l.rs:1571 (258) — see the lexer entry below; by far the biggest.
+      * drvrmem.rs:259 (53), getcolui.rs:1380 (38), getcol.rs:2778 (8),
+        grparser.rs:1046 (5) — each already carries a TODO/SAFETY-TODO.
+      * cfileio.rs:1880 (20) — the FPTR_TABLE entry below.
+      * The `&mut`/`&mut` aliasing sites are 1 test each, but see the first
+        entry: they are a signature problem, not a local one.
       * The ported `_safe` signatures take `infptr: &mut fitsfile` and
         `outfptr: &mut fitsfile`, but the C API explicitly allows
         `infptr == outfptr` and callers rely on it. Two `&mut` to one object
@@ -76,6 +84,23 @@
         self-referential struct; any later access through the slice kills it.
       * cfileio.rs:8907 — returns a raw pointer into the caller's buffer which
         is used after a later write invalidates the tag.
+      * getcolui.rs:1380, getcol.rs:2778, grparser.rs:1046 — each rebuilds a
+        slice with slice::from_raw_parts(_mut) from a pointer that is still
+        borrowed elsewhere. grparser's also makes a *mutable* slice from a
+        CStr's const pointer, which miri reports as a write through a
+        SharedReadOnly tag.
+      Not UB, but surfaced by the same run:
+      * 8 tests panic in bytemuck `cast_slice_mut` with
+        TargetAlignmentGreaterAndInputNotAligned, at getcol.rs:2299 reading
+        TSHORT into the tiled-image `cbuf` (imcompress.rs:7720), which is a
+        `Vec<u8>` and so only 1-byte aligned. Native malloc happens to return
+        over-aligned blocks, so this passes outside miri; it is a real latent
+        panic that fires whenever the buffer lands on an odd address. Fixing
+        it means giving cbuf an alignment suitable for the widest type read
+        into it rather than relying on the allocator.
+      * 42 tests fail on miri's own gaps, not on defects: `socketpair` and
+        `copy_file_range` (the fpack/funpack/fitsverify tests spawn
+        subprocesses). Exactly one is ours: a remaining C `fopen` call.
 - [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
 - [X] Mark all extern functions as deprecated so that we can detect usage
 - [X] Feature "bzip2" doesn't work
