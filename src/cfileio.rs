@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::{Read, Seek, Write};
 use std::sync::{Mutex, OnceLock};
 
-use crate::c_types::{FILE, c_char, c_int, c_long, c_void};
+use crate::c_types::{FILE, c_char, c_int, c_long, c_short, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
 use crate::grparser::fits_execute_template;
 use crate::helpers::boxed::box_try_new;
@@ -38,22 +38,30 @@ use crate::drvrmem::{
 };
 use crate::fitscore::{ffcrhd_safe, ffgisz_safe, ffpmsg_cstr, ffxmsg_safer};
 
+use crate::KeywordDatatypeMut;
 #[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
 use crate::drvrsmem::{
     smem_close, smem_create, smem_flush, smem_getoptions, smem_getversion, smem_init, smem_open,
     smem_read, smem_remove, smem_seek, smem_setoptions, smem_shutdown, smem_size, smem_write,
 };
-use crate::editcol::ffdcol_safe;
-use crate::edithdu::ffcopy_safe;
-use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, fits_pixel_filter_safer};
+use crate::editcol::{ffdcol_safe, fficol_safe};
+use crate::edithdu::{ffcopy_safe, ffcphd_safe};
+use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, ffsrow_safe, fits_pixel_filter_safer};
 use crate::fitscore::{
-    ALLOCATIONS, ffchdu, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe, ffghdn_safe,
-    ffghdt_safe, ffgidm_safe, ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffkeyn_safe, ffmahd_safe,
-    ffmnhd_safe, ffmrhd_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
+    ALLOCATIONS, ffchdu, ffcmrk_safe, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe,
+    ffghadll_safe, ffghdn_safe, ffghdt_safe, ffgidm_safe, ffgidt_safe, ffgiprll_safe, ffgkcl_safe,
+    ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffgtclll_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
+    ffmrhd_safe, ffpmrk_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
     fits_strcasecmp, fits_strncasecmp, fits_translate_keywords_safe,
 };
+use crate::getcolb::ffgsvb_safe;
+use crate::getcold::ffgsvd_safe;
+use crate::getcole::ffgsve_safe;
+use crate::getcoli::ffgsvi_safe;
+use crate::getcolj::ffgsvjj_safe;
+use crate::getcolk::ffgsvk_safe;
 use crate::getkey::{
-    ffgcrd_safe, ffghsp_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
+    ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
 };
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
@@ -61,10 +69,18 @@ use crate::imcompress::{
     fits_set_compression_type_safe, fits_set_hcomp_scale_safe, fits_set_hcomp_smooth_safe,
     fits_set_quantize_level_safe, fits_set_quantize_method_safe, fits_set_tile_dim_safe,
 };
-use crate::modkey::{ffdkey_safe, ffmkys_safe, ffmnam_safe};
+use crate::modkey::{ffdkey_safe, ffmkyd_safe, ffmkyj_safe, ffmkys_safe, ffmnam_safe};
+use crate::putcol::ffpcl_safe;
+use crate::putcolb::ffpprb_safe;
+use crate::putcold::ffppnd_safe;
+use crate::putcole::ffppne_safe;
+use crate::putcoli::ffppri_safe;
+use crate::putcolj::ffpprjj_safe;
+use crate::putcolk::ffpprk_safe;
 use crate::putkey::ffcrimll_safe;
-use crate::putkey::{ffphis_safe, ffprec_safe};
+use crate::putkey::{ffcrim_safe, ffphis_safe, ffprec_safe, ffptdmll_safe};
 use crate::relibc::header::stdio::{sscanf_d, sscanf_ld};
+use crate::scalnull::ffpscl_safe;
 use crate::wrappers::*;
 use crate::zcompress::uncompress2mem_from_mem;
 use crate::{FFLOCK, FFUNLOCK};
@@ -3644,19 +3660,336 @@ pub unsafe extern "C" fn fits_copy_image2cell(
 }
 
 /*--------------------------------------------------------------------------*/
-/// Copy an image to a table cell (safe version)
+/// Copy an image extension into a table cell at a given row and
+/// column.  The table must have already been created.  If the "colname"
+/// column exists, it will be used, otherwise a new column will be created
+/// in the table.
+///
+/// The "copykeyflag" parameter controls which keywords to copy from the
+/// input image to the output table header (with any appropriate translation).
+///
+/// copykeyflag = 0  -- no keywords will be copied
+/// copykeyflag = 1  -- essentially all keywords will be copied
+/// copykeyflag = 2  -- copy only the WCS related keywords
+///
+/// This routine was written by Craig Markwardt, GSFC
 pub fn fits_copy_image2cell_safe(
-    _fptr: &mut fitsfile,   /* I - pointer to input image extension */
-    _newptr: &mut fitsfile, /* I - pointer to output table */
-    _colname: &[c_char],    /* I - name of column containing the image */
-    rownum: c_long,         /* I - number of the row containing the image */
-    _copykeyflag: c_int,    /* I - controls which keywords to copy */
-    _status: &mut c_int,    /* IO - error status */
+    fptr: &mut fitsfile,   /* I - pointer to input image extension */
+    newptr: &mut fitsfile, /* I - pointer to output table */
+    colname: &[c_char],    /* I - name of column containing the image */
+    rownum: c_long,        /* I - number of the row containing the image */
+    copykeyflag: c_int,    /* I - controls which keywords to copy */
+    status: &mut c_int,    /* IO - error status */
 ) -> c_int {
-    todo!(
-        "fits_copy_image2cell_safe: Copy image to table cell row {}",
-        rownum
+    let mut buffer: [u8; 30000] = [0; 30000];
+    let mut hdutype: c_int = 0;
+    let mut colnum: c_int = 0;
+    let typecode: c_int;
+    let mut bitpix: c_int = 0;
+    let mut naxis: c_int = 0;
+    let mut ncols: c_int = 0;
+    let tformchar: c_char;
+    let mut tform: [c_char; 20] = [0; 20];
+    let imgstart: LONGLONG;
+    let mut naxes: [LONGLONG; 9] = [0; 9];
+    let mut nbytes: LONGLONG;
+    let mut repeat: LONGLONG;
+    let mut ntodo: LONGLONG;
+    let mut firstbyte: LONGLONG;
+
+    let npat: c_int;
+
+    let mut naxis1: c_int = 0;
+    let mut naxes1: [LONGLONG; 9] = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let mut repeat1: LONGLONG = 0;
+    let mut width1: LONGLONG = 0;
+    let mut typecode1: c_int = 0;
+    let dummy: [u8; 1] = [0];
+
+    let mut headstart: LONGLONG = 0;
+    let mut datastart: LONGLONG = 0;
+    let mut dataend: LONGLONG = 0;
+
+    /* Image-to-table keyword translation table  */
+    /*                        INPUT      OUTPUT  */
+    /*                       01234567   01234567 */
+    let mut patterns: [[&CStr; 2]; 43] = [
+        [c"BSCALE", c"TSCALn"], /* Standard FITS keywords */
+        [c"BZERO", c"TZEROn"],
+        [c"BUNIT", c"TUNITn"],
+        [c"BLANK", c"TNULLn"],
+        [c"DATAMIN", c"TDMINn"],
+        [c"DATAMAX", c"TDMAXn"],
+        [c"CTYPEi", c"iCTYPn"], /* Coordinate labels */
+        [c"CTYPEia", c"iCTYna"],
+        [c"CUNITi", c"iCUNIn"], /* Coordinate units */
+        [c"CUNITia", c"iCUNna"],
+        [c"CRVALi", c"iCRVLn"], /* WCS keywords */
+        [c"CRVALia", c"iCRVna"],
+        [c"CDELTi", c"iCDLTn"],
+        [c"CDELTia", c"iCDEna"],
+        [c"CRPIXj", c"jCRPXn"],
+        [c"CRPIXja", c"jCRPna"],
+        [c"PCi_ja", c"ijPCna"],
+        [c"CDi_ja", c"ijCDna"],
+        [c"PVi_ma", c"iVn_ma"],
+        [c"PSi_ma", c"iSn_ma"],
+        [c"WCSAXESa", c"WCAXna"],
+        [c"WCSNAMEa", c"WCSNna"],
+        [c"CRDERia", c"iCRDna"],
+        [c"CSYERia", c"iCSYna"],
+        [c"CROTAi", c"iCROTn"],
+        [c"LONPOLEa", c"LONPna"],
+        [c"LATPOLEa", c"LATPna"],
+        [c"EQUINOXa", c"EQUIna"],
+        [c"MJD-OBS", c"MJDOBn"],
+        [c"MJD-AVG", c"MJDAn"],
+        [c"RADESYSa", c"RADEna"],
+        [c"CNAMEia", c"iCNAna"],
+        [c"DATE-AVG", c"DAVGn"],
+        [c"NAXISi", c"-"], /* Remove structural keywords*/
+        [c"PCOUNT", c"-"],
+        [c"GCOUNT", c"-"],
+        [c"EXTEND", c"-"],
+        [c"EXTNAME", c"-"],
+        [c"EXTVER", c"-"],
+        [c"EXTLEVEL", c"-"],
+        [c"CHECKSUM", c"-"],
+        [c"DATASUM", c"-"],
+        [c"*", c"+"], /* copy all other keywords */
+    ];
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* The C returns NULL_INPUT_PTR here if fptr or newptr is NULL; a &mut
+    reference can never be null, so that check is unreachable and omitted. */
+
+    if ffghdt_safe(fptr, &mut hdutype, status) > 0 {
+        ffpmsg_str("could not get input HDU type");
+        return *status;
+    }
+
+    if hdutype != IMAGE_HDU {
+        ffpmsg_str("The input extension is not an image.");
+        ffpmsg_str(" Cannot open the image.");
+        *status = NOT_IMAGE;
+        return *status;
+    }
+
+    if ffghdt_safe(newptr, &mut hdutype, status) > 0 {
+        ffpmsg_str("could not get output HDU type");
+        return *status;
+    }
+
+    if hdutype != BINARY_TBL {
+        ffpmsg_str("The output extension is not a table.");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    if ffgiprll_safe(
+        fptr,
+        9,
+        Some(&mut bitpix),
+        Some(&mut naxis),
+        Some(&mut naxes),
+        status,
+    ) > 0
+    {
+        ffpmsg_str("Could not read image parameters.");
+        return *status;
+    }
+
+    /* Determine total number of pixels in the image */
+    repeat = 1;
+    for ii in 0..(naxis as usize) {
+        repeat *= naxes[ii];
+    }
+
+    /* Determine the TFORM value for the table cell */
+    if bitpix == BYTE_IMG {
+        typecode = TBYTE;
+        tformchar = bb(b'B');
+        nbytes = repeat;
+    } else if bitpix == SHORT_IMG {
+        typecode = TSHORT;
+        tformchar = bb(b'I');
+        nbytes = repeat * 2;
+    } else if bitpix == LONG_IMG {
+        typecode = TLONG;
+        tformchar = bb(b'J');
+        nbytes = repeat * 4;
+    } else if bitpix == FLOAT_IMG {
+        typecode = TFLOAT;
+        tformchar = bb(b'E');
+        nbytes = repeat * 4;
+    } else if bitpix == DOUBLE_IMG {
+        typecode = TDOUBLE;
+        tformchar = bb(b'D');
+        nbytes = repeat * 8;
+    } else if bitpix == LONGLONG_IMG {
+        typecode = TLONGLONG;
+        tformchar = bb(b'K');
+        nbytes = repeat * 8;
+    } else {
+        ffpmsg_str("Error: the image has an invalid datatype.");
+        *status = BAD_BITPIX;
+        return *status;
+    }
+
+    /* get column number */
+    ffpmrk_safe();
+    ffgcno_safe(newptr, CASEINSEN as c_int, colname, &mut colnum, status);
+    ffcmrk_safe();
+
+    /* Column does not exist; create it */
+    if *status != 0 {
+        *status = 0;
+        int_snprintf!(
+            &mut tform,
+            20,
+            "{:.0}{}",
+            repeat as f64,
+            tformchar as u8 as char
+        );
+        ffgncl_safe(newptr, &mut ncols, status);
+        colnum = ncols + 1;
+        fficol_safe(newptr, colnum, colname, &tform, status);
+        ffptdmll_safe(newptr, colnum, naxis, &naxes, status);
+
+        if *status != 0 {
+            ffpmsg_str("Could not insert new column into output table.");
+            return *status;
+        }
+    } else {
+        ffgtdmll_safer(newptr, colnum, 9, &mut naxis1, &mut naxes1, status);
+        if *status > 0 || naxis != naxis1 {
+            ffpmsg_str("Input image dimensions and output table cell dimensions do not match.");
+            *status = BAD_DIMEN;
+            return *status;
+        }
+        for ii in 0..(naxis as usize) {
+            if naxes[ii] != naxes1[ii] {
+                ffpmsg_str("Input image dimensions and output table cell dimensions do not match.");
+                *status = BAD_DIMEN;
+                return *status;
+            }
+        }
+
+        ffgtclll_safe(
+            newptr,
+            colnum,
+            Some(&mut typecode1),
+            Some(&mut repeat1),
+            Some(&mut width1),
+            status,
+        );
+        if *status > 0 || typecode1 != typecode || repeat1 != repeat {
+            ffpmsg_str("Input image data type does not match output table cell type.");
+            *status = BAD_TFORM;
+            return *status;
+        }
+    }
+
+    /* copy keywords from input image to output table, if required */
+
+    if copykeyflag != 0 {
+        npat = patterns.len() as c_int;
+
+        if copykeyflag == 2 {
+            /* copy only the WCS-related keywords */
+            patterns[(npat - 1) as usize][1] = c"-";
+        }
+
+        /* The 3rd parameter value = 5 means skip the first 4 keywords in the image */
+        fits_translate_keywords_safe(fptr, newptr, 5, &patterns, npat, colnum, 0, 0, status);
+    }
+
+    /* Here is all the code to compute offsets:
+     *     * byte offset from start of row to column (dest table)
+     *     * byte offset from start of file to image data (source image)
+     */
+
+    /* Force the writing of the row of the table by writing the last byte of
+    the array, which grows the table, and/or shifts following extensions */
+    ffpcl_safe(
+        newptr,
+        TBYTE,
+        colnum,
+        rownum as LONGLONG,
+        repeat,
+        1,
+        &dummy,
+        status,
     );
+
+    /* byte offset within the row to the start of the image column */
+    {
+        let colptr = newptr.Fptr.get_tableptr_as_slice(); /* point to first column */
+        /* offset to correct column structure */
+        firstbyte = colptr[(colnum - 1) as usize].tbcol + 1;
+    }
+
+    /* get starting address of input image to be read */
+    ffghadll_safe(
+        fptr,
+        Some(&mut headstart),
+        Some(&mut datastart),
+        Some(&mut dataend),
+        status,
+    );
+    imgstart = datastart;
+
+    /* The C formats a "HISTORY  Table column ... copied from image" card here,
+    and below it a second HISTORY line holding the input file name and HDU
+    number, but both ffprec() calls that would write them are commented out in
+    the C (writing HISTORY is left up to the caller).  Neither string is used
+    for anything else, so both are omitted here, as in fits_copy_cell2image. */
+
+    /* the use of ffread routine, below, requires that any 'dirty' */
+    /* buffers in memory be flushed back to the file first */
+
+    ffflsh_safe(fptr, false, status);
+
+    /* move to the first byte of the input image */
+    ffmbyt_safe(fptr, imgstart, TRUE as c_int, status);
+
+    ntodo = cmp::min(30000, nbytes);
+    ffgbyt(fptr, ntodo, &mut buffer, status); /* read input image */
+    ffptbb_safe(
+        newptr,
+        rownum as LONGLONG,
+        firstbyte,
+        ntodo,
+        &buffer,
+        status,
+    ); /* write to table */
+
+    nbytes -= ntodo;
+    firstbyte += ntodo;
+
+    /* read any additional bytes with low-level ffread routine, for speed */
+    while nbytes != 0 && *status <= 0 {
+        ntodo = cmp::min(30000, nbytes);
+        ffread(&fptr.Fptr, ntodo as c_long, &mut buffer, status);
+        ffptbb_safe(
+            newptr,
+            rownum as LONGLONG,
+            firstbyte,
+            ntodo,
+            &buffer,
+            status,
+        );
+        nbytes -= ntodo;
+        firstbyte += ntodo;
+    }
+
+    /* Re-scan the header so that CFITSIO knows about all the new keywords */
+    ffrdef_safe(newptr, status);
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3687,13 +4020,107 @@ pub unsafe extern "C" fn fits_select_image_section(
 /// Any HDUs preceding or following the image are also copied to the
 /// output file.
 pub fn fits_select_image_section_safe(
-    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
     /*      points to the new subimage */
-    _outfile: &[c_char], /* I - name for output file        */
-    _expr: &[c_char],    /* I - Image section expression    */
-    _status: &mut c_int,
+    outfile: &[c_char], /* I - name for output file        */
+    expr: &[c_char],    /* I - Image section expression    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let mut newptr: Option<Box<fitsfile>> = None;
+    let mut ii: c_int;
+    let mut hdunum: c_int = 0;
+
+    /* create new empty file to hold the image section */
+    if ffinit_safe(&mut newptr, outfile, status) > 0 {
+        ffpmsg_str("failed to create output file for image section:");
+        ffpmsg_slice(outfile);
+        return *status;
+    }
+
+    ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut hdunum); /* current HDU number in input file */
+
+    /* copy all preceding extensions to the output file, if 'only_one' flag not set */
+    if fptr.as_deref().unwrap().Fptr.only_one == 0 {
+        for ii in 1..hdunum {
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status);
+            if ffcopy_safe(
+                fptr.as_deref_mut().unwrap(),
+                newptr.as_deref_mut().unwrap(),
+                0,
+                status,
+            ) > 0
+            {
+                ffclos_safe(newptr.take().unwrap(), status);
+                return *status;
+            }
+        }
+
+        /* move back to the original HDU position */
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+    }
+
+    if fits_copy_image_section_safer(
+        fptr.as_deref_mut().unwrap(),
+        newptr.as_deref_mut().unwrap(),
+        expr,
+        status,
+    ) > 0
+    {
+        ffclos_safe(newptr.take().unwrap(), status);
+        return *status;
+    }
+
+    /* copy any remaining HDUs to the output file, if 'only_one' flag not set */
+
+    if fptr.as_deref().unwrap().Fptr.only_one == 0 {
+        /* C: for (ii = hdunum + 1; 1; ii++); `ii` is read after the loop, so
+        the increment stays at the bottom to preserve the C's exit value */
+        ii = hdunum + 1;
+        loop {
+            if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
+                break;
+            }
+
+            ffcopy_safe(
+                fptr.as_deref_mut().unwrap(),
+                newptr.as_deref_mut().unwrap(),
+                0,
+                status,
+            );
+            ii += 1;
+        }
+
+        if *status == END_OF_FILE {
+            *status = 0; /* got the expected EOF error; reset = 0  */
+        } else if *status > 0 {
+            ffclos_safe(newptr.take().unwrap(), status);
+            return *status;
+        }
+    } else {
+        ii = hdunum + 1; /* this value of ii is required below */
+    }
+
+    /* close the original file and return ptr to the new image */
+    ffclos_safe(fptr.take().unwrap(), status);
+
+    *fptr = newptr; /* reset the pointer to the new table */
+
+    /* move back to the image subsection */
+    if ii - 1 != hdunum {
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+    } else {
+        /* may have to reset BSCALE and BZERO pixel scaling, */
+        /* since the keywords were previously turned off */
+
+        if ffrdef_safe(fptr.as_deref_mut().unwrap(), status) > 0 {
+            /* the C closes *fptr here and returns with it left dangling;
+            ffclos_safe consumes the Box, so *fptr is left None instead */
+            ffclos_safe(fptr.take().unwrap(), status);
+            return *status;
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3719,12 +4146,479 @@ pub unsafe extern "C" fn fits_copy_image_section(
 /*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output HDU
 pub fn fits_copy_image_section_safer(
-    _fptr: &mut fitsfile,   /* I - pointer to input image */
-    _newptr: &mut fitsfile, /* I - pointer to output image */
-    _expr: &[c_char],       /* I - Image section expression    */
-    _status: &mut c_int,
+    fptr: &mut fitsfile,   /* I - pointer to input image */
+    newptr: &mut fitsfile, /* I - pointer to output image */
+    expr: &[c_char],       /* I - Image section expression    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    let mut bitpix: c_int = 0;
+    let mut naxis: c_int = 0;
+    let mut numkeys: c_int = 0;
+    let mut naxes: [c_long; 9] = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let mut smin: c_long = 0;
+    let mut smax: c_long = 0;
+    let mut sinc: c_long = 0;
+    let mut fpixels: [c_long; 9] = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let mut lpixels: [c_long; 9] = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let mut incs: [c_long; 9] = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tstatus: c_int;
+    let mut anynull: c_int = 0;
+    let minrow: c_long;
+    let maxrow: c_long;
+    let minslice: c_long;
+    let maxslice: c_long;
+    let mincube: c_long;
+    let maxcube: c_long;
+    let mut firstpix: c_long;
+    let ncubeiter: c_long;
+    let nsliceiter: c_long;
+    let nrowiter: c_long;
+    let mut klen: usize;
+    let mut outnaxes: [c_long; 9] = [0; 9];
+    let outsize: c_long;
+    let buffsize: c_long;
+    let mut crpix: f64 = 0.0;
+    let mut cdelt: f64 = 0.0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* get the size of the input image */
+    ffgidt_safe(fptr, &mut bitpix, status);
+    ffgidm_safe(fptr, &mut naxis, status);
+    /* DEVIATION (upstream bug): the C passes `naxis` -- up to 99, whatever the
+    file's NAXIS says -- as the length of the 9-element `naxes` array, so an
+    image with NAXIS >= 10 overflows that stack array here, before the
+    `naxis > 4` check below ever runs.  Clamp to the array length instead: for
+    every naxis the C accepts (1..=4) this is identical, and the oversized
+    cases now reach the BAD_NAXIS error the C already intends to return. */
+    if ffgisz_safe(
+        fptr,
+        cmp::min(naxis, naxes.len() as c_int),
+        &mut naxes,
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    if !(1..=4).contains(&naxis) {
+        ffpmsg_str("Input image either had NAXIS = 0 (NULL image) or has > 4 dimensions");
+        *status = BAD_NAXIS;
+        return *status;
+    }
+
+    /* create output image with same size and type as the input image */
+    /*  Will update the size later */
+    ffcrim_safe(newptr, bitpix, naxis, &naxes, status);
+
+    /* copy all other non-structural keywords from the input to output file */
+    ffghsp_safe(fptr, Some(&mut numkeys), None, status);
+
+    for nkey in 4..=numkeys {
+        /* skip the first few keywords */
+        ffgrec_safe(fptr, nkey, Some(&mut card), status);
+
+        if ffgkcl_safe(&card) > TYP_CMPRS_KEY {
+            /* write the record to the output file */
+            ffprec_safe(newptr, &card, status);
+        }
+    }
+
+    if *status > 0 {
+        ffpmsg_str("error copying header from input image to output image");
+        return *status;
+    }
+
+    /* parse the section specifier to get min, max, and inc for each axis */
+    /* and the size of each output image axis */
+
+    /* the C walks a `char *cptr` along `expr`; track the offset instead */
+    let mut cptr: usize = 0;
+    for ii in 0..(naxis as usize) {
+        if fits_get_section_range_safe(expr, &mut cptr, &mut smin, &mut smax, &mut sinc, status) > 0
+        {
+            ffpmsg_str("error parsing the following image section specifier:");
+            ffpmsg_slice(expr);
+            return *status;
+        }
+
+        if smax == 0 {
+            smax = naxes[ii]; /* use whole axis  by default */
+        } else if smin == 0 {
+            smin = naxes[ii]; /* use inverted whole axis */
+        }
+
+        if smin > naxes[ii] || smax > naxes[ii] {
+            ffpmsg_str("image section exceeds dimensions of input image:");
+            ffpmsg_slice(expr);
+            *status = BAD_NAXIS;
+            return *status;
+        }
+
+        fpixels[ii] = smin;
+        lpixels[ii] = smax;
+        incs[ii] = sinc;
+
+        let lllength: LONGLONG = ((smax - smin).abs() / sinc) as LONGLONG + 1;
+        if lllength > c_long::MAX as LONGLONG {
+            ffpmsg_str("image range exceeds LONG_MAX limit");
+            ffpmsg_slice(expr);
+            *status = NUM_OVERFLOW;
+            return *status;
+        }
+        outnaxes[ii] = lllength as c_long;
+
+        /* modify the NAXISn keyword */
+        ffkeyn_safe(cs!(c"NAXIS"), ii as c_int + 1, &mut keyname, status);
+        ffmkyj_safe(newptr, &keyname, outnaxes[ii] as LONGLONG, None, status);
+
+        /* modify the WCS keywords if necessary */
+
+        if fpixels[ii] != 1 || incs[ii] != 1 {
+            for kk in -1..26 {
+                /* modify any alternate WCS keywords */
+
+                /* read the CRPIXn keyword if it exists in the input file */
+                ffkeyn_safe(cs!(c"CRPIX"), ii as c_int + 1, &mut keyname, status);
+
+                if kk != -1 {
+                    klen = strlen_safe(&keyname);
+                    keyname[klen] = bb(b'A') + kk as c_char;
+                    keyname[klen + 1] = 0;
+                }
+
+                tstatus = 0;
+                if ffgky_safe(
+                    fptr,
+                    KeywordDatatypeMut::TDOUBLE(&mut crpix),
+                    &keyname,
+                    None,
+                    &mut tstatus,
+                ) == 0
+                {
+                    /* calculate the new CRPIXn value */
+                    if fpixels[ii] <= lpixels[ii] {
+                        crpix = (crpix - (fpixels[ii] as f64)) / incs[ii] as f64 + 1.0;
+                        /*  crpix = (crpix - (fpixels[ii] - 1.0) - .5) / incs[ii] + 0.5; */
+                    } else {
+                        crpix = (fpixels[ii] as f64 - crpix) / incs[ii] as f64 + 1.0;
+                        /* crpix = (fpixels[ii] - (crpix - 1.0) - .5) / incs[ii] + 0.5; */
+                    }
+
+                    /* modify the value in the output file */
+                    ffmkyd_safe(newptr, &keyname, crpix, 15, None, status);
+
+                    if incs[ii] != 1 || fpixels[ii] > lpixels[ii] {
+                        /* read the CDELTn keyword if it exists in the input file */
+                        ffkeyn_safe(cs!(c"CDELT"), ii as c_int + 1, &mut keyname, status);
+
+                        if kk != -1 {
+                            klen = strlen_safe(&keyname);
+                            keyname[klen] = bb(b'A') + kk as c_char;
+                            keyname[klen + 1] = 0;
+                        }
+
+                        tstatus = 0;
+                        if ffgky_safe(
+                            fptr,
+                            KeywordDatatypeMut::TDOUBLE(&mut cdelt),
+                            &keyname,
+                            None,
+                            &mut tstatus,
+                        ) == 0
+                        {
+                            /* calculate the new CDELTn value */
+                            if fpixels[ii] <= lpixels[ii] {
+                                cdelt *= incs[ii] as f64;
+                            } else {
+                                cdelt *= -(incs[ii] as f64);
+                            }
+
+                            /* modify the value in the output file */
+                            ffmkyd_safe(newptr, &keyname, cdelt, 15, None, status);
+                        }
+
+                        /* modify the CDi_j keywords if they exist in the input file */
+
+                        ffkeyn_safe(cs!(c"CD1_"), ii as c_int + 1, &mut keyname, status);
+
+                        if kk != -1 {
+                            klen = strlen_safe(&keyname);
+                            keyname[klen] = bb(b'A') + kk as c_char;
+                            keyname[klen + 1] = 0;
+                        }
+
+                        for jj in 0..9 {
+                            /* look for up to 9 dimensions */
+                            keyname[2] = bb(b'1') + jj as c_char;
+
+                            tstatus = 0;
+                            if ffgky_safe(
+                                fptr,
+                                KeywordDatatypeMut::TDOUBLE(&mut cdelt),
+                                &keyname,
+                                None,
+                                &mut tstatus,
+                            ) == 0
+                            {
+                                /* calculate the new CDi_j value */
+                                if fpixels[ii] <= lpixels[ii] {
+                                    cdelt *= incs[ii] as f64;
+                                } else {
+                                    cdelt *= -(incs[ii] as f64);
+                                }
+
+                                /* modify the value in the output file */
+                                ffmkyd_safe(newptr, &keyname, cdelt, 15, None, status);
+                            }
+                        }
+                    } /* end of if (incs[ii]... loop */
+                } /* end of fits_read_key loop */
+            } /* end of for (kk  loop */
+        }
+    } /* end of main NAXIS loop */
+
+    if ffrdef_safe(newptr, status) > 0 {
+        /* force the header to be scanned */
+        return *status;
+    }
+
+    /* turn off any scaling of the pixel values */
+    ffpscl_safe(fptr, 1.0, 0.0, status);
+    ffpscl_safe(newptr, 1.0, 0.0, status);
+
+    /* to reduce memory foot print, just read/write image 1 row at a time */
+
+    outsize = outnaxes[0];
+    buffsize = (bitpix.abs() / 8) as c_long * outsize;
+
+    /* allocate memory for the image row.  The C mallocs `buffsize` bytes as a
+    double* and casts that pointer to the pixel type in use, so allocate f64
+    units here (the widest pixel type, and the alignment the C pointer had)
+    and reinterpret them per bitpix below. */
+    let mut buffer: Vec<f64> = Vec::new();
+    let nbuffelem = (buffsize as usize).div_ceil(mem::size_of::<f64>());
+    if buffer.try_reserve_exact(nbuffelem).is_err() {
+        ffpmsg_str("fits_copy_image_section: no memory for image section");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+    buffer.resize(nbuffelem, 0.0);
+
+    /* read the image section then write it to the output file */
+
+    minrow = fpixels[1];
+    maxrow = lpixels[1];
+    nrowiter = (maxrow - minrow).abs() / incs[1] + 1;
+
+    minslice = fpixels[2];
+    maxslice = lpixels[2];
+    nsliceiter = (maxslice - minslice).abs() / incs[2] + 1;
+
+    mincube = fpixels[3];
+    maxcube = lpixels[3];
+    ncubeiter = (maxcube - mincube).abs() / incs[3] + 1;
+
+    firstpix = 1;
+    for kiter in 0..ncubeiter {
+        if mincube > maxcube {
+            fpixels[3] = mincube - (kiter * incs[3]);
+        } else {
+            fpixels[3] = mincube + (kiter * incs[3]);
+        }
+
+        lpixels[3] = fpixels[3];
+
+        for jiter in 0..nsliceiter {
+            if minslice > maxslice {
+                fpixels[2] = minslice - (jiter * incs[2]);
+            } else {
+                fpixels[2] = minslice + (jiter * incs[2]);
+            }
+
+            lpixels[2] = fpixels[2];
+
+            for iiter in 0..nrowiter {
+                if minrow > maxrow {
+                    fpixels[1] = minrow - (iiter * incs[1]);
+                } else {
+                    fpixels[1] = minrow + (iiter * incs[1]);
+                }
+
+                lpixels[1] = fpixels[1];
+
+                if bitpix == 8 {
+                    let buff: &mut [u8] = &mut cast_slice_mut(&mut buffer)[..outsize as usize];
+
+                    ffgsvb_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        0,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffpprb_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        status,
+                    );
+                } else if bitpix == 16 {
+                    let buff: &mut [c_short] = &mut cast_slice_mut(&mut buffer)[..outsize as usize];
+
+                    ffgsvi_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        0,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffppri_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        status,
+                    );
+                } else if bitpix == 32 {
+                    let buff: &mut [c_int] = &mut cast_slice_mut(&mut buffer)[..outsize as usize];
+
+                    ffgsvk_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        0,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffpprk_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        status,
+                    );
+                } else if bitpix == -32 {
+                    let buff: &mut [f32] = &mut cast_slice_mut(&mut buffer)[..outsize as usize];
+
+                    ffgsve_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        FLOATNULLVALUE,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffppne_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        FLOATNULLVALUE,
+                        status,
+                    );
+                } else if bitpix == -64 {
+                    let buff: &mut [f64] = &mut buffer[..outsize as usize];
+
+                    ffgsvd_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        DOUBLENULLVALUE,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffppnd_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        DOUBLENULLVALUE,
+                        status,
+                    );
+                } else if bitpix == 64 {
+                    let buff: &mut [LONGLONG] =
+                        &mut cast_slice_mut(&mut buffer)[..outsize as usize];
+
+                    ffgsvjj_safe(
+                        fptr,
+                        1,
+                        naxis,
+                        &naxes,
+                        &fpixels,
+                        &lpixels,
+                        &incs,
+                        0,
+                        buff,
+                        Some(&mut anynull),
+                        status,
+                    );
+
+                    ffpprjj_safe(
+                        newptr,
+                        1,
+                        firstpix as LONGLONG,
+                        outsize as LONGLONG,
+                        buff,
+                        status,
+                    );
+                }
+
+                firstpix += outsize;
+            }
+        }
+    }
+
+    /* the C frees `buffer` here; the Vec is dropped on return instead */
+
+    if *status > 0 {
+        ffpmsg_str("fits_copy_image_section: error copying image section");
+        return *status;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3894,13 +4788,161 @@ pub fn fits_get_section_range_safe(
 
 /*--------------------------------------------------------------------------*/
 pub(crate) fn ffselect_table(
-    _fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
+    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
     /*      points to the new selected rows table */
-    _outfile: &[c_char; FLEN_FILENAME], /* I - name for output file */
-    _rowfilter: &[c_char; FLEN_FILENAME], /* I - Boolean expression    */
-    _status: &mut c_int,
+    outfile: &[c_char; FLEN_FILENAME], /* I - name for output file */
+    expr: &[c_char; FLEN_FILENAME],    /* I - Boolean expression    */
+    status: &mut c_int,
 ) -> c_int {
-    todo!()
+    let mut newptr: Option<Box<fitsfile>> = None;
+    let mut ii: c_int;
+    let mut hdunum: c_int = 0;
+
+    if outfile[0] != 0 {
+        /* create new empty file in to hold the selected rows */
+        if ffinit_safe(&mut newptr, outfile, status) > 0 {
+            ffpmsg_str("failed to create file for selected rows from input table");
+            ffpmsg_slice(outfile);
+            return *status;
+        }
+
+        ffghdn_safe(fptr.as_deref_mut().unwrap(), &mut hdunum); /* current HDU number in input file */
+
+        /* copy all preceding extensions to the output file, if the 'only_one' flag is not set */
+        if fptr.as_deref().unwrap().Fptr.only_one == 0 {
+            for ii in 1..hdunum {
+                ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status);
+                if ffcopy_safe(
+                    fptr.as_deref_mut().unwrap(),
+                    newptr.as_deref_mut().unwrap(),
+                    0,
+                    status,
+                ) > 0
+                {
+                    ffclos_safe(newptr.take().unwrap(), status);
+                    return *status;
+                }
+            }
+        } else {
+            /* just copy the primary array */
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 1, None, status);
+            if ffcopy_safe(
+                fptr.as_deref_mut().unwrap(),
+                newptr.as_deref_mut().unwrap(),
+                0,
+                status,
+            ) > 0
+            {
+                ffclos_safe(newptr.take().unwrap(), status);
+                return *status;
+            }
+        }
+
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+
+        /* copy all the header keywords from the input to output file */
+        if ffcphd_safe(
+            fptr.as_deref_mut().unwrap(),
+            newptr.as_deref_mut().unwrap(),
+            status,
+        ) > 0
+        {
+            ffclos_safe(newptr.take().unwrap(), status);
+            return *status;
+        }
+
+        /* set number of rows = 0 */
+        ffmkyj_safe(
+            newptr.as_deref_mut().unwrap(),
+            cs!(c"NAXIS2"),
+            0,
+            None,
+            status,
+        );
+        {
+            let n = newptr.as_deref_mut().unwrap();
+            n.Fptr.numrows = 0;
+            n.Fptr.origrows = 0;
+        }
+
+        if ffrdef_safe(newptr.as_deref_mut().unwrap(), status) > 0 {
+            /* force the header to be scanned */
+            ffclos_safe(newptr.take().unwrap(), status);
+            return *status;
+        }
+    }
+    /* else the C sets `newptr = *fptr` and deletes rows in place in the table;
+    here `newptr` simply stays None and the same-file case is handled below */
+
+    /* copy rows which satisfy the selection expression to the output table */
+    /* or delete the nonqualifying rows if *fptr = newptr.   */
+    let selstatus = match newptr.as_deref_mut() {
+        Some(out) => ffsrow_safe(fptr.as_deref_mut().unwrap(), out, expr, status),
+        None => {
+            /* The C passes the same fitsfile* to fits_select_rows as both the
+            input and the output, which makes ffsrow delete the non-qualifying
+            rows in place (it branches on infptr == outfptr).  Safe Rust cannot
+            hand out two `&mut fitsfile` to one file, so bridge through a raw
+            pointer here.
+            TODO (idiomatic pass): give ffsrow_safe an `Option<&mut fitsfile>`
+            output parameter, where None means "same file as infptr", and drop
+            this unsafe block; two live `&mut` to one object is exactly the
+            aliasing that `&mut`'s noalias guarantee forbids. */
+            let f: *mut fitsfile = fptr.as_deref_mut().unwrap();
+            // SAFETY: reproduces the C's deliberate aliasing of infptr/outfptr.
+            unsafe { ffsrow_safe(&mut *f, &mut *f, expr, status) }
+        }
+    };
+
+    if selstatus > 0 {
+        if outfile[0] != 0 {
+            ffclos_safe(newptr.take().unwrap(), status);
+        }
+
+        return *status;
+    }
+
+    if outfile[0] != 0 {
+        /* copy any remaining HDUs to the output copy */
+
+        if fptr.as_deref().unwrap().Fptr.only_one == 0 {
+            /* C: for (ii = hdunum + 1; 1; ii++); the increment stays at the
+            bottom, as in the C, although `ii` is not read after the loop */
+            ii = hdunum + 1;
+            loop {
+                if ffmahd_safe(fptr.as_deref_mut().unwrap(), ii, None, status) > 0 {
+                    break;
+                }
+
+                ffcopy_safe(
+                    fptr.as_deref_mut().unwrap(),
+                    newptr.as_deref_mut().unwrap(),
+                    0,
+                    status,
+                );
+                ii += 1;
+            }
+
+            if *status == END_OF_FILE {
+                *status = 0; /* got the expected EOF error; reset = 0  */
+            } else if *status > 0 {
+                ffclos_safe(newptr.take().unwrap(), status);
+                return *status;
+            }
+        } else {
+            hdunum = 2;
+        }
+
+        /* close the original file and return ptr to the new image */
+        ffclos_safe(fptr.take().unwrap(), status);
+
+        *fptr = newptr; /* reset the pointer to the new table */
+
+        /* move back to the selected table HDU */
+        ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -7759,14 +8801,108 @@ pub unsafe extern "C" fn fits_get_token2(
 /// software. It is not used by any CFITSIO routine.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_split_names(
-    list: *const c_char, /* I   - input list of names */
+    list: *mut c_char, /* IO  - list of names; the name returned is terminated */
+                       /*       in place by overwriting its delimiter with a NUL */
 ) -> *mut c_char {
     unsafe { fits_split_names_safer(list) }
 }
 
-/// We probably can't create a safe wrapper around fits_split_names
-pub unsafe fn fits_split_names_safer(_list: *const c_char) -> *mut c_char {
-    todo!()
+/// The C API cannot be given a safe signature: the returned pointer aliases
+/// the caller's buffer, and the cursor kept between calls aliases it too, so
+/// no `&mut [c_char]` borrow can span the sequence of calls.  What is done
+/// here instead is to measure the buffer once, on the call that supplies it,
+/// and drive the whole scan as bounds-checked indexing into a slice; the only
+/// unsafe operations left are taking that measurement and rebuilding the slice
+/// on each continuation call.
+///
+/// Callers keep the C's obligations: the buffer passed as `list` must stay
+/// alive, in place and unshortened until they stop asking for further names.
+pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
+    let mut depth: c_int = 0;
+
+    /* C: `static char *ptr;` -- file-scope state carried between calls, which
+    here has to carry the buffer's extent as well so the scan can be bounds
+    checked.  The routine is documented above as not thread-safe; a
+    thread_local gives each thread its own cursor, which keeps the crate's
+    parallel tests honest. */
+    #[derive(Clone, Copy)]
+    struct SplitCursor {
+        base: *mut c_char, /* the caller's buffer */
+        len: usize,        /* its length, including the terminating NUL */
+        pos: usize,        /* offset of the next character to examine */
+    }
+
+    thread_local! {
+        static CURSOR: core::cell::Cell<SplitCursor> = const {
+            core::cell::Cell::new(SplitCursor {
+                base: core::ptr::null_mut(),
+                len: 0,
+                pos: 0,
+            })
+        };
+    }
+
+    let mut cursor = CURSOR.get();
+
+    if !list.is_null() {
+        /* reset ptr if a string is given */
+        // SAFETY: the C's contract for a non-NULL `list` is a writable,
+        // NUL-terminated string.  Measure it once, here, so that every step
+        // below is an index into a slice of known length.
+        let len = unsafe { CStr::from_ptr(list) }.to_bytes_with_nul().len();
+        cursor = SplitCursor {
+            base: list,
+            len,
+            pos: 0,
+        };
+    }
+
+    if cursor.base.is_null() {
+        /* DEVIATION: the C dereferences its NULL static if the first call does
+        not supply a string; report "no names" rather than crash */
+        return core::ptr::null_mut();
+    }
+
+    // SAFETY: `base` and `len` describe the buffer as measured on the call
+    // that supplied it, which the caller undertakes to keep alive and in place
+    // for as long as it keeps asking for further names -- the same obligation
+    // the C's `static char *ptr` imposes.  `pos` never leaves `0..len`: it only
+    // advances while the character under it is neither NUL nor a delimiter,
+    // and `buf[len - 1]` is the terminating NUL.
+    let buf: &mut [c_char] = unsafe { slice::from_raw_parts_mut(cursor.base, cursor.len) };
+
+    while buf[cursor.pos] == bb(b' ') {
+        cursor.pos += 1; /* skip leading white space */
+    }
+
+    if buf[cursor.pos] == 0 {
+        CURSOR.set(cursor);
+        return core::ptr::null_mut(); /* no remaining file names */
+    }
+
+    let start = cursor.pos;
+
+    while buf[cursor.pos] != 0 {
+        if buf[cursor.pos] == bb(b'[') || buf[cursor.pos] == bb(b'(') || buf[cursor.pos] == bb(b'{')
+        {
+            depth += 1;
+        } else if buf[cursor.pos] == bb(b'}')
+            || buf[cursor.pos] == bb(b')')
+            || buf[cursor.pos] == bb(b']')
+        {
+            depth -= 1;
+        } else if depth == 0 && (buf[cursor.pos] == bb(b',') || buf[cursor.pos] == bb(b' ')) {
+            buf[cursor.pos] = 0; /* terminate the filename here */
+            cursor.pos += 1; /* save offset of start of next filename */
+            break;
+        }
+        cursor.pos += 1;
+    }
+
+    CURSOR.set(cursor);
+
+    /* the returned pointer is into the caller's own buffer, as in the C */
+    &mut buf[start] as *mut c_char
 }
 
 /*--------------------------------------------------------------------------*/
@@ -10498,40 +11634,702 @@ mod tests {
     // `mod tests` (they exercise the now-private fits_get_section_range_safe).
 
     // ------------------------------------------------------------------
-    // fits_copy_image_section tests - fits_copy_image_section_safer is todo!()
+    // fits_copy_image_section tests
+    // ------------------------------------------------------------------
+
+    /// Create a file holding a single image of the given type and shape, whose
+    /// pixels are the 1-based linear index (1, 2, 3, ... in FITS order).
+    fn make_img(name: &[c_char], bitpix: c_int, naxes: &[c_long], status: &mut c_int) {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_create_img(
+            f.as_deref_mut().unwrap(),
+            bitpix,
+            naxes.len() as c_int,
+            naxes,
+            status,
+        );
+        let n: c_long = naxes.iter().product();
+        let data: Vec<f64> = (1..=n).map(|i| i as f64).collect();
+        fits_write_img_dbl(
+            f.as_deref_mut().unwrap(),
+            1,
+            1,
+            n as LONGLONG,
+            &data,
+            status,
+        );
+        fits_close_file(f.take().unwrap(), status);
+        assert_eq!(*status, 0, "make_img setup failed");
+    }
+
+    /// Copy `expr` out of the image in `inname` into a new file `outname`,
+    /// returning the (still open) output file.
+    fn copy_section(
+        inname: &[c_char],
+        outname: &[c_char],
+        expr: &str,
+        status: &mut c_int,
+    ) -> Option<Box<fitsfile>> {
+        let mut fin: Option<Box<fitsfile>> = None;
+        let mut fout: Option<Box<fitsfile>> = None;
+        fits_open_file(&mut fin, inname, READONLY, status);
+        fits_create_file(&mut fout, outname, status);
+        assert_eq!(*status, 0, "copy_section setup failed");
+
+        let e = str_to_c_array(expr);
+        fits_copy_image_section_safer(
+            fin.as_deref_mut().unwrap(),
+            fout.as_deref_mut().unwrap(),
+            &e,
+            status,
+        );
+        fits_close_file(fin.take().unwrap(), status);
+        fout
+    }
+
+    /// The NAXISn values of the image in `f`.
+    fn img_size(f: &mut fitsfile, naxis: usize, status: &mut c_int) -> Vec<c_long> {
+        let mut naxes = vec![0 as c_long; naxis];
+        fits_get_img_size(f, naxis as c_int, &mut naxes, status);
+        naxes
+    }
+
+    #[test]
+    fn test_copy_image_section() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, BYTE_IMG, &[8, 6], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:5,3:4", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![4, 2]);
+
+                let mut got = [0u8; 8];
+                let mut anynul: c_int = 0;
+                fits_read_img_byt(f, 1, 1, 8, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [18, 19, 20, 21, 26, 27, 28, 29]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_stride() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[8, 6], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "1:8:2,1:6:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![4, 2]);
+
+                let mut got = [0 as c_int; 8];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(f, 1, 1, 8, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [1, 3, 5, 7, 25, 27, 29, 31]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_short() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, SHORT_IMG, &[6, 4], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:4,2:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![3, 2]);
+
+                let mut got = [0 as c_short; 6];
+                let mut anynul: c_int = 0;
+                fits_read_img_sht(f, 1, 1, 6, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [8, 9, 10, 14, 15, 16]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_int() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[6, 4], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:4,2:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![3, 2]);
+
+                let mut got = [0 as c_int; 6];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(f, 1, 1, 6, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [8, 9, 10, 14, 15, 16]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_float() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, FLOAT_IMG, &[6, 4], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:4,2:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![3, 2]);
+
+                let mut got = [0.0f32; 6];
+                let mut anynul: c_int = 0;
+                fits_read_img_flt(f, 1, 1, 6, 0.0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [8.0, 9.0, 10.0, 14.0, 15.0, 16.0]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_double() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, DOUBLE_IMG, &[6, 4], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:4,2:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![3, 2]);
+
+                let mut got = [0.0f64; 6];
+                let mut anynul: c_int = 0;
+                fits_read_img_dbl(f, 1, 1, 6, 0.0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [8.0, 9.0, 10.0, 14.0, 15.0, 16.0]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_longlong() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONGLONG_IMG, &[6, 4], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "2:4,2:3", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![3, 2]);
+
+                let mut got = [0 as LONGLONG; 6];
+                let mut anynul: c_int = 0;
+                fits_read_img_lnglng(f, 1, 1, 6, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [8, 9, 10, 14, 15, 16]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_3d() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[4, 3, 2], &mut status);
+
+                /* take the second plane only */
+                let mut fout = copy_section(&iname, &oname, "1:4,1:3,2:2", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 3, &mut status), vec![4, 3, 1]);
+
+                let mut got = [0 as c_int; 12];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(f, 1, 1, 12, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_whole_axis() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[4, 3], &mut status);
+
+                /* '*' means the whole axis */
+                let mut fout = copy_section(&iname, &oname, "*,2:2", &mut status);
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+                assert_eq!(img_size(f, 2, &mut status), vec![4, 1]);
+
+                let mut got = [0 as c_int; 4];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(f, 1, 1, 4, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [5, 6, 7, 8]);
+
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_too_many_axes() {
+        /* NAXIS >= 10 overflows the C's 9-element `naxes` array before it gets
+        to the naxis > 4 check; here it must simply report BAD_NAXIS */
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(
+                    &iname,
+                    BYTE_IMG,
+                    &[2, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    &mut status,
+                );
+
+                let mut fout = copy_section(&iname, &oname, "1:2", &mut status);
+                assert_eq!(status, BAD_NAXIS);
+
+                status = 0;
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    #[test]
+    fn test_copy_image_section_exceeds_input() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[4, 3], &mut status);
+
+                let mut fout = copy_section(&iname, &oname, "1:9,1:3", &mut status);
+                assert_eq!(status, BAD_NAXIS);
+
+                status = 0;
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // fits_select_image_section tests
     // ------------------------------------------------------------------
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section() {}
+    fn test_select_image_section() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[8, 6], &mut status);
+
+                let mut f: Option<Box<fitsfile>> = None;
+                fits_open_file(&mut f, &iname, READONLY, &mut status);
+                assert_eq!(status, 0, "setup");
+
+                let expr = str_to_c_array("2:5,3:4");
+                fits_select_image_section_safe(&mut f, &to_buf(outname), &expr, &mut status);
+                assert_eq!(status, 0);
+
+                /* on success *fptr points at the new subimage, not the input */
+                let g = f.as_deref_mut().unwrap();
+                assert_eq!(img_size(g, 2, &mut status), vec![4, 2]);
+
+                let mut got = [0 as c_int; 8];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(g, 1, 1, 8, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got, [18, 19, 20, 21, 26, 27, 28, 29]);
+
+                fits_close_file(f.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+                let _ = oname;
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // fits_copy_image2cell tests
+    // ------------------------------------------------------------------
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_stride() {}
+    fn test_copy_image2cell_new_column() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[4, 3], &mut status);
+
+                /* an output file holding a one-row table with one dummy column */
+                let mut fout: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut fout, &oname, &mut status);
+                let ttype = [Some(str_to_c_array("DUMMY"))];
+                let ttype_ref: Vec<Option<&[c_char]>> =
+                    ttype.iter().map(|o| o.as_deref()).collect();
+                let tform = [str_to_c_array("1J")];
+                let tform_ref: Vec<&[c_char]> = tform.iter().map(|v| v.as_slice()).collect();
+                fits_create_tbl(
+                    fout.as_deref_mut().unwrap(),
+                    BINARY_TBL,
+                    1,
+                    1,
+                    &ttype_ref,
+                    &tform_ref,
+                    None,
+                    None,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "table setup");
+
+                let mut fin: Option<Box<fitsfile>> = None;
+                fits_open_file(&mut fin, &iname, READONLY, &mut status);
+                assert_eq!(status, 0, "setup");
+
+                let colname = str_to_c_array("IMGCOL");
+                fits_copy_image2cell_safe(
+                    fin.as_deref_mut().unwrap(),
+                    fout.as_deref_mut().unwrap(),
+                    &colname,
+                    1,
+                    1,
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+
+                let f = fout.as_deref_mut().unwrap();
+
+                /* the image landed in a newly created second column ... */
+                let mut colnum: c_int = 0;
+                fits_get_colnum(f, CASEINSEN as c_int, &colname, &mut colnum, &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(colnum, 2);
+
+                /* ... with the image's dimensions recorded in TDIM ... */
+                let mut naxis: c_int = 0;
+                let mut naxes = [0 as LONGLONG; 9];
+                fits_read_tdimll(f, colnum, 9, &mut naxis, &mut naxes, &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(naxis, 2);
+                assert_eq!(&naxes[..2], &[4, 3]);
+
+                /* ... and the pixels intact */
+                let mut got = [0 as c_int; 12];
+                let mut anynul: c_int = 0;
+                fits_read_col_int(
+                    f,
+                    colnum,
+                    1,
+                    1,
+                    12,
+                    0,
+                    &mut got,
+                    Some(&mut anynul),
+                    &mut status,
+                );
+                assert_eq!(status, 0);
+                assert_eq!(got, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+                fits_close_file(fin.take().unwrap(), &mut status);
+                fits_close_file(fout.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+            });
+        });
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_short() {}
+    fn test_copy_image2cell_rejects_non_table_output() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+                make_img(&iname, LONG_IMG, &[4, 3], &mut status);
+                make_img(&oname, LONG_IMG, &[2, 2], &mut status);
+
+                let mut fin: Option<Box<fitsfile>> = None;
+                let mut fout: Option<Box<fitsfile>> = None;
+                fits_open_file(&mut fin, &iname, READONLY, &mut status);
+                fits_open_file(&mut fout, &oname, READWRITE, &mut status);
+                assert_eq!(status, 0, "setup");
+
+                let colname = str_to_c_array("IMGCOL");
+                fits_copy_image2cell_safe(
+                    fin.as_deref_mut().unwrap(),
+                    fout.as_deref_mut().unwrap(),
+                    &colname,
+                    1,
+                    1,
+                    &mut status,
+                );
+                assert_eq!(status, NOT_BTABLE);
+
+                status = 0;
+                fits_close_file(fin.take().unwrap(), &mut status);
+                fits_close_file(fout.take().unwrap(), &mut status);
+            });
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // ffselect_table tests
+    // ------------------------------------------------------------------
+
+    /// Create a file with a one-column table holding `data` in the 2nd HDU.
+    fn make_value_table(name: &[c_char], data: &[c_long], status: &mut c_int) {
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_file(&mut f, name, status);
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], status);
+        let ttype = [Some(str_to_c_array("VALUE"))];
+        let ttype_ref: Vec<Option<&[c_char]>> = ttype.iter().map(|o| o.as_deref()).collect();
+        let tform = [str_to_c_array("1J")];
+        let tform_ref: Vec<&[c_char]> = tform.iter().map(|v| v.as_slice()).collect();
+        fits_create_tbl(
+            f.as_deref_mut().unwrap(),
+            BINARY_TBL,
+            data.len() as LONGLONG,
+            1,
+            &ttype_ref,
+            &tform_ref,
+            None,
+            None,
+            status,
+        );
+        fits_write_col_lng(
+            f.as_deref_mut().unwrap(),
+            1,
+            1,
+            1,
+            data.len() as LONGLONG,
+            data,
+            status,
+        );
+        fits_close_file(f.take().unwrap(), status);
+        assert_eq!(*status, 0, "make_value_table setup failed");
+    }
+
+    fn read_values(f: &mut fitsfile, n: usize, status: &mut c_int) -> Vec<c_long> {
+        let mut got = vec![0 as c_long; n];
+        let mut anynul: c_int = 0;
+        fits_read_col_lng(
+            f,
+            1,
+            1,
+            1,
+            n as LONGLONG,
+            0,
+            &mut got,
+            Some(&mut anynul),
+            status,
+        );
+        got
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_int() {}
+    fn test_ffselect_table_to_new_file() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                make_value_table(&iname, &[10, 25, 30, 45, 50], &mut status);
+
+                let mut f: Option<Box<fitsfile>> = None;
+                fits_open_file(&mut f, &iname, READONLY, &mut status);
+                fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+                assert_eq!(status, 0, "setup");
+
+                let mut expr = [0 as c_char; FLEN_FILENAME];
+                for (i, &b) in b"VALUE > 20".iter().enumerate() {
+                    expr[i] = b as c_char;
+                }
+
+                ffselect_table(&mut f, &to_buf(outname), &expr, &mut status);
+                assert_eq!(status, 0);
+
+                /* *fptr now points at the selected-rows copy */
+                let g = f.as_deref_mut().unwrap();
+                let mut nrows: LONGLONG = 0;
+                fits_get_num_rowsll(g, &mut nrows, &mut status);
+                assert_eq!(nrows, 4);
+                assert_eq!(read_values(g, 4, &mut status), vec![25, 30, 45, 50]);
+                assert_eq!(status, 0);
+
+                fits_close_file(f.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+            });
+        });
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_float() {}
+    fn test_ffselect_table_in_place() {
+        with_temp_file(|inname| {
+            let mut status: c_int = 0;
+            let iname = to_buf(inname);
+            make_value_table(&iname, &[10, 25, 30, 45, 50], &mut status);
+
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_open_file(&mut f, &iname, READWRITE, &mut status);
+            fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
+            assert_eq!(status, 0, "setup");
+
+            /* an empty outfile name means "delete the non-qualifying rows in
+            place", the branch where the C aliases infptr and outfptr */
+            let outfile = [0 as c_char; FLEN_FILENAME];
+            let mut expr = [0 as c_char; FLEN_FILENAME];
+            for (i, &b) in b"VALUE > 20".iter().enumerate() {
+                expr[i] = b as c_char;
+            }
+
+            ffselect_table(&mut f, &outfile, &expr, &mut status);
+            assert_eq!(status, 0);
+
+            let g = f.as_deref_mut().unwrap();
+            let mut nrows: LONGLONG = 0;
+            fits_get_num_rowsll(g, &mut nrows, &mut status);
+            assert_eq!(nrows, 4);
+            assert_eq!(read_values(g, 4, &mut status), vec![25, 30, 45, 50]);
+            assert_eq!(status, 0);
+
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // fits_split_names tests
+    // ------------------------------------------------------------------
+
+    /// Drive fits_split_names to exhaustion over a writable copy of `list`.
+    fn split_names(list: &str) -> Vec<String> {
+        let mut buf = str_to_c_array(list);
+        let mut out: Vec<String> = Vec::new();
+        unsafe {
+            let mut p = fits_split_names_safer(buf.as_mut_ptr());
+            while !p.is_null() {
+                out.push(c_array_to_string(p));
+                p = fits_split_names_safer(core::ptr::null_mut());
+            }
+        }
+        out
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_double() {}
+    fn test_split_names_doc_example() {
+        assert_eq!(
+            split_names("myfile[1][bin (x,y)=4], file2.fits  file3.fits"),
+            vec!["myfile[1][bin (x,y)=4]", "file2.fits", "file3.fits"]
+        );
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_longlong() {}
+    fn test_split_names_single() {
+        assert_eq!(split_names("onefile.fits"), vec!["onefile.fits"]);
+    }
 
     #[test]
-    #[ignore = "fits_copy_image_section_safer is todo!() in src/cfileio.rs"]
-    fn test_copy_image_section_3d() {}
+    fn test_split_names_leading_and_repeated_delimiters() {
+        /* Leading blanks are skipped, but -- unlike strtok, which the doc
+        comment compares this to -- consecutive delimiters are NOT merged: each
+        one yields an empty token.  Verified against the C. */
+        assert_eq!(
+            split_names("   a.fits ,, b.fits"),
+            vec!["a.fits", "", "", "b.fits"]
+        );
+    }
+
+    #[test]
+    fn test_split_names_empty() {
+        assert!(split_names("").is_empty());
+        assert!(split_names("     ").is_empty());
+    }
+
+    #[test]
+    fn test_split_names_null_first_call() {
+        /* DEVIATION: the C dereferences its uninitialised static and crashes
+        if the first call passes NULL; this port reports "no names".  Run it on
+        a fresh thread so the thread-local cursor is guaranteed unseeded even
+        under `--test-threads=1`. */
+        let got = std::thread::spawn(|| unsafe {
+            fits_split_names_safer(core::ptr::null_mut()).is_null()
+        })
+        .join()
+        .unwrap();
+        assert!(got);
+    }
+
+    #[test]
+    fn test_split_names_nested_brackets() {
+        /* commas and spaces inside [], () and {} do not split */
+        assert_eq!(
+            split_names("f1.fits[col a, b]{x, y},f2.fits"),
+            vec!["f1.fits[col a, b]{x, y}", "f2.fits"]
+        );
+    }
 
     // ------------------------------------------------------------------
     // URL type tests
