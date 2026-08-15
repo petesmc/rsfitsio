@@ -1348,7 +1348,7 @@ pub fn fits_img_compress_safe(
     }
 
     /* Read each image tile, compress, and write to a table row. */
-    unsafe { imcomp_compress_image(infptr, outfptr, status) };
+    imcomp_compress_image(infptr, outfptr, status);
 
     /* force another rescan of the output file keywords, to */
     /* update PCOUNT and TFORMn = '1PB(iii)' keyword values. */
@@ -2030,335 +2030,333 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
 ///   possible to quantize the floating point pixels, then it losslessly
 ///   compresses them with gzip
 /// - writes the compressed byte stream to the output FITS file
-unsafe fn imcomp_compress_image(
+fn imcomp_compress_image(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut tiledata: Vec<f64> = Vec::new();
-        let mut anynul: c_int = 0;
-        let mut gotnulls = false;
-        let mut datatype: c_int = 0;
-        let mut row: c_long = 0;
-        let mut naxis: c_int = 0;
-        let dummy: f64 = 0.0;
-        let dblnull: f64 = DOUBLENULLVALUE;
-        let fltnull: f32 = FLOATNULLVALUE;
-        let mut maxtilelen: usize = 0;
-        let mut tilelen: c_long = 0;
-        let incre: [c_long; 6] = [1; 6];
-        let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
-        let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tiledata: Vec<f64> = Vec::new();
+    let mut anynul: c_int = 0;
+    let mut gotnulls = false;
+    let mut datatype: c_int = 0;
+    let mut row: c_long = 0;
+    let mut naxis: c_int = 0;
+    let dummy: f64 = 0.0;
+    let dblnull: f64 = DOUBLENULLVALUE;
+    let fltnull: f32 = FLOATNULLVALUE;
+    let mut maxtilelen: usize = 0;
+    let mut tilelen: c_long = 0;
+    let incre: [c_long; 6] = [1; 6];
+    let mut naxes: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut fpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut lpixel: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tile: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
+    let mut tilesize: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
 
-        let mut trowsize: c_long = 0;
-        let mut ntrows: c_long = 0;
-        let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut trowsize: c_long = 0;
+    let mut ntrows: c_long = 0;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        maxtilelen = (outfptr.Fptr).maxtilelen as usize;
+    maxtilelen = (outfptr.Fptr).maxtilelen as usize;
 
-        /*
-        Allocate buffer to hold 1 tile of data; size depends on which compression
-        algorithm is used:
+    /*
+    Allocate buffer to hold 1 tile of data; size depends on which compression
+    algorithm is used:
 
-        Rice and GZIP will compress byte, short, or int arrays without conversion.
-        PLIO requires 4-byte int values, so byte and short arrays must be
-        converted to int. HCompress internally converts byte or short values to
-        ints, and converts int values to 8-byte longlong integers.
-        */
+    Rice and GZIP will compress byte, short, or int arrays without conversion.
+    PLIO requires 4-byte int values, so byte and short arrays must be
+    converted to int. HCompress internally converts byte or short values to
+    ints, and converts int values to 8-byte longlong integers.
+    */
 
-        let mut allocation_size = 0;
+    let mut allocation_size = 0;
 
-        if (outfptr.Fptr).zbitpix == FLOAT_IMG {
-            datatype = TFLOAT;
+    if (outfptr.Fptr).zbitpix == FLOAT_IMG {
+        datatype = TFLOAT;
 
-            if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
-                /* need twice as much scratch space (8 bytes per pixel) */
-                allocation_size = maxtilelen * 2 * mem::size_of::<f32>();
-            } else {
-                allocation_size = maxtilelen * mem::size_of::<f32>();
-            }
-        } else if (outfptr.Fptr).zbitpix == DOUBLE_IMG {
-            datatype = TDOUBLE;
-            allocation_size = maxtilelen * mem::size_of::<f64>();
-        } else if (outfptr.Fptr).zbitpix == SHORT_IMG {
-            datatype = TSHORT;
-            if (outfptr.Fptr).compress_type == RICE_1
-                || (outfptr.Fptr).compress_type == GZIP_1
-                || (outfptr.Fptr).compress_type == GZIP_2
-                || (outfptr.Fptr).compress_type == BZIP2_1
-                || (outfptr.Fptr).compress_type == NOCOMPRESS
-            {
-                /* only need  buffer of I*2 pixels for gzip, bzip2, and Rice */
-
-                allocation_size = maxtilelen * mem::size_of::<c_short>();
-            } else {
-                /*  need  buffer of I*4 pixels for Hcompress and PLIO */
-                allocation_size = maxtilelen * mem::size_of::<c_int>();
-            }
-        } else if (outfptr.Fptr).zbitpix == BYTE_IMG {
-            datatype = TBYTE;
-            if (outfptr.Fptr).compress_type == RICE_1
-                || (outfptr.Fptr).compress_type == BZIP2_1
-                || (outfptr.Fptr).compress_type == GZIP_1
-                || (outfptr.Fptr).compress_type == GZIP_2
-            {
-                /* only need  buffer of I*1 pixels for gzip, bzip2, and Rice */
-
-                allocation_size = maxtilelen;
-            } else {
-                /*  need  buffer of I*4 pixels for Hcompress and PLIO */
-                allocation_size = maxtilelen * mem::size_of::<c_int>();
-            }
-        } else if (outfptr.Fptr).zbitpix == LONG_IMG {
-            datatype = TINT;
-            if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
-                /* need twice as much scratch space (8 bytes per pixel) */
-                allocation_size = maxtilelen * 2 * mem::size_of::<c_int>();
-            } else {
-                /* only need  buffer of I*4 pixels for gzip, bzip2,  Rice, and PLIO */
-                allocation_size = maxtilelen * mem::size_of::<c_int>();
-            }
+        if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
+            /* need twice as much scratch space (8 bytes per pixel) */
+            allocation_size = maxtilelen * 2 * mem::size_of::<f32>();
         } else {
-            ffpmsg_str("Bad image datatype. (imcomp_compress_image)");
-            *status = MEMORY_ALLOCATION;
-            return *status;
+            allocation_size = maxtilelen * mem::size_of::<f32>();
         }
+    } else if (outfptr.Fptr).zbitpix == DOUBLE_IMG {
+        datatype = TDOUBLE;
+        allocation_size = maxtilelen * mem::size_of::<f64>();
+    } else if (outfptr.Fptr).zbitpix == SHORT_IMG {
+        datatype = TSHORT;
+        if (outfptr.Fptr).compress_type == RICE_1
+            || (outfptr.Fptr).compress_type == GZIP_1
+            || (outfptr.Fptr).compress_type == GZIP_2
+            || (outfptr.Fptr).compress_type == BZIP2_1
+            || (outfptr.Fptr).compress_type == NOCOMPRESS
+        {
+            /* only need  buffer of I*2 pixels for gzip, bzip2, and Rice */
 
-        if tiledata.try_reserve_exact(allocation_size).is_err() {
-            ffpmsg_str("Out of memory. (imcomp_compress_image)");
-            *status = MEMORY_ALLOCATION;
-            return *status;
+            allocation_size = maxtilelen * mem::size_of::<c_short>();
         } else {
-            tiledata.resize(allocation_size, 0.0);
+            /*  need  buffer of I*4 pixels for Hcompress and PLIO */
+            allocation_size = maxtilelen * mem::size_of::<c_int>();
         }
+    } else if (outfptr.Fptr).zbitpix == BYTE_IMG {
+        datatype = TBYTE;
+        if (outfptr.Fptr).compress_type == RICE_1
+            || (outfptr.Fptr).compress_type == BZIP2_1
+            || (outfptr.Fptr).compress_type == GZIP_1
+            || (outfptr.Fptr).compress_type == GZIP_2
+        {
+            /* only need  buffer of I*1 pixels for gzip, bzip2, and Rice */
 
-        /*  calculate size of tile in each dimension */
-        naxis = (outfptr.Fptr).zndim;
-        for ii in 0..MAX_COMPRESS_DIM {
-            if ii < naxis as usize {
-                naxes[ii] = (outfptr.Fptr).znaxis[ii];
-                tilesize[ii] = (outfptr.Fptr).tilesize[ii];
-            } else {
-                naxes[ii] = 1;
-                tilesize[ii] = 1;
-            }
+            allocation_size = maxtilelen;
+        } else {
+            /*  need  buffer of I*4 pixels for Hcompress and PLIO */
+            allocation_size = maxtilelen * mem::size_of::<c_int>();
         }
-        row = 1;
+    } else if (outfptr.Fptr).zbitpix == LONG_IMG {
+        datatype = TINT;
+        if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
+            /* need twice as much scratch space (8 bytes per pixel) */
+            allocation_size = maxtilelen * 2 * mem::size_of::<c_int>();
+        } else {
+            /* only need  buffer of I*4 pixels for gzip, bzip2,  Rice, and PLIO */
+            allocation_size = maxtilelen * mem::size_of::<c_int>();
+        }
+    } else {
+        ffpmsg_str("Bad image datatype. (imcomp_compress_image)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
 
-        /* set up big loop over up to 6 dimensions */
-        for i5 in (1..=naxes[5]).step_by(tilesize[5] as usize) {
-            fpixel[5] = i5;
-            lpixel[5] = cmp::min(i5 + tilesize[5] - 1, naxes[5]);
-            tile[5] = lpixel[5] - fpixel[5] + 1;
-            for i4 in (1..=naxes[4]).step_by(tilesize[4] as usize) {
-                fpixel[4] = i4;
-                lpixel[4] = cmp::min(i4 + tilesize[4] - 1, naxes[4]);
-                tile[4] = lpixel[4] - fpixel[4] + 1;
-                for i3 in (1..=naxes[3]).step_by(tilesize[3] as usize) {
-                    fpixel[3] = i3;
-                    lpixel[3] = cmp::min(i3 + tilesize[3] - 1, naxes[3]);
-                    tile[3] = lpixel[3] - fpixel[3] + 1;
-                    for i2 in (1..=naxes[2]).step_by(tilesize[2] as usize) {
-                        fpixel[2] = i2;
-                        lpixel[2] = cmp::min(i2 + tilesize[2] - 1, naxes[2]);
-                        tile[2] = lpixel[2] - fpixel[2] + 1;
-                        for i1 in (1..=naxes[1]).step_by(tilesize[1] as usize) {
-                            fpixel[1] = i1;
-                            lpixel[1] = cmp::min(i1 + tilesize[1] - 1, naxes[1]);
-                            tile[1] = lpixel[1] - fpixel[1] + 1;
-                            for i0 in (1..=naxes[0]).step_by(tilesize[0] as usize) {
-                                fpixel[0] = i0;
-                                lpixel[0] = cmp::min(i0 + tilesize[0] - 1, naxes[0]);
-                                tile[0] = lpixel[0] - fpixel[0] + 1;
+    if tiledata.try_reserve_exact(allocation_size).is_err() {
+        ffpmsg_str("Out of memory. (imcomp_compress_image)");
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    } else {
+        tiledata.resize(allocation_size, 0.0);
+    }
 
-                                /* number of pixels in this tile */
-                                tilelen = tile[0];
-                                for ii in 1..(naxis as usize) {
-                                    tilelen *= tile[ii];
-                                }
+    /*  calculate size of tile in each dimension */
+    naxis = (outfptr.Fptr).zndim;
+    for ii in 0..MAX_COMPRESS_DIM {
+        if ii < naxis as usize {
+            naxes[ii] = (outfptr.Fptr).znaxis[ii];
+            tilesize[ii] = (outfptr.Fptr).tilesize[ii];
+        } else {
+            naxes[ii] = 1;
+            tilesize[ii] = 1;
+        }
+    }
+    row = 1;
 
-                                /* read next tile of data from image */
-                                anynul = 0;
-                                if datatype == TFLOAT {
-                                    ffgsve_safe(
-                                        infptr,
-                                        1,
-                                        naxis,
-                                        &naxes,
-                                        &fpixel,
-                                        &lpixel,
-                                        &incre,
-                                        FLOATNULLVALUE,
-                                        cast_slice_mut(&mut tiledata),
-                                        Some(&mut anynul),
-                                        status,
-                                    );
-                                } else if datatype == TDOUBLE {
-                                    ffgsvd_safe(
-                                        infptr,
-                                        1,
-                                        naxis,
-                                        &naxes,
-                                        &fpixel,
-                                        &lpixel,
-                                        &incre,
-                                        DOUBLENULLVALUE,
-                                        cast_slice_mut(&mut tiledata),
-                                        Some(&mut anynul),
-                                        status,
-                                    );
-                                } else if datatype == TINT {
-                                    ffgsvk_safe(
-                                        infptr,
-                                        1,
-                                        naxis,
-                                        &naxes,
-                                        &fpixel,
-                                        &lpixel,
-                                        &incre,
-                                        0,
-                                        cast_slice_mut(&mut tiledata),
-                                        Some(&mut anynul),
-                                        status,
-                                    );
-                                } else if datatype == TSHORT {
-                                    ffgsvi_safe(
-                                        infptr,
-                                        1,
-                                        naxis,
-                                        &naxes,
-                                        &fpixel,
-                                        &lpixel,
-                                        &incre,
-                                        0,
-                                        cast_slice_mut(&mut tiledata),
-                                        Some(&mut anynul),
-                                        status,
-                                    );
-                                } else if datatype == TBYTE {
-                                    ffgsvb_safe(
-                                        infptr,
-                                        1,
-                                        naxis,
-                                        &naxes,
-                                        &fpixel,
-                                        &lpixel,
-                                        &incre,
-                                        0,
-                                        cast_slice_mut(&mut tiledata),
-                                        Some(&mut anynul),
-                                        status,
-                                    );
-                                } else {
-                                    ffpmsg_str("Error bad datatype of image tile to compress");
-                                    return *status;
-                                }
+    /* set up big loop over up to 6 dimensions */
+    for i5 in (1..=naxes[5]).step_by(tilesize[5] as usize) {
+        fpixel[5] = i5;
+        lpixel[5] = cmp::min(i5 + tilesize[5] - 1, naxes[5]);
+        tile[5] = lpixel[5] - fpixel[5] + 1;
+        for i4 in (1..=naxes[4]).step_by(tilesize[4] as usize) {
+            fpixel[4] = i4;
+            lpixel[4] = cmp::min(i4 + tilesize[4] - 1, naxes[4]);
+            tile[4] = lpixel[4] - fpixel[4] + 1;
+            for i3 in (1..=naxes[3]).step_by(tilesize[3] as usize) {
+                fpixel[3] = i3;
+                lpixel[3] = cmp::min(i3 + tilesize[3] - 1, naxes[3]);
+                tile[3] = lpixel[3] - fpixel[3] + 1;
+                for i2 in (1..=naxes[2]).step_by(tilesize[2] as usize) {
+                    fpixel[2] = i2;
+                    lpixel[2] = cmp::min(i2 + tilesize[2] - 1, naxes[2]);
+                    tile[2] = lpixel[2] - fpixel[2] + 1;
+                    for i1 in (1..=naxes[1]).step_by(tilesize[1] as usize) {
+                        fpixel[1] = i1;
+                        lpixel[1] = cmp::min(i1 + tilesize[1] - 1, naxes[1]);
+                        tile[1] = lpixel[1] - fpixel[1] + 1;
+                        for i0 in (1..=naxes[0]).step_by(tilesize[0] as usize) {
+                            fpixel[0] = i0;
+                            lpixel[0] = cmp::min(i0 + tilesize[0] - 1, naxes[0]);
+                            tile[0] = lpixel[0] - fpixel[0] + 1;
 
-                                /* now compress the tile, and write to row of binary table */
-                                /*   NOTE: we don't have to worry about the presence
-                                   of null values in the array if it is an integer
-                                   array:  the null value is simply encoded in the
-                                   compressed array just like any other pixel value.
+                            /* number of pixels in this tile */
+                            tilelen = tile[0];
+                            for ii in 1..(naxis as usize) {
+                                tilelen *= tile[ii];
+                            }
 
-                                     If it is a floating point array, then we need
-                                   to check for null only if the anynul parameter
-                                   returned a true value when reading the tile
-                                */
-
-                                /* Collapse sizes of higher dimension tiles into 2
-                                dimensional equivalents needed by the quantizing
-                                algorithms for floating point types */
-                                fits_calc_tile_rows(
-                                    &lpixel,
-                                    &fpixel,
+                            /* read next tile of data from image */
+                            anynul = 0;
+                            if datatype == TFLOAT {
+                                ffgsve_safe(
+                                    infptr,
+                                    1,
                                     naxis,
-                                    &mut trowsize,
-                                    &mut ntrows,
+                                    &naxes,
+                                    &fpixel,
+                                    &lpixel,
+                                    &incre,
+                                    FLOATNULLVALUE,
+                                    cast_slice_mut(&mut tiledata),
+                                    Some(&mut anynul),
                                     status,
                                 );
-
-                                if anynul != 0 && datatype == TFLOAT {
-                                    imcomp_compress_tile(
-                                        outfptr,
-                                        row,
-                                        datatype,
-                                        cast_slice_mut(&mut tiledata),
-                                        tilelen,
-                                        trowsize,
-                                        ntrows,
-                                        NullCheckType::None,
-                                        &Some(NullValue::Float(fltnull)),
-                                        status,
-                                    );
-                                } else if anynul != 0 && datatype == TDOUBLE {
-                                    imcomp_compress_tile(
-                                        outfptr,
-                                        row,
-                                        datatype,
-                                        cast_slice_mut(&mut tiledata),
-                                        tilelen,
-                                        trowsize,
-                                        ntrows,
-                                        NullCheckType::SetPixel,
-                                        &Some(NullValue::Double(dblnull)),
-                                        status,
-                                    );
-                                } else {
-                                    imcomp_compress_tile(
-                                        outfptr,
-                                        row,
-                                        datatype,
-                                        cast_slice_mut(&mut tiledata),
-                                        tilelen,
-                                        trowsize,
-                                        ntrows,
-                                        NullCheckType::None,
-                                        &Some(NullValue::Double(dummy)),
-                                        status,
-                                    );
-                                }
-
-                                /* set flag if we found any null values */
-                                if anynul != 0 {
-                                    gotnulls = true;
-                                }
-
-                                /* check for any error in the previous operations */
-                                if *status > 0 {
-                                    ffpmsg_str("Error writing compressed image to table");
-                                    return *status;
-                                }
-
-                                row += 1;
+                            } else if datatype == TDOUBLE {
+                                ffgsvd_safe(
+                                    infptr,
+                                    1,
+                                    naxis,
+                                    &naxes,
+                                    &fpixel,
+                                    &lpixel,
+                                    &incre,
+                                    DOUBLENULLVALUE,
+                                    cast_slice_mut(&mut tiledata),
+                                    Some(&mut anynul),
+                                    status,
+                                );
+                            } else if datatype == TINT {
+                                ffgsvk_safe(
+                                    infptr,
+                                    1,
+                                    naxis,
+                                    &naxes,
+                                    &fpixel,
+                                    &lpixel,
+                                    &incre,
+                                    0,
+                                    cast_slice_mut(&mut tiledata),
+                                    Some(&mut anynul),
+                                    status,
+                                );
+                            } else if datatype == TSHORT {
+                                ffgsvi_safe(
+                                    infptr,
+                                    1,
+                                    naxis,
+                                    &naxes,
+                                    &fpixel,
+                                    &lpixel,
+                                    &incre,
+                                    0,
+                                    cast_slice_mut(&mut tiledata),
+                                    Some(&mut anynul),
+                                    status,
+                                );
+                            } else if datatype == TBYTE {
+                                ffgsvb_safe(
+                                    infptr,
+                                    1,
+                                    naxis,
+                                    &naxes,
+                                    &fpixel,
+                                    &lpixel,
+                                    &incre,
+                                    0,
+                                    cast_slice_mut(&mut tiledata),
+                                    Some(&mut anynul),
+                                    status,
+                                );
+                            } else {
+                                ffpmsg_str("Error bad datatype of image tile to compress");
+                                return *status;
                             }
+
+                            /* now compress the tile, and write to row of binary table */
+                            /*   NOTE: we don't have to worry about the presence
+                               of null values in the array if it is an integer
+                               array:  the null value is simply encoded in the
+                               compressed array just like any other pixel value.
+
+                                 If it is a floating point array, then we need
+                               to check for null only if the anynul parameter
+                               returned a true value when reading the tile
+                            */
+
+                            /* Collapse sizes of higher dimension tiles into 2
+                            dimensional equivalents needed by the quantizing
+                            algorithms for floating point types */
+                            fits_calc_tile_rows(
+                                &lpixel,
+                                &fpixel,
+                                naxis,
+                                &mut trowsize,
+                                &mut ntrows,
+                                status,
+                            );
+
+                            if anynul != 0 && datatype == TFLOAT {
+                                imcomp_compress_tile(
+                                    outfptr,
+                                    row,
+                                    datatype,
+                                    cast_slice_mut(&mut tiledata),
+                                    tilelen,
+                                    trowsize,
+                                    ntrows,
+                                    NullCheckType::None,
+                                    &Some(NullValue::Float(fltnull)),
+                                    status,
+                                );
+                            } else if anynul != 0 && datatype == TDOUBLE {
+                                imcomp_compress_tile(
+                                    outfptr,
+                                    row,
+                                    datatype,
+                                    cast_slice_mut(&mut tiledata),
+                                    tilelen,
+                                    trowsize,
+                                    ntrows,
+                                    NullCheckType::SetPixel,
+                                    &Some(NullValue::Double(dblnull)),
+                                    status,
+                                );
+                            } else {
+                                imcomp_compress_tile(
+                                    outfptr,
+                                    row,
+                                    datatype,
+                                    cast_slice_mut(&mut tiledata),
+                                    tilelen,
+                                    trowsize,
+                                    ntrows,
+                                    NullCheckType::None,
+                                    &Some(NullValue::Double(dummy)),
+                                    status,
+                                );
+                            }
+
+                            /* set flag if we found any null values */
+                            if anynul != 0 {
+                                gotnulls = true;
+                            }
+
+                            /* check for any error in the previous operations */
+                            if *status > 0 {
+                                ffpmsg_str("Error writing compressed image to table");
+                                return *status;
+                            }
+
+                            row += 1;
                         }
                     }
                 }
             }
         }
-
-        /* insert ZBLANK keyword if necessary; only for TFLOAT or TDOUBLE images */
-        if gotnulls {
-            ffgcrd_safe(outfptr, cs!(c"ZCMPTYPE"), &mut card, status);
-            ffikyj_safe(
-                outfptr,
-                cs!(c"ZBLANK"),
-                LONGLONG::from(COMPRESS_NULL_VALUE),
-                Some(cs!(c"null value in the compressed integer array")),
-                status,
-            );
-        }
-
-        *status
     }
+
+    /* insert ZBLANK keyword if necessary; only for TFLOAT or TDOUBLE images */
+    if gotnulls {
+        ffgcrd_safe(outfptr, cs!(c"ZCMPTYPE"), &mut card, status);
+        ffikyj_safe(
+            outfptr,
+            cs!(c"ZBLANK"),
+            LONGLONG::from(COMPRESS_NULL_VALUE),
+            Some(cs!(c"null value in the compressed integer array")),
+            status,
+        );
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -2380,7 +2378,7 @@ unsafe fn imcomp_compress_image(
 /// that is supported when writing to normal FITS images.  The datatype of the
 /// input array must have the same datatype (either signed or unsigned) as the
 /// output (compressed) FITS image in some cases.
-unsafe fn imcomp_compress_tile(
+fn imcomp_compress_tile(
     outfptr: &mut fitsfile,
     row: c_long, /* tile number = row in the binary table that holds the compressed data */
     datatype: c_int,
@@ -2392,402 +2390,400 @@ unsafe fn imcomp_compress_tile(
     nullflagval: &Option<NullValue>,
     status: &mut c_int,
 ) -> c_int {
-    unsafe {
-        let mut flag: c_int = 1; // true by default; only = 0 if float data couldn't be quantized
-        let mut intlength: c_int = 0; // size of integers to be compressed
+    let mut flag: c_int = 1; // true by default; only = 0 if float data couldn't be quantized
+    let mut intlength: c_int = 0; // size of integers to be compressed
 
-        let clen: usize; // size of cbuf
-        let mut cbuf: Vec<c_short> = Vec::new(); // compressed data
-        let mut nelem: c_int = 0; // number of bytes
-        let tilecol: c_int;
-        let mut gzip_nelem: usize = 0;
+    let clen: usize; // size of cbuf
+    let mut cbuf: Vec<c_short> = Vec::new(); // compressed data
+    let mut nelem: c_int = 0; // number of bytes
+    let tilecol: c_int;
+    let mut gzip_nelem: usize = 0;
 
-        let ihcompscale: c_int;
-        let mut hcompscale: f32;
-        let mut noise2: f64 = 0.0;
-        let mut noise3: f64 = 0.0;
-        let mut noise5: f64 = 0.0;
-        let mut bscale: [f64; 1] = [1.0]; // scaling parameters
-        let mut bzero: [f64; 1] = [0.0]; // scaling parameters
-        let mut hcomp_len: c_long;
+    let ihcompscale: c_int;
+    let mut hcompscale: f32;
+    let mut noise2: f64 = 0.0;
+    let mut noise3: f64 = 0.0;
+    let mut noise5: f64 = 0.0;
+    let mut bscale: [f64; 1] = [1.0]; // scaling parameters
+    let mut bzero: [f64; 1] = [0.0]; // scaling parameters
+    let mut hcomp_len: c_long;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        /* check for special case of losslessly compressing floating point */
-        /* images.  Only compression algorithm that supports this is GZIP */
-        if (outfptr.Fptr).quantize_level == NO_QUANTIZE
-            && ((outfptr.Fptr).compress_type != GZIP_1)
-            && ((outfptr.Fptr).compress_type != GZIP_2)
-        {
-            match datatype {
-                TFLOAT | TDOUBLE | TCOMPLEX | TDBLCOMPLEX => {
-                    ffpmsg_str(
-                        "Lossless compression of floating point images must use GZIP (imcomp_compress_tile)",
-                    );
-                    *status = DATA_COMPRESSION_ERR;
-                    return *status;
-                }
-                _ => {}
-            }
-        }
-
-        /* free the previously saved tile if the input tile is for the same row */
-        if !(outfptr.Fptr).tilerow.is_null() {
-            /* has the tile cache been allocated? */
-
-            /* calculate the column bin of the compressed tile */
-            tilecol = ((row - 1)
-                % (((((outfptr.Fptr).znaxis[0] - 1) / ((outfptr.Fptr).tilesize[0])) as c_long) + 1))
-                as c_int;
-
-            /* The cached tiles are owned by the TileStruct stored in the global
-            TILE_STRUCTS map (see the decompress path, which reads and writes the
-            cache exclusively through this map). If the cached tile is for this
-            same row it is about to become stale, so invalidate it by clearing the
-            owned buffers and resetting the metadata. The previous code
-            reinterpreted the TileStruct's `Vec<Vec<u8>>` storage as a raw
-            `*mut c_void` array and freed the entries with Vec::from_raw_parts,
-            which double-freed memory still owned by the TileStruct (and, for
-            columns other than the first, used the wrong element stride). */
-            let key = &raw const outfptr.Fptr as usize;
-            let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
-            if let Some(tilestruct) = tilestruct_lock.get_mut(&key)
-                && c_long::from(tilestruct.tilerow[tilecol as usize]) == row
-            {
-                tilestruct.tiledata[tilecol as usize] = Vec::new();
-                tilestruct.tilenullarray[tilecol as usize] = Vec::new();
-                tilestruct.tilerow[tilecol as usize] = 0;
-                tilestruct.tiledatasize[tilecol as usize] = 0;
-                tilestruct.tiletype[tilecol as usize] = 0;
-                tilestruct.tileanynull[tilecol as usize] = 0;
-            }
-        }
-
-        if (outfptr.Fptr).compress_type == NOCOMPRESS {
-            /* Special case when using NOCOMPRESS for diagnostic purposes in fpack */
-            if imcomp_write_nocompress_tile(
-                outfptr,
-                row,
-                datatype,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval,
-                status,
-            ) > 0
-            {
+    /* check for special case of losslessly compressing floating point */
+    /* images.  Only compression algorithm that supports this is GZIP */
+    if (outfptr.Fptr).quantize_level == NO_QUANTIZE
+        && ((outfptr.Fptr).compress_type != GZIP_1)
+        && ((outfptr.Fptr).compress_type != GZIP_2)
+    {
+        match datatype {
+            TFLOAT | TDOUBLE | TCOMPLEX | TDBLCOMPLEX => {
+                ffpmsg_str(
+                    "Lossless compression of floating point images must use GZIP (imcomp_compress_tile)",
+                );
+                *status = DATA_COMPRESSION_ERR;
                 return *status;
             }
+            _ => {}
+        }
+    }
+
+    /* free the previously saved tile if the input tile is for the same row */
+    if !(outfptr.Fptr).tilerow.is_null() {
+        /* has the tile cache been allocated? */
+
+        /* calculate the column bin of the compressed tile */
+        tilecol = ((row - 1)
+            % (((((outfptr.Fptr).znaxis[0] - 1) / ((outfptr.Fptr).tilesize[0])) as c_long) + 1))
+            as c_int;
+
+        /* The cached tiles are owned by the TileStruct stored in the global
+        TILE_STRUCTS map (see the decompress path, which reads and writes the
+        cache exclusively through this map). If the cached tile is for this
+        same row it is about to become stale, so invalidate it by clearing the
+        owned buffers and resetting the metadata. The previous code
+        reinterpreted the TileStruct's `Vec<Vec<u8>>` storage as a raw
+        `*mut c_void` array and freed the entries with Vec::from_raw_parts,
+        which double-freed memory still owned by the TileStruct (and, for
+        columns other than the first, used the wrong element stride). */
+        let key = &raw const outfptr.Fptr as usize;
+        let mut tilestruct_lock = TILE_STRUCTS.lock().unwrap();
+        if let Some(tilestruct) = tilestruct_lock.get_mut(&key)
+            && c_long::from(tilestruct.tilerow[tilecol as usize]) == row
+        {
+            tilestruct.tiledata[tilecol as usize] = Vec::new();
+            tilestruct.tilenullarray[tilecol as usize] = Vec::new();
+            tilestruct.tilerow[tilecol as usize] = 0;
+            tilestruct.tiledatasize[tilecol as usize] = 0;
+            tilestruct.tiletype[tilecol as usize] = 0;
+            tilestruct.tileanynull[tilecol as usize] = 0;
+        }
+    }
+
+    if (outfptr.Fptr).compress_type == NOCOMPRESS {
+        /* Special case when using NOCOMPRESS for diagnostic purposes in fpack */
+        if imcomp_write_nocompress_tile(
+            outfptr,
+            row,
+            datatype,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval,
+            status,
+        ) > 0
+        {
             return *status;
         }
+        return *status;
+    }
 
-        /* ===========================================================================*/
-        /* initialize various parameters */
+    /* ===========================================================================*/
+    /* initialize various parameters */
 
-        /* zbitpix is the BITPIX keyword value in the uncompressed FITS image */
-        let zbitpix: c_int = (outfptr.Fptr).zbitpix;
+    /* zbitpix is the BITPIX keyword value in the uncompressed FITS image */
+    let zbitpix: c_int = (outfptr.Fptr).zbitpix;
 
-        /* if the tile/image has an integer datatype, see if a null value has */
-        /* been defined (with the BLANK keyword in a normal FITS image).  */
-        /* If so, and if the input tile array also contains null pixels, */
-        /* (represented by pixels that have a value = nullflagval) then  */
-        /* any pixels whose value = nullflagval, must be set to the value = nullval
-         */
-        /* before the pixel array is compressed.  These null pixel values must */
-        /* not be inverse scaled by the BSCALE/BZERO values, if present. */
+    /* if the tile/image has an integer datatype, see if a null value has */
+    /* been defined (with the BLANK keyword in a normal FITS image).  */
+    /* If so, and if the input tile array also contains null pixels, */
+    /* (represented by pixels that have a value = nullflagval) then  */
+    /* any pixels whose value = nullflagval, must be set to the value = nullval
+     */
+    /* before the pixel array is compressed.  These null pixel values must */
+    /* not be inverse scaled by the BSCALE/BZERO values, if present. */
 
-        let cn_zblank: c_int = (outfptr.Fptr).cn_zblank;
-        let nullval: c_int = (outfptr.Fptr).zblank;
+    let cn_zblank: c_int = (outfptr.Fptr).cn_zblank;
+    let nullval: c_int = (outfptr.Fptr).zblank;
 
-        if zbitpix > 0 && cn_zblank != -1 {
-            /* If the integer image has no defined null */
-            nullcheck = NullCheckType::None; /* value, then don't bother checking input array for nulls. */
-        }
+    if zbitpix > 0 && cn_zblank != -1 {
+        /* If the integer image has no defined null */
+        nullcheck = NullCheckType::None; /* value, then don't bother checking input array for nulls. */
+    }
 
-        /* if the BSCALE and BZERO keywords exist, then the input values must */
-        /* be inverse scaled by this factor, before the values are compressed. */
-        /* (The program may have turned off scaling, which over rides the keywords)
-         */
+    /* if the BSCALE and BZERO keywords exist, then the input values must */
+    /* be inverse scaled by this factor, before the values are compressed. */
+    /* (The program may have turned off scaling, which over rides the keywords)
+     */
 
-        let scale: f64 = (outfptr.Fptr).cn_bscale;
-        let zero: f64 = (outfptr.Fptr).cn_bzero;
-        let actual_bzero: f64 = (outfptr.Fptr).cn_actual_bzero;
+    let scale: f64 = (outfptr.Fptr).cn_bscale;
+    let zero: f64 = (outfptr.Fptr).cn_bzero;
+    let actual_bzero: f64 = (outfptr.Fptr).cn_actual_bzero;
 
-        /* ===========================================================================
-         */
-        /* prepare the tile of pixel values for compression */
-        if datatype == TSHORT {
-            imcomp_convert_tile_tshort(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                actual_bzero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TUSHORT {
-            imcomp_convert_tile_tushort(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TBYTE {
-            imcomp_convert_tile_tbyte(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TSBYTE {
-            imcomp_convert_tile_tsbyte(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TINT {
-            imcomp_convert_tile_tint(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TUINT {
-            imcomp_convert_tile_tuint(
-                outfptr,
-                tiledata,
-                tilelen,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                status,
-            );
-        } else if datatype == TLONG && mem::size_of::<c_long>() == 8 {
-            ffpmsg_str(
-                "Integer*8 Long datatype is not supported when writing to compressed images",
-            );
-            *status = BAD_DATATYPE;
+    /* ===========================================================================
+     */
+    /* prepare the tile of pixel values for compression */
+    if datatype == TSHORT {
+        imcomp_convert_tile_tshort(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            actual_bzero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TUSHORT {
+        imcomp_convert_tile_tushort(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TBYTE {
+        imcomp_convert_tile_tbyte(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TSBYTE {
+        imcomp_convert_tile_tsbyte(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TINT {
+        imcomp_convert_tile_tint(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TUINT {
+        imcomp_convert_tile_tuint(
+            outfptr,
+            tiledata,
+            tilelen,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            status,
+        );
+    } else if datatype == TLONG && mem::size_of::<c_long>() == 8 {
+        ffpmsg_str("Integer*8 Long datatype is not supported when writing to compressed images");
+        *status = BAD_DATATYPE;
+        return *status;
+    } else if datatype == TULONG && mem::size_of::<c_long>() == 8 {
+        ffpmsg_cstr(
+            c"Unsigned integer*8 datatype is not supported when writing to compressed images",
+        );
+        *status = BAD_DATATYPE;
+        return *status;
+    } else if datatype == TFLOAT {
+        imcomp_convert_tile_tfloat(
+            outfptr,
+            row,
+            tiledata,
+            tilelen,
+            tilenx,
+            tileny,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            &mut flag,
+            &mut bscale[0],
+            &mut bzero[0],
+            status,
+        );
+    } else if datatype == TDOUBLE {
+        imcomp_convert_tile_tdouble(
+            outfptr,
+            row,
+            tiledata,
+            tilelen,
+            tilenx,
+            tileny,
+            nullcheck,
+            nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
+            nullval,
+            zbitpix,
+            scale,
+            zero,
+            &mut intlength,
+            &mut flag,
+            &mut bscale[0],
+            &mut bzero[0],
+            status,
+        );
+    } else {
+        ffpmsg_str("unsupported image datatype (imcomp_compress_tile)");
+        *status = BAD_DATATYPE;
+        return *status;
+    }
+
+    if *status > 0 {
+        return *status; /* return if error occurs */
+    }
+
+    /* =========================================================================== */
+    if flag != 0 {
+        /* now compress the integer data array */
+        /* allocate buffer for the compressed tile bytes */
+        clen = (outfptr.Fptr).maxelem as usize / 2; // Divide by 2 to convert char to short
+        cbuf = Vec::new();
+
+        if cbuf.try_reserve_exact(clen).is_err() {
+            ffpmsg_str("Memory allocation failure. (imcomp_compress_tile)");
+            *status = MEMORY_ALLOCATION;
             return *status;
-        } else if datatype == TULONG && mem::size_of::<c_long>() == 8 {
-            ffpmsg_cstr(
-                c"Unsigned integer*8 datatype is not supported when writing to compressed images",
-            );
-            *status = BAD_DATATYPE;
-            return *status;
-        } else if datatype == TFLOAT {
-            imcomp_convert_tile_tfloat(
-                outfptr,
-                row,
-                tiledata,
-                tilelen,
-                tilenx,
-                tileny,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                &mut flag,
-                &mut bscale[0],
-                &mut bzero[0],
-                status,
-            );
-        } else if datatype == TDOUBLE {
-            imcomp_convert_tile_tdouble(
-                outfptr,
-                row,
-                tiledata,
-                tilelen,
-                tilenx,
-                tileny,
-                nullcheck,
-                nullflagval.as_ref().map(|nv| nv.get_value_as_f64() as _),
-                nullval,
-                zbitpix,
-                scale,
-                zero,
-                &mut intlength,
-                &mut flag,
-                &mut bscale[0],
-                &mut bzero[0],
-                status,
-            );
         } else {
-            ffpmsg_str("unsupported image datatype (imcomp_compress_tile)");
-            *status = BAD_DATATYPE;
-            return *status;
-        }
-
-        if *status > 0 {
-            return *status; /* return if error occurs */
+            cbuf.resize(clen, 0);
         }
 
         /* =========================================================================== */
-        if flag != 0 {
-            /* now compress the integer data array */
-            /* allocate buffer for the compressed tile bytes */
-            clen = (outfptr.Fptr).maxelem as usize / 2; // Divide by 2 to convert char to short
-            cbuf = Vec::new();
+        if (outfptr.Fptr).compress_type == RICE_1 {
+            let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
 
-            if cbuf.try_reserve_exact(clen).is_err() {
-                ffpmsg_str("Memory allocation failure. (imcomp_compress_tile)");
-                *status = MEMORY_ALLOCATION;
-                return *status;
+            let res = if intlength == 2 {
+                let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
+                rce.set_log_fn(ffpmsg_str);
+                rce.encode_short(
+                    cast_slice(idata),
+                    tilelen as usize,
+                    (outfptr.Fptr).rice_blocksize as usize,
+                )
+            } else if intlength == 1 {
+                let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
+                rce.set_log_fn(ffpmsg_str);
+                rce.encode_byte(
+                    cast_slice(idata),
+                    tilelen as usize,
+                    (outfptr.Fptr).rice_blocksize as usize,
+                )
             } else {
-                cbuf.resize(clen, 0);
+                let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
+                rce.set_log_fn(ffpmsg_str);
+                rce.encode(
+                    cast_slice(idata),
+                    tilelen as usize,
+                    (outfptr.Fptr).rice_blocksize as usize,
+                )
+            };
+
+            if res.is_err() {
+                /* data compression error condition */
+                ffpmsg_str("error Rice compressing image tile (imcomp_compress_tile)");
+                *status = DATA_COMPRESSION_ERR;
+                return *status;
             }
 
-            /* =========================================================================== */
-            if (outfptr.Fptr).compress_type == RICE_1 {
-                let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
+            nelem = res.unwrap() as c_int;
 
-                let res = if intlength == 2 {
-                    let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
-                    rce.set_log_fn(ffpmsg_str);
-                    rce.encode_short(
-                        cast_slice(idata),
-                        tilelen as usize,
-                        (outfptr.Fptr).rice_blocksize as usize,
-                    )
-                } else if intlength == 1 {
-                    let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
-                    rce.set_log_fn(ffpmsg_str);
-                    rce.encode_byte(
-                        cast_slice(idata),
-                        tilelen as usize,
-                        (outfptr.Fptr).rice_blocksize as usize,
-                    )
-                } else {
-                    let mut rce = RCEncoder::new(cast_slice_mut(&mut cbuf));
-                    rce.set_log_fn(ffpmsg_str);
-                    rce.encode(
-                        cast_slice(idata),
-                        tilelen as usize,
-                        (outfptr.Fptr).rice_blocksize as usize,
-                    )
-                };
+            /* Write the compressed byte stream. */
+            ffpclb_safe(
+                outfptr,
+                (outfptr.Fptr).cn_compressed,
+                row as LONGLONG,
+                1,
+                LONGLONG::from(nelem),
+                cast_slice(&cbuf),
+                status,
+            );
+        }
+        /* =========================================================================== */
+        else if (outfptr.Fptr).compress_type == PLIO_1 {
+            let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
 
-                if res.is_err() {
-                    /* data compression error condition */
-                    ffpmsg_str("error Rice compressing image tile (imcomp_compress_tile)");
+            for ii in 0..(tilelen as usize) {
+                if idata[ii] < 0 || idata[ii] > 16777215 {
+                    /* plio algorithn only supports positive 24 bit ints */
+                    ffpmsg_str("data out of range for PLIO compression (0 - 2**24)");
                     *status = DATA_COMPRESSION_ERR;
                     return *status;
                 }
-
-                nelem = res.unwrap() as c_int;
-
-                /* Write the compressed byte stream. */
-                ffpclb_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_compressed,
-                    row as LONGLONG,
-                    1,
-                    LONGLONG::from(nelem),
-                    cast_slice(&cbuf),
-                    status,
-                );
             }
-            /* =========================================================================== */
-            else if (outfptr.Fptr).compress_type == PLIO_1 {
-                let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
 
-                for ii in 0..(tilelen as usize) {
-                    if idata[ii] < 0 || idata[ii] > 16777215 {
-                        /* plio algorithn only supports positive 24 bit ints */
-                        ffpmsg_str("data out of range for PLIO compression (0 - 2**24)");
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
-                    }
-                }
-
-                /* cbuf is sized for the worst case, so None is unreachable */
-                nelem = match pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) {
-                    Some(n) => n as c_int,
-                    None => {
-                        ffpmsg_str("PLIO line list did not fit the tile buffer");
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
-                    }
-                };
-
-                if nelem < 0 {
-                    /* data compression error condition */
-                    ffpmsg_str("error PLIO compressing image tile (imcomp_compress_tile)");
+            /* cbuf is sized for the worst case, so None is unreachable */
+            nelem = match pl_p2li(idata, 0, &mut cbuf, tilelen.try_into().unwrap()) {
+                Some(n) => n as c_int,
+                None => {
+                    ffpmsg_str("PLIO line list did not fit the tile buffer");
                     *status = DATA_COMPRESSION_ERR;
                     return *status;
                 }
+            };
 
-                /* Write the compressed byte stream. */
-                ffpcli_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_compressed,
-                    row as LONGLONG,
-                    1,
-                    LONGLONG::from(nelem),
-                    &cbuf,
-                    status,
-                );
+            if nelem < 0 {
+                /* data compression error condition */
+                ffpmsg_str("error PLIO compressing image tile (imcomp_compress_tile)");
+                *status = DATA_COMPRESSION_ERR;
+                return *status;
             }
-            /* =========================================================================== */
-            else if ((outfptr.Fptr).compress_type == GZIP_1)
-                || ((outfptr.Fptr).compress_type == GZIP_2)
-            {
-                let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
-                if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TFLOAT {
-                    /* Special case of losslessly compressing floating point pixels  with GZIP */
-                    /* In this case we compress the input tile array directly */
 
-                    if BYTESWAPPED {
-                        ffswap4(cast_slice_mut(tiledata), tilelen);
-                    }
+            /* Write the compressed byte stream. */
+            ffpcli_safe(
+                outfptr,
+                (outfptr.Fptr).cn_compressed,
+                row as LONGLONG,
+                1,
+                LONGLONG::from(nelem),
+                &cbuf,
+                status,
+            );
+        }
+        /* =========================================================================== */
+        else if ((outfptr.Fptr).compress_type == GZIP_1)
+            || ((outfptr.Fptr).compress_type == GZIP_2)
+        {
+            let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
+            if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TFLOAT {
+                /* Special case of losslessly compressing floating point pixels  with GZIP */
+                /* In this case we compress the input tile array directly */
 
-                    if (outfptr.Fptr).compress_type == GZIP_2 {
-                        fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
-                    }
+                if BYTESWAPPED {
+                    ffswap4(cast_slice_mut(tiledata), tilelen);
+                }
 
+                if (outfptr.Fptr).compress_type == GZIP_2 {
+                    fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                }
+
+                unsafe {
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f32>(),
@@ -2795,17 +2791,19 @@ unsafe fn imcomp_compress_tile(
                         Some(&mut gzip_nelem),
                         status,
                     );
-                } else if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TDOUBLE {
-                    /* Special case of losslessly compressing double pixels with  GZIP */
-                    /* In this case we compress the input tile array directly */
+                }
+            } else if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TDOUBLE {
+                /* Special case of losslessly compressing double pixels with  GZIP */
+                /* In this case we compress the input tile array directly */
 
-                    if BYTESWAPPED {
-                        ffswap8(cast_slice_mut(tiledata), tilelen);
-                    }
-                    if (outfptr.Fptr).compress_type == GZIP_2 {
-                        fits_shuffle_8bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
-                    }
+                if BYTESWAPPED {
+                    ffswap8(cast_slice_mut(tiledata), tilelen);
+                }
+                if (outfptr.Fptr).compress_type == GZIP_2 {
+                    fits_shuffle_8bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                }
 
+                unsafe {
                     compress2mem_from_mem(
                         cast_slice(tiledata),
                         tilelen as usize * mem::size_of::<f64>(),
@@ -2813,30 +2811,28 @@ unsafe fn imcomp_compress_tile(
                         Some(&mut gzip_nelem),
                         status,
                     );
-                } else {
-                    /* compress the integer idata array */
+                }
+            } else {
+                /* compress the integer idata array */
 
-                    if BYTESWAPPED {
-                        let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
-
-                        if intlength == 2 {
-                            ffswap2(cast_slice_mut(idata), tilelen);
-                        } else if intlength == 4 {
-                            ffswap4(idata, tilelen);
-                        }
-                    }
+                if BYTESWAPPED {
+                    let idata: &mut [c_int] = cast_slice_mut(tiledata); /* may overwrite the input tiledata in place */
 
                     if intlength == 2 {
-                        if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_2bytes(
-                                cast_slice_mut(tiledata),
-                                tilelen as LONGLONG,
-                                status,
-                            );
-                        }
+                        ffswap2(cast_slice_mut(idata), tilelen);
+                    } else if intlength == 4 {
+                        ffswap4(idata, tilelen);
+                    }
+                }
 
-                        let idata: &mut [c_int] = cast_slice_mut(tiledata);
+                if intlength == 2 {
+                    if (outfptr.Fptr).compress_type == GZIP_2 {
+                        fits_shuffle_2bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                    }
 
+                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
+
+                    unsafe {
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_short>(),
@@ -2844,8 +2840,10 @@ unsafe fn imcomp_compress_tile(
                             Some(&mut gzip_nelem),
                             status,
                         );
-                    } else if intlength == 1 {
-                        let idata: &mut [c_int] = cast_slice_mut(tiledata);
+                    }
+                } else if intlength == 1 {
+                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
+                    unsafe {
                         compress2mem_from_mem(
                             cast_slice(idata),
                             tilelen as usize * mem::size_of::<c_uchar>(),
@@ -2853,17 +2851,15 @@ unsafe fn imcomp_compress_tile(
                             Some(&mut gzip_nelem),
                             status,
                         );
-                    } else {
-                        if (outfptr.Fptr).compress_type == GZIP_2 {
-                            fits_shuffle_4bytes(
-                                cast_slice_mut(tiledata),
-                                tilelen as LONGLONG,
-                                status,
-                            );
-                        }
+                    }
+                } else {
+                    if (outfptr.Fptr).compress_type == GZIP_2 {
+                        fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
+                    }
 
-                        let idata: &mut [c_int] = cast_slice_mut(tiledata);
+                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
+                    unsafe {
                         compress2mem_from_mem(
                             cast_slice_mut(idata),
                             tilelen as usize * mem::size_of::<c_int>(),
@@ -2873,44 +2869,46 @@ unsafe fn imcomp_compress_tile(
                         );
                     }
                 }
+            }
 
-                /* Write the compressed byte stream. */
-                ffpclb_safe(
-                    outfptr,
-                    LONGLONG::from((outfptr.Fptr).cn_compressed)
-                        .try_into()
-                        .unwrap(),
-                    row as LONGLONG,
-                    1,
-                    gzip_nelem as LONGLONG,
-                    &gzip_buf,
-                    status,
-                );
+            /* Write the compressed byte stream. */
+            ffpclb_safe(
+                outfptr,
+                LONGLONG::from((outfptr.Fptr).cn_compressed)
+                    .try_into()
+                    .unwrap(),
+                row as LONGLONG,
+                1,
+                gzip_nelem as LONGLONG,
+                &gzip_buf,
+                status,
+            );
 
-            /* =========================================================================== */
-            } else if (outfptr.Fptr).compress_type == BZIP2_1 {
-                #[cfg(feature = "bzip2")]
-                {
-                    use libbz2_rs_sys::BZ2_bzBuffToBuffCompress;
+        /* =========================================================================== */
+        } else if (outfptr.Fptr).compress_type == BZIP2_1 {
+            #[cfg(feature = "bzip2")]
+            {
+                use libbz2_rs_sys::BZ2_bzBuffToBuffCompress;
 
-                    if BYTESWAPPED {
-                        let idata: &mut [c_int] = cast_slice_mut(tiledata);
+                if BYTESWAPPED {
+                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
-                        if intlength == 2 {
-                            ffswap2(cast_slice_mut(idata), tilelen);
-                        } else if intlength == 4 {
-                            ffswap4(idata, tilelen);
-                        }
+                    if intlength == 2 {
+                        ffswap2(cast_slice_mut(idata), tilelen);
+                    } else if intlength == 4 {
+                        ffswap4(idata, tilelen);
                     }
+                }
 
-                    /* clen counts c_shorts here; the C's is in bytes */
-                    let mut bzlen: c_uint = (clen * 2) as c_uint;
+                /* clen counts c_shorts here; the C's is in bytes */
+                let mut bzlen: c_uint = (clen * 2) as c_uint;
 
-                    /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
+                /* call bzip2 with blocksize = 900K, verbosity = 0, and default workfactor */
 
-                    /*  bzip2 is not supported in the public release.  This is only for
-                    test purposes. */
-                    if BZ2_bzBuffToBuffCompress(
+                /*  bzip2 is not supported in the public release.  This is only for
+                test purposes. */
+                if unsafe {
+                    BZ2_bzBuffToBuffCompress(
                         cbuf.as_ptr() as *mut c_char,
                         &mut bzlen,
                         tiledata.as_ptr() as *mut _,
@@ -2918,120 +2916,13 @@ unsafe fn imcomp_compress_tile(
                         9,
                         0,
                         0,
-                    ) != 0
-                    {
-                        ffpmsg_str("bzip2 compression error");
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
-                    }
-
-                    /* Write the compressed byte stream. */
-                    ffpclb_safe(
-                        outfptr,
-                        (outfptr.Fptr).cn_compressed,
-                        row as LONGLONG,
-                        1,
-                        LONGLONG::from(bzlen),
-                        cast_slice_mut(&mut cbuf),
-                        status,
-                    );
+                    )
+                } != 0
+                {
+                    ffpmsg_str("bzip2 compression error");
+                    *status = DATA_COMPRESSION_ERR;
+                    return *status;
                 }
-
-            /* =========================================================================== */
-            } else if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
-                /*
-                if hcompscale is positive, then we have to multiply
-                the value by the RMS background noise to get the
-                absolute scale value.  If negative, then it gives the
-                absolute scale value directly.
-                */
-                hcompscale = (outfptr.Fptr).hcomp_scale;
-
-                if hcompscale > 0.0 {
-                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
-
-                    fits_img_stats_int_safe(
-                        idata,
-                        tilenx,
-                        tileny,
-                        nullcheck != NullCheckType::None,
-                        nullval,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        Some(&mut noise2),
-                        Some(&mut noise3),
-                        Some(&mut noise5),
-                        status,
-                    );
-
-                    /* use the minimum of the 3 noise estimates */
-                    if noise2 != 0. && noise2 < noise3 {
-                        noise3 = noise2;
-                    }
-                    if noise5 != 0. && noise5 < noise3 {
-                        noise3 = noise5;
-                    }
-
-                    hcompscale = (f64::from(hcompscale) * noise3) as f32;
-                } else if hcompscale < 0.0 {
-                    hcompscale = -hcompscale;
-                }
-
-                ihcompscale = (hcompscale + 0.5) as c_int;
-
-                /* clen counts c_shorts here; the C's is in bytes */
-                hcomp_len = (clen * 2) as c_long; /* allocated size of the buffer */
-
-                /* The C gets the compressed length back from fits_hcompress.
-                HCEncoder returns none, so take it from how far it advanced the
-                output slice -- `Write for &mut [u8]' consumes as it writes. */
-                let mut out: &mut [u8] = cast_slice_mut(&mut cbuf);
-                let capacity = out.len();
-
-                if zbitpix == BYTE_IMG || zbitpix == SHORT_IMG {
-                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
-
-                    let mut hc_enconder = HCEncoder::new(&mut out);
-
-                    let encode_res = hc_enconder.write(
-                        idata,
-                        tilenx.try_into().unwrap(),
-                        tileny.try_into().unwrap(),
-                        ihcompscale,
-                    );
-
-                    if let Err(_e) = encode_res {
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
-                    }
-                } else {
-                    /* have to convert idata to an I*8 array, in place */
-                    /* idata must have been allocated large enough to do this */
-                    let idata: &mut [c_int] = cast_slice_mut(tiledata);
-
-                    fits_int_to_longlong_inplace(idata, tilelen, status);
-
-                    let lldata: &mut [LONGLONG] = cast_slice_mut(idata);
-                    let mut hc_enconder = HCEncoder::new(&mut out);
-
-                    let encode_res = hc_enconder.write64(
-                        lldata,
-                        tilenx.try_into().unwrap(),
-                        tileny.try_into().unwrap(),
-                        ihcompscale,
-                    );
-
-                    if let Err(_e) = encode_res {
-                        *status = DATA_COMPRESSION_ERR;
-                        return *status;
-                    }
-                }
-
-                hcomp_len = (capacity - out.len()) as c_long;
 
                 /* Write the compressed byte stream. */
                 ffpclb_safe(
@@ -3039,111 +2930,220 @@ unsafe fn imcomp_compress_tile(
                     (outfptr.Fptr).cn_compressed,
                     row as LONGLONG,
                     1,
-                    hcomp_len as LONGLONG,
-                    cast_slice(&cbuf),
+                    LONGLONG::from(bzlen),
+                    cast_slice_mut(&mut cbuf),
                     status,
                 );
             }
 
-            /* =========================================================================== */
-            if (outfptr.Fptr).cn_zscale > 0 {
-                /* write the linear scaling parameters for this tile */
-                ffpcld_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_zscale,
-                    row as LONGLONG,
-                    1,
-                    1,
-                    &bscale,
+        /* =========================================================================== */
+        } else if (outfptr.Fptr).compress_type == HCOMPRESS_1 {
+            /*
+            if hcompscale is positive, then we have to multiply
+            the value by the RMS background noise to get the
+            absolute scale value.  If negative, then it gives the
+            absolute scale value directly.
+            */
+            hcompscale = (outfptr.Fptr).hcomp_scale;
+
+            if hcompscale > 0.0 {
+                let idata: &mut [c_int] = cast_slice_mut(tiledata);
+
+                fits_img_stats_int_safe(
+                    idata,
+                    tilenx,
+                    tileny,
+                    nullcheck != NullCheckType::None,
+                    nullval,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&mut noise2),
+                    Some(&mut noise3),
+                    Some(&mut noise5),
                     status,
                 );
-                ffpcld_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_zzero,
-                    row as LONGLONG,
-                    1,
-                    1,
-                    &bzero,
-                    status,
-                );
-            }
 
-            /* finished with this buffer */
-
-            /* =========================================================================== */
-        } else {
-            /* if flag == 0., floating point data couldn't be quantized */
-
-            /* losslessly compress the data with gzip. */
-
-            /* if gzip2 compressed data column doesn't exist, create it */
-            if (outfptr.Fptr).cn_gzip_data < 1 {
-                if (outfptr.Fptr).request_huge_hdu != 0 {
-                    fits_insert_col(
-                        outfptr,
-                        999,
-                        cs!(c"GZIP_COMPRESSED_DATA"),
-                        cs!(c"1QB"),
-                        status,
-                    );
-                } else {
-                    fits_insert_col(
-                        outfptr,
-                        999,
-                        cs!(c"GZIP_COMPRESSED_DATA"),
-                        cs!(c"1PB"),
-                        status,
-                    );
+                /* use the minimum of the 3 noise estimates */
+                if noise2 != 0. && noise2 < noise3 {
+                    noise3 = noise2;
+                }
+                if noise5 != 0. && noise5 < noise3 {
+                    noise3 = noise5;
                 }
 
-                if *status <= 0 {
-                    /* save the number of this column */
-                    let mut cn_gzip_data: c_int = 0;
-                    ffgcno_safe(
-                        outfptr,
-                        CASEINSEN.try_into().unwrap(),
-                        cs!(c"GZIP_COMPRESSED_DATA"),
-                        &mut cn_gzip_data,
-                        status,
-                    );
-                    outfptr.Fptr.cn_gzip_data = cn_gzip_data;
-                }
+                hcompscale = (f64::from(hcompscale) * noise3) as f32;
+            } else if hcompscale < 0.0 {
+                hcompscale = -hcompscale;
             }
 
-            let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
-            if datatype == TFLOAT {
-                /* allocate buffer for the compressed tile bytes */
-                /* make it 10% larger than the original uncompressed data */
+            ihcompscale = (hcompscale + 0.5) as c_int;
 
-                clen = (tilelen as f64 * mem::size_of::<f32>() as f64 * 1.1 / 2.0) as usize; // Divide by 2 to convert char to short.
+            /* clen counts c_shorts here; the C's is in bytes */
+            hcomp_len = (clen * 2) as c_long; /* allocated size of the buffer */
 
-                cbuf = Vec::new();
+            /* The C gets the compressed length back from fits_hcompress.
+            HCEncoder returns none, so take it from how far it advanced the
+            output slice -- `Write for &mut [u8]' consumes as it writes. */
+            let mut out: &mut [u8] = cast_slice_mut(&mut cbuf);
+            let capacity = out.len();
 
-                if cbuf.try_reserve_exact(clen).is_err() {
-                    ffpmsg_str("Memory allocation error. (imcomp_compress_tile)");
-                    *status = MEMORY_ALLOCATION;
+            if zbitpix == BYTE_IMG || zbitpix == SHORT_IMG {
+                let idata: &mut [c_int] = cast_slice_mut(tiledata);
+
+                let mut hc_enconder = HCEncoder::new(&mut out);
+
+                let encode_res = hc_enconder.write(
+                    idata,
+                    tilenx.try_into().unwrap(),
+                    tileny.try_into().unwrap(),
+                    ihcompscale,
+                );
+
+                if let Err(_e) = encode_res {
+                    *status = DATA_COMPRESSION_ERR;
                     return *status;
-                } else {
-                    cbuf.resize(clen, 0);
                 }
+            } else {
+                /* have to convert idata to an I*8 array, in place */
+                /* idata must have been allocated large enough to do this */
+                let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
-                /* convert null values to NaNs in place, if necessary */
-                if nullcheck == NullCheckType::SetPixel {
-                    let nv = nullflagval.clone().unwrap(); // Must be set if nullcheck is SetPixel
-                    imcomp_float2nan_inplace(
-                        cast_slice_mut(tiledata),
-                        tilelen,
-                        nv.get_value_as_f64() as f32,
-                        status,
-                    );
+                fits_int_to_longlong_inplace(idata, tilelen, status);
+
+                let lldata: &mut [LONGLONG] = cast_slice_mut(idata);
+                let mut hc_enconder = HCEncoder::new(&mut out);
+
+                let encode_res = hc_enconder.write64(
+                    lldata,
+                    tilenx.try_into().unwrap(),
+                    tileny.try_into().unwrap(),
+                    ihcompscale,
+                );
+
+                if let Err(_e) = encode_res {
+                    *status = DATA_COMPRESSION_ERR;
+                    return *status;
                 }
+            }
 
-                if BYTESWAPPED {
-                    ffswap4(cast_slice_mut(tiledata), tilelen);
-                }
+            hcomp_len = (capacity - out.len()) as c_long;
 
-                // WARNING: Potentially unsafe memory issue here given this function
-                // call can reallocate the buffer.
+            /* Write the compressed byte stream. */
+            ffpclb_safe(
+                outfptr,
+                (outfptr.Fptr).cn_compressed,
+                row as LONGLONG,
+                1,
+                hcomp_len as LONGLONG,
+                cast_slice(&cbuf),
+                status,
+            );
+        }
+
+        /* =========================================================================== */
+        if (outfptr.Fptr).cn_zscale > 0 {
+            /* write the linear scaling parameters for this tile */
+            ffpcld_safe(
+                outfptr,
+                (outfptr.Fptr).cn_zscale,
+                row as LONGLONG,
+                1,
+                1,
+                &bscale,
+                status,
+            );
+            ffpcld_safe(
+                outfptr,
+                (outfptr.Fptr).cn_zzero,
+                row as LONGLONG,
+                1,
+                1,
+                &bzero,
+                status,
+            );
+        }
+
+        /* finished with this buffer */
+
+        /* =========================================================================== */
+    } else {
+        /* if flag == 0., floating point data couldn't be quantized */
+
+        /* losslessly compress the data with gzip. */
+
+        /* if gzip2 compressed data column doesn't exist, create it */
+        if (outfptr.Fptr).cn_gzip_data < 1 {
+            if (outfptr.Fptr).request_huge_hdu != 0 {
+                fits_insert_col(
+                    outfptr,
+                    999,
+                    cs!(c"GZIP_COMPRESSED_DATA"),
+                    cs!(c"1QB"),
+                    status,
+                );
+            } else {
+                fits_insert_col(
+                    outfptr,
+                    999,
+                    cs!(c"GZIP_COMPRESSED_DATA"),
+                    cs!(c"1PB"),
+                    status,
+                );
+            }
+
+            if *status <= 0 {
+                /* save the number of this column */
+                let mut cn_gzip_data: c_int = 0;
+                ffgcno_safe(
+                    outfptr,
+                    CASEINSEN.try_into().unwrap(),
+                    cs!(c"GZIP_COMPRESSED_DATA"),
+                    &mut cn_gzip_data,
+                    status,
+                );
+                outfptr.Fptr.cn_gzip_data = cn_gzip_data;
+            }
+        }
+
+        let mut gzip_buf: Vec<u8> = Vec::new(); /* compressed output; grown by compress2mem_from_mem */
+        if datatype == TFLOAT {
+            /* allocate buffer for the compressed tile bytes */
+            /* make it 10% larger than the original uncompressed data */
+
+            clen = (tilelen as f64 * mem::size_of::<f32>() as f64 * 1.1 / 2.0) as usize; // Divide by 2 to convert char to short.
+
+            cbuf = Vec::new();
+
+            if cbuf.try_reserve_exact(clen).is_err() {
+                ffpmsg_str("Memory allocation error. (imcomp_compress_tile)");
+                *status = MEMORY_ALLOCATION;
+                return *status;
+            } else {
+                cbuf.resize(clen, 0);
+            }
+
+            /* convert null values to NaNs in place, if necessary */
+            if nullcheck == NullCheckType::SetPixel {
+                let nv = nullflagval.clone().unwrap(); // Must be set if nullcheck is SetPixel
+                imcomp_float2nan_inplace(
+                    cast_slice_mut(tiledata),
+                    tilelen,
+                    nv.get_value_as_f64() as f32,
+                    status,
+                );
+            }
+
+            if BYTESWAPPED {
+                ffswap4(cast_slice_mut(tiledata), tilelen);
+            }
+
+            // WARNING: Potentially unsafe memory issue here given this function
+            // call can reallocate the buffer.
+            unsafe {
                 compress2mem_from_mem(
                     cast_slice(tiledata),
                     tilelen as usize * mem::size_of::<f32>(),
@@ -3151,37 +3151,39 @@ unsafe fn imcomp_compress_tile(
                     Some(&mut gzip_nelem),
                     status,
                 );
+            }
+        } else {
+            /* datatype == TDOUBLE */
+
+            /* allocate buffer for the compressed tile bytes */
+            /* make it 10% larger than the original uncompressed data */
+            clen = (tilelen as f64 * mem::size_of::<f64>() as f64 * 1.1 / 2.0) as usize; // Divide by 2 to convert char to short
+            if cbuf.try_reserve_exact(clen).is_err() {
+                ffpmsg_str("Memory allocation error. (imcomp_compress_tile)");
+                *status = MEMORY_ALLOCATION;
+                return *status;
             } else {
-                /* datatype == TDOUBLE */
+                cbuf.resize(clen, 0);
+            }
 
-                /* allocate buffer for the compressed tile bytes */
-                /* make it 10% larger than the original uncompressed data */
-                clen = (tilelen as f64 * mem::size_of::<f64>() as f64 * 1.1 / 2.0) as usize; // Divide by 2 to convert char to short
-                if cbuf.try_reserve_exact(clen).is_err() {
-                    ffpmsg_str("Memory allocation error. (imcomp_compress_tile)");
-                    *status = MEMORY_ALLOCATION;
-                    return *status;
-                } else {
-                    cbuf.resize(clen, 0);
-                }
+            /* convert null values to NaNs in place, if necessary */
+            if nullcheck == NullCheckType::SetPixel {
+                let nv = nullflagval.clone().unwrap(); // Must be set if nullcheck is SetPixel
+                imcomp_double2nan_inplace(
+                    cast_slice_mut(tiledata),
+                    tilelen,
+                    nv.get_value_as_f64(),
+                    status,
+                );
+            }
 
-                /* convert null values to NaNs in place, if necessary */
-                if nullcheck == NullCheckType::SetPixel {
-                    let nv = nullflagval.clone().unwrap(); // Must be set if nullcheck is SetPixel
-                    imcomp_double2nan_inplace(
-                        cast_slice_mut(tiledata),
-                        tilelen,
-                        nv.get_value_as_f64(),
-                        status,
-                    );
-                }
+            if BYTESWAPPED {
+                ffswap8(cast_slice_mut(tiledata), tilelen);
+            }
 
-                if BYTESWAPPED {
-                    ffswap8(cast_slice_mut(tiledata), tilelen);
-                }
-
-                // WARNING: Potentially unsafe memory issue here given this function
-                // call can reallocate the buffer.
+            // WARNING: Potentially unsafe memory issue here given this function
+            // call can reallocate the buffer.
+            unsafe {
                 compress2mem_from_mem(
                     cast_slice_mut(tiledata),
                     tilelen as usize * mem::size_of::<f64>(),
@@ -3190,48 +3192,48 @@ unsafe fn imcomp_compress_tile(
                     status,
                 );
             }
+        }
 
-            /* Write the compressed byte stream. */
+        /* Write the compressed byte stream. */
+        ffpclb_safe(
+            outfptr,
+            (outfptr.Fptr).cn_gzip_data,
+            row as LONGLONG,
+            1,
+            gzip_nelem.try_into().unwrap(),
+            &gzip_buf,
+            status,
+        );
+
+        /* we must zero out existing existing compressed data if it exists. */
+        /* otherwise on read this data is read ahead of the gzipped */
+        /* data and will cause a bug. */
+        let mut _test_nelemll: LONGLONG = 0;
+        let mut _test_offset: LONGLONG = 0;
+        ffgdesll_safe(
+            outfptr,
+            (outfptr.Fptr).cn_compressed,
+            row.into(),
+            Some(&mut _test_nelemll),
+            Some(&mut _test_offset),
+            status,
+        );
+        if _test_nelemll != 0 {
             ffpclb_safe(
-                outfptr,
-                (outfptr.Fptr).cn_gzip_data,
-                row as LONGLONG,
-                1,
-                gzip_nelem.try_into().unwrap(),
-                &gzip_buf,
-                status,
-            );
-
-            /* we must zero out existing existing compressed data if it exists. */
-            /* otherwise on read this data is read ahead of the gzipped */
-            /* data and will cause a bug. */
-            let mut _test_nelemll: LONGLONG = 0;
-            let mut _test_offset: LONGLONG = 0;
-            ffgdesll_safe(
                 outfptr,
                 (outfptr.Fptr).cn_compressed,
                 row.into(),
-                Some(&mut _test_nelemll),
-                Some(&mut _test_offset),
+                1,
+                0,
+                &[],
                 status,
             );
-            if _test_nelemll != 0 {
-                ffpclb_safe(
-                    outfptr,
-                    (outfptr.Fptr).cn_compressed,
-                    row.into(),
-                    1,
-                    0,
-                    &[],
-                    status,
-                );
-            }
-
-            /* finished with this buffer */
         }
 
-        *status
+        /* finished with this buffer */
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -5065,20 +5067,18 @@ pub(crate) fn fits_write_compressed_img(
                             );
 
                             /* compress the tile again, and write it back to the FITS file */
-                            unsafe {
-                                imcomp_compress_tile(
-                                    fptr,
-                                    irow,
-                                    datatype,
-                                    cast_slice_mut(buffer),
-                                    thistilesize[0],
-                                    trowsize,
-                                    ntrows,
-                                    nullcheck,
-                                    nullval,
-                                    status,
-                                );
-                            }
+                            imcomp_compress_tile(
+                                fptr,
+                                irow,
+                                datatype,
+                                cast_slice_mut(buffer),
+                                thistilesize[0],
+                                trowsize,
+                                ntrows,
+                                nullcheck,
+                                nullval,
+                                status,
+                            );
                         }
                     }
                 }
