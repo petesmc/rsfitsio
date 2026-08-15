@@ -2403,14 +2403,21 @@ pub fn ffgtam_safe(
                             // SAFETY: tgrplc is the heap C string from ffgkls_safe,
                             // tracked in ALLOCATIONS; copy it out then release it.
                             unsafe {
-                                let val = cast_slice::<u8, c_char>(
-                                    CStr::from_ptr(tgrplc).to_bytes_with_nul(),
-                                );
-                                strcpy_safe(&mut grplc, val);
+                                let cs = CStr::from_ptr(tgrplc);
+                                let too_long = cs.to_bytes().len() > FLEN_FILENAME - 1;
+                                if !too_long {
+                                    let val = cast_slice::<u8, c_char>(cs.to_bytes_with_nul());
+                                    strcpy_safe(&mut grplc, val);
+                                }
                                 if let Some((l, c)) =
                                     ALLOCATIONS.lock().unwrap().remove(&(tgrplc as usize))
                                 {
                                     let _ = Vec::from_raw_parts(tgrplc, l, c);
+                                }
+                                if too_long {
+                                    ffpmsg_str("GRPLCn string is too long (ffgtam)");
+                                    *status = URL_PARSE_ERROR;
+                                    break 'forbody;
                                 }
                             }
                         }
@@ -8375,6 +8382,74 @@ mod tests {
 
             ffclos_safe(gfptr.take().unwrap(), &mut status);
             ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    /// A member whose GRPLCn keyword is longer than a filename must be rejected
+    /// with URL_PARSE_ERROR.  It used to be copied into a FLEN_FILENAME buffer
+    /// unchecked, which overran the buffer in C (CFITSIO 4.7.0 added this check)
+    /// and panicked here.
+    #[test]
+    fn test_ffgtam_overlong_grplc() {
+        use crate::putkey::{ffpkls_safe, ffpkyj_safe};
+
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let gname = to_buf(filename);
+            let mname = to_buf(&format!("{filename}.member"));
+
+            /* The grouping table lives in its own file, so that the member's
+            GRPIDn is negative and its location is taken from GRPLCn */
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut gfptr, &gname, &mut status);
+            {
+                let g = gfptr.as_deref_mut().unwrap();
+                fits_write_imghdr(g, BYTE_IMG, 0, &[], &mut status);
+                fits_create_group(g, cs!(c"TestGroup"), GT_ID_ALL_URI as c_int, &mut status);
+            }
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "creating the grouping table failed");
+
+            /* The member, carrying a GRPLC1 longer than any filename */
+            let overlong: Vec<c_char> = core::iter::repeat_n(b'x' as c_char, FLEN_FILENAME)
+                .chain(core::iter::once(0))
+                .collect();
+            let mut mfptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut mfptr, &mname, &mut status);
+            {
+                let m = mfptr.as_deref_mut().unwrap();
+                fits_write_imghdr(m, BYTE_IMG, 0, &[], &mut status);
+                let naxes: [c_long; 2] = [10, 10];
+                fits_create_img(m, BYTE_IMG, 2, &naxes, &mut status);
+                ffpkyj_safe(m, cs!(c"GRPID1"), -1, Some(cs!(c"")), &mut status);
+                ffpkls_safe(m, cs!(c"GRPLC1"), &overlong, Some(cs!(c"")), &mut status);
+                assert_eq!(status, 0, "creating the member failed");
+            }
+            ffclos_safe(mfptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "closing the member failed");
+
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            let gtable = path_with_ext(filename, "[GROUPING]");
+            ffopen_safe(&mut gfptr, &gtable, READWRITE, &mut status);
+            let mut mfptr: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut mfptr, &mname, READWRITE, &mut status);
+            assert_eq!(status, 0, "reopening failed");
+            {
+                let m = mfptr.as_deref_mut().unwrap();
+                fits_movabs_hdu(m, 2, None, &mut status);
+                let g = gfptr.as_deref_mut().unwrap();
+                assert_eq!(status, 0, "moving to the member HDU failed");
+
+                fits_add_group_member(g, Some(m), 0, &mut status);
+                assert_eq!(
+                    status, URL_PARSE_ERROR,
+                    "ffgtam accepted an over-long GRPLCn"
+                );
+            }
+
+            status = 0;
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+            ffclos_safe(mfptr.take().unwrap(), &mut status);
         });
     }
 

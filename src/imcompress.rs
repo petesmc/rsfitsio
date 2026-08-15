@@ -8445,12 +8445,19 @@ fn imcomp_decompress_tile(
 
     /* ************************************************************* */
     } else if (infptr.Fptr).compress_type == PLIO_1 {
-        pl_l2pi(
+        /* uncompress the data */
+        if pl_l2pi(
             cast_slice(&cbuf),
             0,
             cast_slice_mut(idata),
             tilelen as usize,
-        ); /* uncompress the data */
+        )
+        .is_none()
+        {
+            ffpmsg_str("error: out-of-bounds memory access attempt (imcomp_decompress_tile)");
+            *status = DATA_DECOMPRESSION_ERR;
+            return *status;
+        }
         tiledatatype = TINT;
 
     /* ************************************************************* */
