@@ -11294,21 +11294,65 @@ mod tests {
     // ffexist tests (ffexist_safer is todo!())
     // ------------------------------------------------------------------
 
+    /// Mirrors test_ffexist_exists in ~/code/cfitsio/tests/test_cfileio.c
     #[test]
-    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
-    fn test_ffexist_exists() {}
+    fn test_ffexist_exists() {
+        with_temp_file(|filename| {
+            let mut status: c_int = 0;
+            let name = to_buf(filename);
+            let naxes: [c_long; 1] = [10];
 
-    #[test]
-    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
-    fn test_ffexist_not_exists() {}
+            /* Create a test file */
+            let mut f: Option<Box<fitsfile>> = None;
+            fits_create_file(&mut f, &name, &mut status);
+            fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+            fits_close_file(f.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup failed");
 
-    #[test]
-    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
-    fn test_ffexist_non_disk() {}
+            /* Test that it exists */
+            let mut exists: c_int = -99;
+            fits_file_exists(&name, &mut exists, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(exists, 1);
+        });
+    }
 
+    /// Mirrors test_ffexist_not_exists in ~/code/cfitsio/tests/test_cfileio.c
     #[test]
-    #[ignore = "ffexist_safer is todo!() in src/cfileio.rs"]
-    fn test_ffexist_stdin() {}
+    fn test_ffexist_not_exists() {
+        let mut status: c_int = 0;
+        let mut exists: c_int = -99;
+
+        fits_file_exists(
+            &str_to_c_array("this_file_does_not_exist_12345.fits"),
+            &mut exists,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(exists, 0);
+    }
+
+    /// Mirrors test_ffexist_non_disk in ~/code/cfitsio/tests/test_cfileio.c
+    #[test]
+    fn test_ffexist_non_disk() {
+        let mut status: c_int = 0;
+        let mut exists: c_int = -99;
+
+        fits_file_exists(&str_to_c_array("mem://test"), &mut exists, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(exists, -1);
+    }
+
+    /// Mirrors test_ffexist_stdin in ~/code/cfitsio/tests/test_cfileio.c
+    #[test]
+    fn test_ffexist_stdin() {
+        let mut status: c_int = 0;
+        let mut exists: c_int = -99;
+
+        fits_file_exists(&str_to_c_array("-"), &mut exists, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(exists, -1);
+    }
 
     // ------------------------------------------------------------------
     // ffrtnm (fits_parse_rootname) tests
@@ -11502,17 +11546,10 @@ mod tests {
     // ffextn (fits_parse_extnum) tests - ffextn_safer is todo!()
     // ------------------------------------------------------------------
 
-    #[test]
-    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
-    fn test_ffextn_number() {}
-
-    #[test]
-    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
-    fn test_ffextn_none() {}
-
-    #[test]
-    #[ignore = "ffextn_safer is todo!() in src/cfileio.rs"]
-    fn test_ffextn_binspec() {}
+    /* The three ffextn cases the C's test_cfileio.c covers -- an explicit
+    extension number, no extension specifier, and a binning specification --
+    are already covered, with an extra case each, by test_ffextn_extension_number,
+    test_ffextn_no_extension and test_ffextn_binning_returns_one above. */
 
     // ------------------------------------------------------------------
     // Open function variants
@@ -12743,16 +12780,106 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Memory buffer operations - ffimem_safer is todo!()
+    // Memory buffer operations
     // ------------------------------------------------------------------
 
+    /// Mirrors test_ffimem in ~/code/cfitsio/tests/test_cfileio.c
+    ///
+    /// `buffer` and `bufsize` are handed to the mem driver by address and it
+    /// keeps those addresses for the life of the file, so both locals have to
+    /// stay put until the file is closed -- as in the C.
     #[test]
-    #[ignore = "ffimem_safer is todo!() in src/cfileio.rs"]
-    fn test_ffimem() {}
+    fn test_ffimem() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+        let mut buffer: *mut c_void = core::ptr::null_mut();
+        let mut bufsize: usize = 0;
+        let data: [u8; 5] = [10, 20, 30, 40, 50];
 
+        /* Create file in memory with realloc capability. */
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_memfile(
+            &mut f,
+            &mut buffer,
+            &mut bufsize,
+            2880,
+            Some(libc::realloc),
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffimem failed");
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        fits_write_img_byt(f.as_deref_mut().unwrap(), 1, 1, 5, &data, &mut status);
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0);
+
+        /* Buffer should now contain valid FITS data. */
+        assert!(!buffer.is_null());
+        assert!(bufsize >= 2880, "bufsize = {bufsize}");
+        // SAFETY: the driver filled `buffer` with at least `bufsize` bytes.
+        let head = unsafe { core::slice::from_raw_parts(buffer.cast::<u8>(), 6) };
+        assert_eq!(head, b"SIMPLE");
+
+        // SAFETY: allocated by the driver through the libc realloc we passed.
+        unsafe { libc::free(buffer) };
+    }
+
+    /// Mirrors test_ffomem in ~/code/cfitsio/tests/test_cfileio.c
     #[test]
-    #[ignore = "ffimem_safer is todo!() in src/cfileio.rs (needed to build memory buffer for ffomem)"]
-    fn test_ffomem() {}
+    fn test_ffomem() {
+        let mut status: c_int = 0;
+        let naxes: [c_long; 1] = [5];
+        let mut buffer: *mut c_void = core::ptr::null_mut();
+        let mut bufsize: usize = 0;
+        let data: [u8; 5] = [10, 20, 30, 40, 50];
+
+        /* First create a FITS file in memory. */
+        let mut f: Option<Box<fitsfile>> = None;
+        fits_create_memfile(
+            &mut f,
+            &mut buffer,
+            &mut bufsize,
+            2880,
+            Some(libc::realloc),
+            &mut status,
+        );
+        fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
+        fits_write_img_byt(f.as_deref_mut().unwrap(), 1, 1, 5, &data, &mut status);
+        fits_close_file(f.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "setup failed");
+
+        /* Now open the same buffer for reading. */
+        let mut f2: Option<Box<fitsfile>> = None;
+        let mut result = [0u8; 5];
+        let mut anynull: c_int = 0;
+        fits_open_memfile(
+            &mut f2,
+            &str_to_c_array("mem://"),
+            READONLY,
+            (&raw const buffer).cast::<*const c_void>(),
+            &mut bufsize,
+            0,
+            libc::realloc,
+            &mut status,
+        );
+        assert_eq!(status, 0, "ffomem failed");
+        fits_read_img_byt(
+            f2.as_deref_mut().unwrap(),
+            1,
+            1,
+            5,
+            0,
+            &mut result,
+            Some(&mut anynull),
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(result, [10, 20, 30, 40, 50]);
+        fits_close_file(f2.take().unwrap(), &mut status);
+        assert_eq!(status, 0);
+
+        // SAFETY: allocated by the driver through the libc realloc we passed.
+        unsafe { libc::free(buffer) };
+    }
 
     // ------------------------------------------------------------------
     // Misc
@@ -12851,7 +12978,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "ffihtps_safe / ffchtps_safe are todo!() in src/cfileio.rs"]
+    #[ignore = "ffihtps_safe / ffchtps_safe are still todo!() in src/cfileio.rs"]
     fn test_ffihtps() {}
 
     #[test]
@@ -13379,10 +13506,85 @@ mod tests {
         });
     }
 
-    // fits_copy_cell2image - fits_copy_cell2image_safe is todo!()
+    /// Mirrors test_fits_copy_cell2image in ~/code/cfitsio/tests/test_cfileio.c
     #[test]
-    #[ignore = "fits_copy_cell2image_safe is todo!() in src/cfileio.rs"]
-    fn test_fits_copy_cell2image() {}
+    fn test_fits_copy_cell2image() {
+        with_temp_file(|inname| {
+            with_temp_file(|outname| {
+                let mut status: c_int = 0;
+                let iname = to_buf(inname);
+                let oname = to_buf(outname);
+
+                /* Create binary table with a 5x5 image cell. */
+                let mut f1: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut f1, &iname, &mut status);
+                fits_write_imghdr(f1.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+                make_table(
+                    f1.as_deref_mut().unwrap(),
+                    3,
+                    &["IMAGE"],
+                    &["25J"],
+                    Some("IMAGES"),
+                    &mut status,
+                );
+
+                /* Add TDIM to define the 5x5 shape. */
+                fits_write_key_str(
+                    f1.as_deref_mut().unwrap(),
+                    &cc("TDIM1"),
+                    &cc("(5,5)"),
+                    None,
+                    &mut status,
+                );
+
+                /* Write test data to the first row. */
+                let data: Vec<c_int> = (0..25).map(|i| i * 100).collect();
+                fits_write_col_int(f1.as_deref_mut().unwrap(), 1, 1, 1, 25, &data, &mut status);
+                fits_close_file(f1.take().unwrap(), &mut status);
+                assert_eq!(status, 0, "setup failed");
+
+                /* Reopen and copy the cell to a new image file. */
+                let ext_name = path_with_ext(inname, "[IMAGES]");
+                ffopen_safe(&mut f1, &ext_name, READONLY, &mut status);
+                let mut f2: Option<Box<fitsfile>> = None;
+                fits_create_file(&mut f2, &oname, &mut status);
+                assert_eq!(status, 0, "reopen failed");
+
+                fits_copy_cell2image_safe(
+                    f1.as_deref_mut().unwrap(),
+                    f2.as_deref_mut().unwrap(),
+                    &cc("IMAGE"),
+                    1,
+                    &mut status,
+                );
+                assert_eq!(status, 0, "fits_copy_cell2image failed");
+
+                /* Verify the output image. */
+                let g = f2.as_deref_mut().unwrap();
+                let mut naxis: c_int = 0;
+                let mut bitpix: c_int = 0;
+                let mut naxes_out = [0 as c_long; 2];
+                fits_get_img_dim(g, &mut naxis, &mut status);
+                assert_eq!(naxis, 2);
+                fits_get_img_size(g, 2, &mut naxes_out, &mut status);
+                assert_eq!(naxes_out, [5, 5]);
+                fits_get_img_equivtype(g, &mut bitpix, &mut status);
+                assert_eq!(bitpix, LONG_IMG);
+                assert_eq!(status, 0);
+
+                /* the C stops at the header; check the pixels came across too */
+                let mut got = [0 as c_int; 25];
+                let mut anynul: c_int = 0;
+                fits_read_img_int(g, 1, 1, 25, 0, &mut got, Some(&mut anynul), &mut status);
+                assert_eq!(status, 0);
+                assert_eq!(got.to_vec(), data);
+
+                fits_close_file(f1.take().unwrap(), &mut status);
+                fits_close_file(f2.take().unwrap(), &mut status);
+                assert_eq!(status, 0);
+            });
+        });
+    }
 
     // ------------------------------------------------------------------
     // Table functions

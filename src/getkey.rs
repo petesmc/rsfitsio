@@ -6146,8 +6146,8 @@ mod tests {
     use crate::edithdu::ffitab_safe;
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use crate::putkey::{
-        ffcrtb_safe, ffdt2s_safe, ffgsdt_safe, ffphps_safe, ffpknjj_safe, ffpkys_safe, ffs2dt_safe,
-        ffs2tm_safe, ffverifydate_safe,
+        ffcrtb_safe, ffdt2s_safe, ffgsdt_safe, ffphps_safe, ffphpsll_safe, ffpknjj_safe,
+        ffpkys_safe, ffs2dt_safe, ffs2tm_safe, fftm2s_safe, ffverifydate_safe,
     };
 
     /* Ported from test_getkey.c - keyword reading functions. */
@@ -6197,7 +6197,48 @@ mod tests {
         });
     }
 
-    /* test_ffgknjj_large_values: skipped - ffphpsll_safe is still todo!() */
+    #[test]
+    fn test_ffgknjj_large_values() {
+        /* Test ffgknjj with values stored as LONGLONG (but small enough for file). */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let naxes: [LONGLONG; 2] = [100, 200];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            assert_eq!(status, 0, "ffinit failed");
+            ffphpsll_safe(
+                fptr.as_deref_mut().unwrap(),
+                LONGLONG_IMG,
+                2,
+                &naxes,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffphpsll failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "ffclos failed");
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            assert_eq!(status, 0, "ffopen failed");
+            let mut values: [LONGLONG; 2] = [0; 2];
+            let mut nfound: c_int = -1;
+            ffgknjj_safe(
+                fptr.as_deref_mut().unwrap(),
+                cs!(c"NAXIS"),
+                1,
+                2,
+                &mut values,
+                &mut nfound,
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffgknjj failed");
+            assert_eq!(nfound, 2);
+            assert_eq!(values[0], 100);
+            assert_eq!(values[1], 200);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
 
     #[test]
     fn test_ffgtdmll_basic() {
@@ -6523,7 +6564,22 @@ mod tests {
         assert_eq!(day, 31);
     }
 
-    /* test_fftm2s: skipped - fftm2s_safe is still todo!() */
+    #[test]
+    fn test_fftm2s() {
+        /* Test fftm2s - convert date/time to string. */
+        let mut status = 0;
+        let mut datestr = [0 as c_char; 32];
+
+        fftm2s_safe(2024, 6, 15, 10, 30, 45.5, 3, &mut datestr, &mut status);
+        assert_eq!(status, 0);
+        assert_eq!(
+            &CStr::from_bytes_until_nul(cast_slice(&datestr))
+                .unwrap()
+                .to_str()
+                .unwrap()[..19],
+            "2024-06-15T10:30:45"
+        );
+    }
 
     #[test]
     fn test_ffs2tm() {
