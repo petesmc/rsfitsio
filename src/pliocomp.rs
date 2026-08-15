@@ -35,8 +35,11 @@ pub fn pl_p2li_max_len(npix: usize) -> usize {
 ///
 /// Returns
 ///
-/// * The number of pixels output (always npix) is returned as the function value.
-pub fn pl_l2pi(ll_src: &[i16], xs: i32, px_dst: &mut [i32], npix: usize) -> usize {
+/// * The number of pixels output (always npix), or `None` if `ll_src` is too
+///   short for the line list its header declares.  CFITSIO 4.7.0 added the same
+///   bounds check by passing `pl_l2pi` the source length; here the length
+///   travels with the slice.
+pub fn pl_l2pi(ll_src: &[i16], xs: i32, px_dst: &mut [i32], npix: usize) -> Option<usize> {
     pliocomp::pl_l2pi(ll_src, xs, px_dst, npix)
 }
 
@@ -61,7 +64,8 @@ mod tests {
         assert!(nbytes > 0, "pl_p2li returned zero-length list");
 
         let mut output = vec![0i32; siz];
-        let ndecoded = pl_l2pi(&linelist, 0, &mut output, siz);
+        let ndecoded =
+            pl_l2pi(&linelist, 0, &mut output, siz).expect("line list fits in the source");
         assert_eq!(ndecoded, siz, "pl_l2pi did not decode all pixels");
 
         assert_eq!(&output[..], input, "roundtrip mismatch");
@@ -98,7 +102,7 @@ mod tests {
         let mut output = [0i32; 3];
 
         assert!(pl_p2li(&pixels, 0, &mut linelist, 3).unwrap() > 0);
-        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 3), 3);
+        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 3), Some(3));
 
         assert_eq!(output[0], 0);
         assert_eq!(output[1], 10);
@@ -113,7 +117,7 @@ mod tests {
         let mut output = [0i32; 5];
 
         assert!(pl_p2li(&pixels, 0, &mut linelist, 10).unwrap() > 0);
-        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 5), 5);
+        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 5), Some(5));
 
         for i in 0..5 {
             assert_eq!(output[i], pixels[i]);
@@ -127,7 +131,27 @@ mod tests {
         linelist[3] = 0;
         let mut output = [0i32; 10];
 
-        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 0), 0);
+        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 0), Some(0));
+    }
+
+    /// A line list whose header declares more words than the source holds must
+    /// be rejected rather than read past the end.  CFITSIO 4.7.0 added the same
+    /// bounds check to `pl_l2pi`.
+    #[test]
+    fn test_truncated_line_list_is_rejected() {
+        let pixels = [1i32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let mut linelist = [0i16; 100];
+        let nwords = pl_p2li(&pixels, 0, &mut linelist, 10).unwrap();
+        let mut output = [0i32; 10];
+
+        // The whole list decodes.
+        assert_eq!(pl_l2pi(&linelist[..nwords], 0, &mut output, 10), Some(10));
+
+        // One word short of what the header declares does not.
+        assert_eq!(pl_l2pi(&linelist[..nwords - 1], 0, &mut output, 10), None);
+
+        // Neither does a source too short to hold a header.
+        assert_eq!(pl_l2pi(&linelist[..2], 0, &mut output, 10), None);
     }
 
     #[test]
@@ -138,7 +162,7 @@ mod tests {
         let mut output = [0i32; 10];
 
         assert!(pl_p2li(&pixels, 0, &mut linelist, 5).unwrap() > 0);
-        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 10), 10);
+        assert_eq!(pl_l2pi(&linelist, 0, &mut output, 10), Some(10));
 
         for i in 0..5 {
             assert_eq!(output[i], pixels[i]);
