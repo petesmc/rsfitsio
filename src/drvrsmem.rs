@@ -2328,10 +2328,9 @@ mod tests {
         fits_write_imghdr(f.as_deref_mut().unwrap(), BYTE_IMG, 1, &naxes, &mut status);
         assert_eq!(status, 0, "ffphps failed");
         smem_shutdown();
-        // C deliberately leaks the open fitsfile here (cleanup deletes the
-        // segment underneath it); we do the same by forgetting the handle so we
-        // don't attempt to close a segment that has been torn down.
-        std::mem::forget(f.take());
+        // Not fits_close_file: it would flush into the now-detached segment.
+        // Dropping the handle frees it without touching the segment.
+        drop(f.take());
     }
 
     #[test]
@@ -2352,7 +2351,7 @@ mod tests {
         unsafe {
             shared_set_debug(0);
         }
-        std::mem::forget(f.take());
+        drop(f.take());
     }
 
     #[test]

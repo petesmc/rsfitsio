@@ -3023,6 +3023,11 @@ mod tests {
             assert_eq!(result[1], 2.0); // (3,1) -> index 2.
             assert_eq!(result[2], 4.0); // (5,1) -> index 4.
             assert_eq!(result[3], 12.0); // (1,3) -> index 12.
+            assert_eq!(result[4], 14.0); // (3,3) -> index 14.
+            assert_eq!(result[5], 16.0); // (5,3) -> index 16.
+            assert_eq!(result[6], 24.0); // (1,5) -> index 24.
+            assert_eq!(result[7], 26.0); // (3,5) -> index 26.
+            assert_eq!(result[8], 28.0); // (5,5) -> index 28.
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
