@@ -1,9 +1,9 @@
 //! Shared helpers for the integration tests.
 //!
 //! These are duplicated from the crate-internal `helpers::testhelpers` module
-//! so that the integration tests do not force `tempfile` to be a normal
-//! (non-dev) dependency of the library.  Not every test uses every helper, so
-//! dead-code warnings are suppressed.
+//! so that the integration tests do not have to reach into the library's
+//! private modules.  Not every test uses every helper, so dead-code warnings
+//! are suppressed.
 #![allow(dead_code)]
 
 use tempfile::Builder;

@@ -659,6 +659,16 @@ pub mod c_api {
     // Exposed by no aliases
     pub use crate::fitscore::fits_is_compressed_image;
 
+    /* image and table compression: the C names already match, so these are
+    plain re-exports rather than renames */
+    pub use crate::imcompress::{
+        fits_compress_table, fits_get_compression_type, fits_img_compress, fits_img_decompress,
+        fits_img_decompress_header, fits_set_compression_type, fits_set_dither_offset,
+        fits_set_hcomp_scale, fits_set_hcomp_smooth, fits_set_lossy_int, fits_set_quantize_level,
+        fits_set_quantize_method, fits_set_tile_dim, fits_uncompress_table,
+    };
+    pub use crate::quantize::{fits_img_stats_float, fits_img_stats_int, fits_img_stats_short};
+
     pub mod unofficial {
         use crate::c_types::{c_int, c_long, c_void};
         use crate::fitsio::{FITSfile, LONGLONG};
@@ -1360,4 +1370,27 @@ pub mod rust_api {
 
     // Exposed by no aliases
     pub use crate::fitscore::fits_is_compressed_image_safe as fits_is_compressed_image;
+
+    /* image and table compression.  fits_get_tile_dim is not aliased: it only
+    has a `_safer` (unsafe) form. */
+    pub use crate::imcompress::{
+        fits_compress_table_safe as fits_compress_table,
+        fits_get_compression_type_safe as fits_get_compression_type,
+        fits_img_compress_safe as fits_img_compress,
+        fits_img_decompress_safe as fits_img_decompress,
+        fits_set_compression_type_safe as fits_set_compression_type,
+        fits_set_dither_offset_safe as fits_set_dither_offset,
+        fits_set_hcomp_scale_safe as fits_set_hcomp_scale,
+        fits_set_hcomp_smooth_safe as fits_set_hcomp_smooth,
+        fits_set_lossy_int_safe as fits_set_lossy_int,
+        fits_set_quantize_level_safe as fits_set_quantize_level,
+        fits_set_quantize_method_safe as fits_set_quantize_method,
+        fits_set_tile_dim_safe as fits_set_tile_dim,
+        fits_uncompress_table_safe as fits_uncompress_table,
+    };
+    pub use crate::quantize::{
+        fits_img_stats_float_safe as fits_img_stats_float,
+        fits_img_stats_int_safe as fits_img_stats_int,
+        fits_img_stats_short_safe as fits_img_stats_short,
+    };
 }

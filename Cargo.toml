@@ -51,12 +51,15 @@ bytemuck = "1.25.1"
 fastrand = "2.4"
 pwd = "1.4"
 ricecomp = "0.5"
-pliocomp = "0.4"
+pliocomp = "0.6"
 hcompress = "0.4"
 chrono = ">=0.4.20"
 cbitset = "0.2"
 memchr = { version = "2.8.3", default-features = false }
 errno = "0.3.14"
-
-[dev-dependencies]
+# Used by the fpack/funpack binaries: temporary output files (fpack's fp_tmpnam)
+# and `funpack -Z` gzipping.  Binaries cannot see [dev-dependencies], so these
+# live here.  flate2 is pinned to the zlib-rs backend so it shares the
+# libz-rs-sys already in the tree rather than pulling in a second zlib.
 tempfile = "3.27"
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }

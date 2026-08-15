@@ -917,8 +917,10 @@ pub(crate) fn fits_stream_close(_handle: c_int) -> c_int {
 /*--------------------------------------------------------------------------*/
 /// flush the file
 pub(crate) fn fits_stream_flush(handle: c_int) -> c_int {
-    if handle == 2 {
-        let _ = std::io::stdout().flush();
+    if handle == 2 && std::io::stdout().flush().is_err() {
+        /* stdout is line-buffered, so a short write surfaces here rather than
+        at the write call; discarding it loses data silently */
+        return WRITE_ERROR;
     }
 
     0
@@ -936,22 +938,13 @@ pub(crate) fn fits_stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> 
         return 1; /* can only read from stdin */
     }
 
-    let mut stdin_hdl = std::io::stdin();
-
-    let nread = stdin_hdl.read(buffer);
-
-    match nread {
-        Ok(nread) => {
-            if nread != nbytes {
-                return END_OF_FILE;
-            }
-        }
-        Err(_) => {
-            return READ_ERROR;
-        }
+    /* C: fread, which loops until nbytes or EOF.  A bare Read::read may
+    return fewer bytes without being at the end of the stream. */
+    match std::io::stdin().read_exact(&mut buffer[..nbytes]) {
+        Ok(()) => 0,
+        Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => END_OF_FILE,
+        Err(_) => READ_ERROR,
     }
-
-    0
 }
 
 /*--------------------------------------------------------------------------*/
@@ -961,19 +954,9 @@ pub(crate) fn fits_stream_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_i
         return 1; /* can only write to stdout */
     }
 
-    let mut stdout_hdl = std::io::stdout();
-    let nwrite = stdout_hdl.write(buffer);
-
-    match nwrite {
-        Ok(nwrite) => {
-            if nwrite != nbytes {
-                return WRITE_ERROR;
-            }
-        }
-        Err(_) => {
-            return WRITE_ERROR;
-        }
+    /* C: fwrite, which writes all of it; Write::write may accept fewer */
+    match std::io::stdout().write_all(&buffer[..nbytes]) {
+        Ok(()) => 0,
+        Err(_) => WRITE_ERROR,
     }
-
-    0
 }

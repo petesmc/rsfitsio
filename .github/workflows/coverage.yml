@@ -36,6 +36,28 @@ jobs:
           cargo llvm-cov run --bin fitsverify --no-report -- -H testprog.fit || true
           cargo llvm-cov run --bin fitsverify --no-report -- examples/iter_a/iter_a.fit examples/iter_b/iter_b.fit examples/iter_c/iter_c.fit || true
           cargo llvm-cov run --bin fitsverify --no-report -- -l examples/iter_var/vari.fits || true
+          # fpack/funpack: pack with each algorithm, list, report, and unpack
+          # again.  `-C' drops the timestamped checksum cards and `-q0 4' fixes
+          # the dither seed, so each run is reproducible.
+          cp testprog.fit fp_work.fit
+          cargo llvm-cov run --bin fpack --no-report -- -C -q0 4 -v fp_work.fit
+          cargo llvm-cov run --bin fpack --no-report -- -L fp_work.fit.fz
+          rm -f fp_work.fit
+          cargo llvm-cov run --bin funpack --no-report -- -C -v fp_work.fit.fz
+          rm -f fp_work.fit fp_work.fit.fz
+          for alg in -r -g -g2 -d; do
+            cp testprog.fit fp_work.fit
+            cargo llvm-cov run --bin fpack --no-report -- -C -q0 4 $alg fp_work.fit
+            rm -f fp_work.fit
+            cargo llvm-cov run --bin funpack --no-report -- -C fp_work.fit.fz
+            rm -f fp_work.fit fp_work.fit.fz
+          done
+          cargo llvm-cov run --bin fpack --no-report -- -T testprog.fit
+          cargo llvm-cov run --bin fpack --no-report -- -H
+          cargo llvm-cov run --bin funpack --no-report -- -H
+          # both exit non-zero on purpose here
+          cargo llvm-cov run --bin fpack --no-report -- || true
+          cargo llvm-cov run --bin funpack --no-report -- nosuchfile.fits || true
           cargo llvm-cov report --lcov --output-path lcov.info
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
