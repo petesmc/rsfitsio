@@ -4288,16 +4288,25 @@ pub fn ffgmrm_safe(
                         if 0 == *status {
                             // SAFETY: tgrplc is the heap C string from ffgkls_safe,
                             // tracked in ALLOCATIONS; copy it out then release it.
-                            unsafe {
-                                strcpy_safe(
-                                    &mut grplc,
-                                    cast_slice(CStr::from_ptr(tgrplc).to_bytes_with_nul()),
-                                );
+                            let too_long = unsafe {
+                                let cs = CStr::from_ptr(tgrplc);
+                                let too_long = cs.to_bytes().len() > FLEN_FILENAME - 1;
+                                if !too_long {
+                                    strcpy_safe(&mut grplc, cast_slice(cs.to_bytes_with_nul()));
+                                }
                                 if let Some((l, c)) =
                                     ALLOCATIONS.lock().unwrap().remove(&(tgrplc as usize))
                                 {
                                     let _ = Vec::from_raw_parts(tgrplc, l, c);
                                 }
+                                too_long
+                            };
+
+                            if too_long {
+                                ffpmsg_str("GRPLCn string is too long (ffgmrm)");
+                                *status = URL_PARSE_ERROR;
+                                index += 1;
+                                continue;
                             }
                         }
 
@@ -8444,6 +8453,73 @@ mod tests {
                 assert_eq!(
                     status, URL_PARSE_ERROR,
                     "ffgtam accepted an over-long GRPLCn"
+                );
+            }
+
+            status = 0;
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+            ffclos_safe(mfptr.take().unwrap(), &mut status);
+        });
+    }
+
+    /// The same over-long GRPLCn, seen from ffgmrm while it searches the member
+    /// for the group to unlink.  CFITSIO checks this in ffgtam only, but the
+    /// copy here is just as unchecked.
+    #[test]
+    fn test_ffgmrm_overlong_grplc() {
+        use crate::modkey::ffukls_safe;
+
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let gname = to_buf(filename);
+            let mname = to_buf(&format!("{filename}.member"));
+
+            /* The grouping table and the member live in separate files, so the
+            member's GRPIDn is negative and GRPLCn holds the table's location */
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut gfptr, &gname, &mut status);
+            {
+                let g = gfptr.as_deref_mut().unwrap();
+                fits_write_imghdr(g, BYTE_IMG, 0, &[], &mut status);
+                fits_create_group(g, cs!(c"TestGroup"), GT_ID_ALL_URI as c_int, &mut status);
+            }
+            ffclos_safe(gfptr.take().unwrap(), &mut status);
+
+            let mut mfptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut mfptr, &mname, &mut status);
+            {
+                let m = mfptr.as_deref_mut().unwrap();
+                fits_write_imghdr(m, BYTE_IMG, 0, &[], &mut status);
+                let naxes: [c_long; 2] = [10, 10];
+                fits_create_img(m, BYTE_IMG, 2, &naxes, &mut status);
+            }
+            ffclos_safe(mfptr.take().unwrap(), &mut status);
+            assert_eq!(status, 0, "setup failed");
+
+            /* Register the member properly, so the table has a row for it */
+            let gtable = path_with_ext(filename, "[GROUPING]");
+            let mut gfptr: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut gfptr, &gtable, READWRITE, &mut status);
+            let mut mfptr: Option<Box<fitsfile>> = None;
+            ffopen_safe(&mut mfptr, &mname, READWRITE, &mut status);
+            {
+                let m = mfptr.as_deref_mut().unwrap();
+                fits_movabs_hdu(m, 2, None, &mut status);
+                let g = gfptr.as_deref_mut().unwrap();
+                fits_add_group_member(g, Some(m), 0, &mut status);
+                assert_eq!(status, 0, "ffgtam failed");
+
+                /* Now corrupt the back-link the member holds */
+                let overlong: Vec<c_char> = core::iter::repeat_n(b'x' as c_char, FLEN_FILENAME)
+                    .chain(core::iter::once(0))
+                    .collect();
+                ffukls_safe(m, cs!(c"GRPLC1"), &overlong, Some(cs!(c"")), &mut status);
+                assert_eq!(status, 0, "rewriting GRPLC1 failed");
+
+                fits_remove_member(g, 1, OPT_RM_ENTRY as c_int, &mut status);
+                assert_eq!(
+                    status, URL_PARSE_ERROR,
+                    "ffgmrm accepted an over-long GRPLCn"
                 );
             }
 

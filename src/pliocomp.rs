@@ -24,55 +24,6 @@ pub fn pl_p2li_max_len(npix: usize) -> usize {
     pliocomp::pl_p2li_max_len(npix)
 }
 
-/* Offsets into the line list header, and the two-word "set high value"
-opcode.  These mirror the private constants in the `pliocomp` crate. */
-const LL_HDRLEN: usize = 1; /* length of the header, in words */
-const LL_VERSION: usize = 2; /* version number (negative) */
-const LL_LENLO: usize = 3; /* length of encoded line list, low word */
-const LL_LENHI: usize = 4; /* length of encoded line list, high word */
-const OLL_LEN: usize = 2; /* length of encoded line list (old format) */
-const I_SH: i16 = 1; /* set high value (2 words) */
-
-/// Whether `ll_src` is long enough for the line list its header declares.
-///
-/// The decoder trusts the length in the header, so a truncated or corrupt
-/// line list would read past the end of the source.  In C that was an
-/// out-of-bounds read, fixed in CFITSIO 4.7.0 by passing `pl_l2pi` the source
-/// length; here the length travels with the slice, so all that is needed is to
-/// reject a list that does not fit before the crate indexes past its end (and
-/// panics).
-fn ll_fits_in_source(ll_src: &[i16]) -> bool {
-    if ll_src.len() <= LL_VERSION {
-        return false; /* too short even to read the version */
-    }
-
-    let lllen: i32 = if ll_src[LL_VERSION] > 0 {
-        /* old format line list */
-        ll_src[OLL_LEN] as i32
-    } else {
-        if ll_src.len() <= LL_LENHI {
-            return false;
-        }
-        ((ll_src[LL_LENHI] as i32) << 15) + ll_src[LL_LENLO] as i32
-    };
-
-    if lllen <= 0 {
-        return true; /* the decoder stops before reading any data word */
-    }
-
-    if lllen as usize > ll_src.len() {
-        return false;
-    }
-
-    /* A set-high-value opcode spans two words, so one in the final word would
-    read one past the end. */
-    if lllen as usize == ll_src.len() && ll_src[lllen as usize - 1] / 4096 == I_SH {
-        return false;
-    }
-
-    true
-}
-
 /// Translate a PLIO line list into an integer pixel array.
 ///
 /// Arguments
@@ -85,12 +36,11 @@ fn ll_fits_in_source(ll_src: &[i16]) -> bool {
 /// Returns
 ///
 /// * The number of pixels output (always npix), or `None` if `ll_src` is too
-///   short for the line list it declares.
+///   short for the line list its header declares.  CFITSIO 4.7.0 added the same
+///   bounds check by passing `pl_l2pi` the source length; here the length
+///   travels with the slice.
 pub fn pl_l2pi(ll_src: &[i16], xs: i32, px_dst: &mut [i32], npix: usize) -> Option<usize> {
-    if !ll_fits_in_source(ll_src) {
-        return None;
-    }
-    Some(pliocomp::pl_l2pi(ll_src, xs, px_dst, npix))
+    pliocomp::pl_l2pi(ll_src, xs, px_dst, npix)
 }
 
 /// Tests ported from cfitsio's test_pliocomp.c
