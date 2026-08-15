@@ -43,7 +43,39 @@
 - [ ] Restructure modules, ::api ??
 - [X] Every extern function should be a wrapper around a safe interface
 - [X] Fix broken testprog.out comparison
-- [X] Miri currently fails, fix.
+- [ ] Miri still reports Undefined Behavior. Run with
+      `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri nextest run
+      --no-fail-fast -j 8` (cap the threads: the default fans out to one miri
+      process per core at ~1.1GB each and thrashes swap). All of the findings
+      below are Stacked Borrows violations, i.e. real aliasing UB that LLVM's
+      `noalias` is entitled to miscompile, not miri pedantry. Root causes, in
+      rough order of severity:
+      * The ported `_safe` signatures take `infptr: &mut fitsfile` and
+        `outfptr: &mut fitsfile`, but the C API explicitly allows
+        `infptr == outfptr` and callers rely on it. Two `&mut` to one object
+        can never be legal, so every site that reproduces the C aliasing is UB:
+        `ffsrow_safe(&mut *f, &mut *f, ..)` in cfileio.rs:4893 (library code,
+        with a SAFETY comment acknowledging it), plus the same trick in the
+        eval_f.rs and editcol.rs tests. These signatures need to take a single
+        `&mut` plus a flag, or raw pointers, before the aliasing can go away.
+      * `fitsfile.Fptr` is a `Box<FITSfile>` but several FITSfiles are shared
+        between handles by `Box::from_raw`, so two live Boxes own one
+        allocation (cfileio.rs:1854, already marked "TODO this is very
+        unsafe!"). Confirmed by miri, invalidated at getkey.rs:242.
+      * `FPTR_TABLE` (cfileio.rs:1880) stores a raw pointer derived from a
+        `&mut FITSfile` borrowed out of that Box. Any later write through the
+        Box (e.g. fitscore.rs:5757) invalidates it, and the next
+        `FPTR_TABLE[ii].as_mut()` in fits_already_open (cfileio.rs:1997) is UB.
+        Reproducer: open one file, then open a second.
+        Fixing this soundly means owning FITSfile through a raw pointer
+        (NonNull + Deref/DerefMut wrapper, which is layout- and C-ABI-neutral)
+        rather than Box, so all accesses share one provenance root.
+      * eval_l.rs:1571 — the lexer's yy_buffer_stack hands out `&mut` into a
+        raw buffer that is then invalidated at eval_l.rs:1752.
+      * drvrmem.rs:259 — `m[ii].memaddrptr = &mut m[ii].memaddr` is a
+        self-referential struct; any later access through the slice kills it.
+      * cfileio.rs:8907 — returns a raw pointer into the caller's buffer which
+        is used after a later write invalidates the tag.
 - [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
 - [X] Mark all extern functions as deprecated so that we can detect usage
 - [X] Feature "bzip2" doesn't work
