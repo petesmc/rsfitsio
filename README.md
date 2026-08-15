@@ -1,8 +1,8 @@
 [![Crates.io](https://img.shields.io/crates/v/rsfitsio.svg)](https://crates.io/crates/rsfitsio)
-[![CI](https://github.com/petesmc/rsfitsio/actions/workflows/build.yml/badge.svg)](https://github.com/petesmc/rsfitsio/actions/workflows/build.yml)
+[![CI](https://github.com/cruzzil/rsfitsio/actions/workflows/build.yml/badge.svg)](https://github.com/cruzzil/rsfitsio/actions/workflows/build.yml)
 [![Documentation](https://docs.rs/rsfitsio/badge.svg)](https://docs.rs/rsfitsio/)
-[![codecov](https://codecov.io/gh/petesmc/rsfitsio/graph/badge.svg?token=OZH3OKPOL2)](https://codecov.io/gh/petesmc/rsfitsio)
-[![Dependency status](https://deps.rs/repo/github/petesmc/rsfitsio/status.svg)](https://deps.rs/repo/github/petesmc/rsfitsio)
+[![codecov](https://codecov.io/gh/cruzzil/rsfitsio/graph/badge.svg?token=OZH3OKPOL2)](https://codecov.io/gh/cruzzil/rsfitsio)
+[![Dependency status](https://deps.rs/repo/github/cruzzil/rsfitsio/status.svg)](https://deps.rs/repo/github/cruzzil/rsfitsio)
 
 Rust rewrite of cfitsio.
 

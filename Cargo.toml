@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.96"
 description = "Rust bindings for the CFITSIO library, providing access to FITS files."
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/petesmc/rsfitsio"
+repository = "https://github.com/cruzzil/rsfitsio"
 categories = ["science", "aerospace", "external-ffi-bindings"]
 keywords = [
     "fits",
