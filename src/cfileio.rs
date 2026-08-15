@@ -8557,7 +8557,9 @@ pub fn ffimport_file_safe(
     }
     lines[0] = 0;
 
-    let aFile = File::options().read(true).open(slice_to_str!(filename).as_ref() as &str);
+    let aFile = File::options()
+        .read(true)
+        .open(slice_to_str!(filename).as_ref() as &str);
 
     if aFile.is_err() {
         int_snprintf!(

@@ -1,18 +1,17 @@
 /* Transpiled from cfitsio/utilities/fvrf_data.c
 
-   The CFITSIO iterator hands its work function a `void *userPointer' and an
-   array of iteratorCol whose `array' member is a raw buffer, so test_data /
-   iterdata keep the C's pointer arithmetic inside small unsafe blocks.  All
-   the other column reads use the typed safe wrappers.  */
+The CFITSIO iterator hands its work function a `void *userPointer' and an
+array of iteratorCol whose `array' member is a raw buffer, so test_data /
+iterdata keep the C's pointer arithmetic inside small unsafe blocks.  All
+the other column reads use the typed safe wrappers.  */
 
 use std::cell::{Cell, RefCell};
 
 use bytemuck::cast_slice;
 use rsfitsio::aliases::rust_api::{
-    fits_get_coltype, fits_get_num_rows, fits_get_num_rowsll, fits_get_rowsize,
-    fits_iterate_data, fits_read_col_log, fits_read_col_str, fits_read_descriptll,
-    fits_read_key_lng, fits_read_key_lnglng, fits_read_key_str, fits_read_tblbytes,
-    fits_verify_chksum,
+    fits_get_coltype, fits_get_num_rows, fits_get_num_rowsll, fits_get_rowsize, fits_iterate_data,
+    fits_read_col_log, fits_read_col_str, fits_read_descriptll, fits_read_key_lng,
+    fits_read_key_lnglng, fits_read_key_str, fits_read_tblbytes, fits_verify_chksum,
 };
 use rsfitsio::buffers::ffgtbb_safe;
 use std::ffi::CStr;
@@ -78,24 +77,24 @@ pub(crate) fn test_data(
     let ncols: c_int;
 
     let mut nnum = 0; /* the list of the column  whose data
-                      type is numerical(scalar and complex) */
+    type is numerical(scalar and complex) */
     let mut numlist: Vec<c_int>;
     let mut nfloat = 0; /* the list of the floating point columns in ASCII table */
     let mut floatlist: Vec<c_int>;
 
     let ncmp = 0; /* the list of the column  whose data
-                  type is numerical(scalar and complex) */
+    type is numerical(scalar and complex) */
     let cmplist: Vec<c_int>;
     let mut ntxt = 0; /* the list of column  whose data type is
-                      string, logical, bit or complex */
+    string, logical, bit or complex */
     let mut txtlist: Vec<c_int>;
     let niter: c_int; /* total columns read into  the literator function */
 
     let mut ndesc = 0; /* the list of column which is the descriptor of
-                       the variable length array. */
+    the variable length array. */
     let mut desclist: Vec<c_int>;
     let mut isVarQFormat: Vec<c_int>; /* Format type for each of the ndesc variable-length
-                                      columns: 0 = type 'P', 1 = type 'Q' */
+    columns: 0 = type 'P', 1 = type 'Q' */
 
     let mut rows_per_loop: c_long = 0;
     let offset: c_long;
@@ -137,7 +136,7 @@ pub(crate) fn test_data(
 
     if testfill() != 0 {
         test_agap(infits, out, hduptr); /* test the bytes between the
-                                        ascii table columns. */
+        ascii table columns. */
         if ffcdfl_safe(infits, &mut status) != 0 {
             wrtferr_str(out, "checking data fill: ", &mut status, 1);
             status = 0;
@@ -164,7 +163,7 @@ pub(crate) fn test_data(
     }
 
     /* separate the numerical, complex, text and
-      the variable length vector columns */
+    the variable length vector columns */
     numlist = vec![0; ncols as usize];
     floatlist = vec![0; ncols as usize];
     cmplist = vec![0; ncols as usize];
@@ -229,8 +228,8 @@ pub(crate) fn test_data(
 
     /*  Use Iterator to read the columns that are not variable length arrays */
     /* columns from  1 to nnum are scalar numerical columns.
-       columns from  nnum+1 to  nnum+ncmp are complex columns.
-       columns from  nnum+ncmp are text columns */
+    columns from  nnum+1 to  nnum+ncmp are complex columns.
+    columns from  nnum+ncmp are text columns */
     niter = nnum + ncmp + ntxt + nfloat;
 
     if niter != 0 {
@@ -339,7 +338,7 @@ pub(crate) fn test_data(
     }
 
     /* the C free()s iter_col, numlist, floatlist, cmplist, txtlist and the
-       usrdata arrays here; RAII does that. */
+    usrdata arrays here; RAII does that. */
 
     if ndesc != 0 {
         /* ------------read the variable length vectors -------------------*/
@@ -599,7 +598,7 @@ pub(crate) fn test_data(
 /* iterator work function */
 
 /* The C keeps its per-table state in function statics; the same state lives
-   here so that it survives across the iterator's repeated calls. */
+here so that it survives across the iterator's repeated calls. */
 thread_local! {
     static REPEAT_V: RefCell<Vec<c_long>> = const { RefCell::new(Vec::new()) };
     static DATATYPE_V: RefCell<Vec<c_int>> = const { RefCell::new(Vec::new()) };
@@ -676,8 +675,8 @@ pub extern "C" fn iterdata(
     let datatype = DATATYPE_V.with(|d| d.borrow().clone());
 
     /* columns from  1 to nnum are scalar numerical columns.
-       columns from  nnum+1 to  nnum+ncmp are complex columns. (not used any more)
-       columns from  nnum+ncmp are text columns */
+    columns from  nnum+1 to  nnum+ncmp are complex columns. (not used any more)
+    columns from  nnum+ncmp are text columns */
 
     /* deal with the numerical column */
     i = 0;
@@ -740,7 +739,9 @@ pub extern "C" fn iterdata(
             // slot 0 is the null-value string, slots 1..=nrows the row values,
             // all NUL-terminated and owned by the iterator for this call.
             let cdata: *const *const c_char = cols[iu].array.cast::<*const c_char>();
-            let row = |n: c_long| -> &[u8] { unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes() };
+            let row = |n: c_long| -> &[u8] {
+                unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes()
+            };
             FIND_BADCHAR.with(|c| c.set(0));
 
             /* test for illegal ASCII text characters > 126  or < 32 */
@@ -748,7 +749,7 @@ pub extern "C" fn iterdata(
                 k = 0;
                 while k < nrows {
                     /* NB: the C breaks out of the inner scan only, so the row
-                       loop carries on and every offending row is reported. */
+                    loop carries on and every offending row is reported. */
                     if row(k + 1).iter().any(|&c| !(32..=126).contains(&c)) {
                         spf!(errmes;
                             "String in row #", (firstn + k) as i64, ", column #",
@@ -806,7 +807,9 @@ pub extern "C" fn iterdata(
         // SAFETY: TSTRING iterator column, char*[nrows+1] as above.
         // SAFETY: as above -- a TSTRING iterator column.
         let cdata: *const *const c_char = cols[iu].array.cast::<*const c_char>();
-        let row = |n: c_long| -> &[u8] { unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes() };
+        let row = |n: c_long| -> &[u8] {
+            unsafe { CStr::from_ptr(*cdata.offset(n as isize)) }.to_bytes()
+        };
         FIND_BADDOT.with(|c| c.set(0));
         FIND_BADSPACE.with(|c| c.set(0));
 
@@ -844,7 +847,7 @@ pub extern "C" fn iterdata(
                 if floatvalue != row(0) {
                     /* not a null value? */
                     /* The C strips the trailing blanks in place; nothing reads
-                       the row again afterwards, so a trimmed view is equivalent. */
+                    the row again afterwards, so a trimmed view is equivalent. */
                     let floatvalue = trim_end_spaces(skip_spaces(floatvalue));
 
                     if floatvalue.contains(&b' ') {
@@ -921,8 +924,8 @@ fn test_agap(
     data = vec![0; (rowlen * irows as LONGLONG) as usize];
 
     /* Create a template row with data fields filled with 1s.
-       Used below - different ASCII rules apply within data columns
-       vs. between data columns. */
+    Used below - different ASCII rules apply within data columns
+    vs. between data columns. */
 
     temp = vec![0; rowlen as usize];
     for k in 1..=ncols {

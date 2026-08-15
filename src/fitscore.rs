@@ -5681,9 +5681,7 @@ pub fn ffrhdu_safe(
     if strcmp_safe(&name, cs!(c"SIMPLE")) == 0 {
         /* this is the primary array */
 
-        unsafe {
-            ffpinit(fptr, status); /* initialize the primary array */
-        }
+        ffpinit(fptr, status); /* initialize the primary array */
 
         if let Some(hdutype) = hdutype.as_deref_mut() {
             *hdutype = 0;
@@ -5705,9 +5703,7 @@ pub fn ffrhdu_safe(
         }
 
         if strcmp_safe(&xname[xtension..], cs!(c"TABLE")) == 0 {
-            unsafe {
-                ffainit(fptr, status); /* initialize the ASCII table */
-            }
+            ffainit(fptr, status); /* initialize the ASCII table */
             if let Some(hdutype) = hdutype.as_deref_mut() {
                 *hdutype = 1;
             };
@@ -5715,17 +5711,13 @@ pub fn ffrhdu_safe(
             || strcmp_safe(&xname[xtension..], cs!(c"A3DTABLE")) == 0
             || strcmp_safe(&xname[xtension..], cs!(c"3DTABLE")) == 0
         {
-            unsafe {
-                ffbinit(fptr, status); /* initialize the binary table */
-            }
+            ffbinit(fptr, status); /* initialize the binary table */
             if let Some(hdutype) = hdutype.as_deref_mut() {
                 *hdutype = 2;
             };
         } else {
             tstatus = 0;
-            unsafe {
-                ffpinit(fptr, &mut tstatus); /* probably an IMAGE extension */
-            }
+            ffpinit(fptr, &mut tstatus); /* probably an IMAGE extension */
 
             if tstatus == UNKNOWN_EXT
                 && let Some(hdutype) = hdutype.as_deref_mut()
@@ -5783,7 +5775,7 @@ pub fn ffrhdu_safe(
 /*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of the primary array
 /// or an Image extension
-pub(crate) unsafe fn ffpinit(
+pub(crate) fn ffpinit(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
@@ -6061,7 +6053,7 @@ pub(crate) unsafe fn ffpinit(
 
 /*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of an ASCII table
-pub(crate) unsafe fn ffainit(
+pub(crate) fn ffainit(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
@@ -6334,7 +6326,7 @@ pub(crate) unsafe fn ffainit(
 
 /*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of a binary table
-pub(crate) unsafe fn ffbinit(
+pub(crate) fn ffbinit(
     fptr: &mut fitsfile, /* I - FITS file pointer */
     status: &mut c_int,  /* IO - error status     */
 ) -> c_int {
@@ -12556,13 +12548,13 @@ mod tests {
     }
 
     /* The error stack's storage invariants.  These use a local ErrorStack, so
-       they do not need the global TEST_LOCK. */
+    they do not need the global TEST_LOCK. */
 
     #[test]
     fn test_stored_entry_always_fits_the_reader_buffer() {
         /* ffgmsg copies at most FLEN_ERRMSG - 1 bytes, so keeping the chunk
-           size at or below that means no stored entry can ever be truncated on
-           the way out. */
+        size at or below that means no stored entry can ever be truncated on
+        the way out. */
         assert!(ERRMSG_CHUNK <= FLEN_ERRMSG - 1);
     }
 
@@ -12588,8 +12580,8 @@ mod tests {
     #[test]
     fn test_error_stack_keeps_raw_bytes() {
         /* FITS diagnostics echo card bytes, which are frequently not valid
-           UTF-8; and an embedded NUL must not shorten the stored entry, which
-           is why the length is explicit rather than NUL-terminated. */
+        UTF-8; and an embedded NUL must not shorten the stored entry, which
+        is why the length is explicit rather than NUL-terminated. */
         let mut st = ErrorStack::new();
         let msg = b"card \xff\xfe with a NUL \x00 in it";
         st.push_message(msg);

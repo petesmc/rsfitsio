@@ -1,8 +1,8 @@
 /* Transpiled from cfitsio/utilities/ftverify.c and fitsverify.c.
 
-   ftverify.c #includes fitsverify.c for the STANDALONE build, so both live
-   here: `main_ftverify' holds ftverify_work()/update_parfile() and the PIL
-   stubs, and main() below is fitsverify.c's main().  */
+ftverify.c #includes fitsverify.c for the STANDALONE build, so both live
+here: `main_ftverify' holds ftverify_work()/update_parfile() and the PIL
+stubs, and main() below is fitsverify.c's main().  */
 
 // kwdtyp, FitsHdu and friends keep their fitsverify C spellings.
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
@@ -55,7 +55,7 @@ pub(crate) mod main_ftverify {
 
     /*---------------------------------------------------------------------------*/
     /* call work function to verify that infile conforms to the FITS
-           standard and write report to the output file */
+    standard and write report to the output file */
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn ftverify_work(
         infile: &[c_char],  /* I - Input file name (Fits) */
@@ -271,13 +271,13 @@ pub(crate) mod main_ftverify {
     }
 
     /******************************************************************************
-    * Function
-    *      update_parfile
-    *
-    * DESCRIPTION:
-    *      Update the numerrs and numwrns parameters in the parfile.
-    *
-    *******************************************************************************/
+     * Function
+     *      update_parfile
+     *
+     * DESCRIPTION:
+     *      Update the numerrs and numwrns parameters in the parfile.
+     *
+     *******************************************************************************/
     pub(crate) fn update_parfile(nerr: c_int, nwrn: c_int) {
         let mut status: c_int;
         let mut parname: [c_char; 32] = [0; 32];
@@ -285,7 +285,7 @@ pub(crate) mod main_ftverify {
         add_totalerr(nerr as i64);
         add_totalwrn(nwrn as i64);
         /* write the total accumulated total warnings and errors to the
-           parfile */
+        parfile */
         spf!(parname; "numwrns");
         status = PILPutInt(&parname, totalwrn() as c_int);
         if status != 0 {
@@ -405,9 +405,7 @@ pub(crate) fn main() -> ExitCode {
         println!("    online  at http://fits.gsfc.nasa.gov/.  The input filename template may");
         println!("    contain wildcard characters, in which case all matching files will be ");
         println!("    tested.  Alternatively, the name of an ASCII text file containing a list");
-        println!(
-            "    of file names, one per line, may be entered preceded by an '@' character."
-        );
+        println!("    of file names, one per line, may be entered preceded by an '@' character.");
         println!("    The following error or warning conditions will be reported:");
         println!("    ");
         println!("    ERROR CONDITIONS");
@@ -448,9 +446,7 @@ pub(crate) fn main() -> ExitCode {
         println!("     - TDISPn value is inconsistent with the column datatype ");
         println!("     - Length of a variable length array greater than the maximum ");
         println!("       length as given by the TFORMn keyword");
-        println!(
-            "     - ASCII table floating-point column value does not have decimal point(*)"
-        );
+        println!("     - ASCII table floating-point column value does not have decimal point(*)");
         println!("     - ASCII table numeric column value has embedded space character");
         println!("     - Logical column contains illegal value not equal to 'T', 'F', or 0");
         println!("     - Character string column contains non-ASCII text character");
@@ -478,9 +474,7 @@ pub(crate) fn main() -> ExitCode {
         println!("        ");
         println!("    This is the stand alone version of the FTOOLS 'fverify' program.  It is");
         println!("    maintained by the HEASARC at NASA/GSFC.  Any comments about this program");
-        println!(
-            "    should be submitted to http://heasarc.gsfc.nasa.gov/cgi-bin/ftoolshelp"
-        );
+        println!("    should be submitted to http://heasarc.gsfc.nasa.gov/cgi-bin/ftoolshelp");
 
         return ExitCode::from(0);
     }
@@ -538,15 +532,15 @@ pub(crate) fn main() -> ExitCode {
     */
     for ii in file1..argc {
         status = ftverify_work(
-            &argv[ii],       /* name of file to verify */
-            cs!(c"STDOUT"),  /* write report to this stream */
-            prhead(),        /* print listing of header keywords? */
-            prstat(),        /* print detailed summary report */
-            &errormode,      /* report errors only, or errors and warnings */
-            1,               /* test the data  */
-            1,               /* test checksum, if checksum keywords are present */
-            1,               /* test data fill areas (should contain all zeros */
-            0,               /* do not test for conformance with HEASARC convensions */
+            &argv[ii],      /* name of file to verify */
+            cs!(c"STDOUT"), /* write report to this stream */
+            prhead(),       /* print listing of header keywords? */
+            prstat(),       /* print detailed summary report */
+            &errormode,     /* report errors only, or errors and warnings */
+            1,              /* test the data  */
+            1,              /* test checksum, if checksum keywords are present */
+            1,              /* test data fill areas (should contain all zeros */
+            0,              /* do not test for conformance with HEASARC convensions */
             /*    that are not required by the FITS Standard */
             testhierarch(), /* test format of ESO HIERARCH keywords? */
         );
@@ -576,7 +570,6 @@ fn os_bytes(s: &std::ffi::OsStr) -> Vec<u8> {
         s.to_string_lossy().into_owned().into_bytes()
     }
 }
-
 
 #[allow(dead_code)]
 fn _unused() -> usize {

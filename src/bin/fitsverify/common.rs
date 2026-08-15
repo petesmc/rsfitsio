@@ -1,11 +1,11 @@
 /* Transpiled from cfitsio/utilities/fverify.h, plus the small amount of
-   infrastructure that C gets for free from <stdio.h>/<ctype.h>/<stdlib.h>.
+infrastructure that C gets for free from <stdio.h>/<ctype.h>/<stdlib.h>.
 
-   The C globals declared here (errmes, comm, prhead, testdata, ...) are file
-   statics / externs in the C.  Buffers that are only ever "printf into it, then
-   immediately consume it" (errmes, comm, temp) become locals at each use site,
-   which is semantically identical and avoids global mutable state.  The truly
-   persistent globals (the flags and counters) live in `flags` below.  */
+The C globals declared here (errmes, comm, prhead, testdata, ...) are file
+statics / externs in the C.  Buffers that are only ever "printf into it, then
+immediately consume it" (errmes, comm, temp) become locals at each use site,
+which is semantically identical and avoids global mutable state.  The truly
+persistent globals (the flags and counters) live in `flags` below.  */
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -107,14 +107,14 @@ pub(crate) struct FitsHdu {
     pub(crate) tkeys: c_int,                  /* total of the keys tested*/
     pub(crate) heap: c_int,                   /* heap */
     pub(crate) kwds: Vec<FitsKey>,            /* keywords list starting from the
-                                       last NAXISn keyword. The array
-                                       is sorted in the ascending alphabetical
-                                       order of keyword names. The last keyword END
-                                       and commentary keywords are  excluded.
-                                       The total number of element, tkey, is
-                                       nkeys - 4 - naxis - ncomm. */
+                                              last NAXISn keyword. The array
+                                              is sorted in the ascending alphabetical
+                                              order of keyword names. The last keyword END
+                                              and commentary keywords are  excluded.
+                                              The total number of element, tkey, is
+                                              nkeys - 4 - naxis - ncomm. */
     pub(crate) use_longstr: c_int, /* flag indicates that the long string
-                            convention is used */
+                                   convention is used */
 }
 
 impl Default for FitsHdu {
@@ -182,8 +182,8 @@ impl Default for HduName {
  *==========================================================================*/
 
 /* These are file statics in the C, i.e. per-process state in a single-threaded
-   program.  Thread-locals give exactly that, and keep the test threads from
-   trampling on each other's counters. */
+program.  Thread-locals give exactly that, and keep the test threads from
+trampling on each other's counters. */
 macro_rules! int_global {
     ($get:ident, $set:ident, $store:ident, $init:expr) => {
         thread_local! {
@@ -326,7 +326,7 @@ impl Put for &str {
 }
 
 /* so a format!() can be handed straight to spf!/pf! for the conversions that
-   std already does: widths, precisions, zero padding, hex */
+std already does: widths, precisions, zero padding, hex */
 impl Put for String {
     fn put(&self, v: &mut Vec<u8>) {
         v.extend_from_slice(self.as_bytes());
@@ -341,7 +341,7 @@ macro_rules! put_via_display {
     )* };
 }
 /* the integer widths actually passed to spf!/pf!; c_int and c_long are
-   covered by i32/i64 on every target this builds for */
+covered by i32/i64 on every target this builds for */
 put_via_display!(i32, i64, usize);
 
 /* %s of a NUL-terminated c_char buffer */
@@ -377,7 +377,7 @@ impl Put for CHR {
 }
 
 /* %[-]<width>[.<prec>]s of a NUL-terminated c_char buffer.
-   `width' < 0 means left justified, as in "%-20s". */
+`width' < 0 means left justified, as in "%-20s". */
 pub(crate) struct CSW<'a>(pub &'a [c_char], pub i32, pub Option<usize>);
 
 impl Put for CSW<'_> {
@@ -392,8 +392,8 @@ impl Put for CSW<'_> {
 }
 
 /* printf's width/justification for a *byte* string.  Numbers and &str go
-   through format!() instead -- std does this for them -- but format! cannot
-   take arbitrary bytes, so CSW still needs it. */
+through format!() instead -- std does this for them -- but format! cannot
+take arbitrary bytes, so CSW still needs it. */
 fn pad(v: &mut Vec<u8>, b: &[u8], width: i32) {
     let w = width.unsigned_abs() as usize;
     if b.len() >= w {
@@ -408,7 +408,7 @@ fn pad(v: &mut Vec<u8>, b: &[u8], width: i32) {
 }
 
 /* Formats the arguments and stores the result NUL-terminated in `dst'.
-   C's sprintf() would run off the end of these fixed buffers; we truncate. */
+C's sprintf() would run off the end of these fixed buffers; we truncate. */
 #[macro_export]
 macro_rules! spf {
     ($dst:expr; $($x:expr),* $(,)?) => {{
@@ -501,9 +501,9 @@ pub(crate) fn strncpy_c(dst: &mut [c_char], src: &[c_char], n: usize) {
 }
 
 /* Slice comparison over the NUL-terminated contents gives exactly strcmp()'s
-   ordering: Rust compares `[u8]` lexicographically, which is glibc's
-   unsigned-char comparison, and a shorter prefix sorts first just as the
-   terminating NUL does. */
+ordering: Rust compares `[u8]` lexicographically, which is glibc's
+unsigned-char comparison, and a shorter prefix sorts first just as the
+terminating NUL does. */
 pub(crate) fn ccmp(a: &[c_char], b: &[c_char]) -> Ordering {
     cbytes(a).cmp(cbytes(b))
 }
@@ -515,7 +515,7 @@ pub(crate) fn skip_spaces(b: &[u8]) -> &[u8] {
 }
 
 /* The C's trailing-blank strip stops at index 0 (`while (l > 0 && ...)`), so an
-   all-blank field keeps one character rather than becoming empty. */
+all-blank field keeps one character rather than becoming empty. */
 pub(crate) fn trim_end_spaces(b: &[u8]) -> &[u8] {
     let mut end = b.len();
     while end > 1 && b[end - 1] == b' ' {
@@ -564,7 +564,7 @@ pub(crate) fn cvec(s: &[c_char]) -> Vec<c_char> {
  *==========================================================================*/
 
 /* isprint(): u8::is_ascii_graphic() is 0x21..=0x7e, i.e. printable *except*
-   the space, which C counts. */
+the space, which C counts. */
 #[inline]
 pub(crate) fn isprint_c(c: c_char) -> bool {
     let c = c as u8;
@@ -572,7 +572,7 @@ pub(crate) fn isprint_c(c: c_char) -> bool {
 }
 
 /* isspace(): u8::is_ascii_whitespace() deliberately omits the vertical tab,
-   which C's isspace() includes. */
+which C's isspace() includes. */
 #[inline]
 pub(crate) fn isspace_c(c: c_char) -> bool {
     let c = c as u8;
@@ -716,8 +716,8 @@ mod tests {
     }
 
     /* strtol() saturates at LONG_MAX/LONG_MIN on overflow, and fitsverify
-       tests its results against those to spot malformed TDISPn widths, so the
-       saturation has to survive the port. */
+    tests its results against those to spot malformed TDISPn widths, so the
+    saturation has to survive the port. */
     #[test]
     fn test_strtol_c() {
         assert_eq!(strtol_c(&to_buf::<32>("123abc")), (123, 3));
@@ -729,8 +729,14 @@ mod tests {
         assert_eq!(strtol_c(&to_buf::<32>("abc")), (0, 0));
         assert_eq!(strtol_c(&to_buf::<32>("+")), (0, 0));
         /* overflow saturates rather than wrapping */
-        assert_eq!(strtol_c(&to_buf::<32>("99999999999999999999")).0, c_long::MAX);
-        assert_eq!(strtol_c(&to_buf::<32>("-99999999999999999999")).0, c_long::MIN);
+        assert_eq!(
+            strtol_c(&to_buf::<32>("99999999999999999999")).0,
+            c_long::MAX
+        );
+        assert_eq!(
+            strtol_c(&to_buf::<32>("-99999999999999999999")).0,
+            c_long::MIN
+        );
         /* the endptr is what the PC/CD alt-suffix test keys off */
         assert_eq!(strtol_c(&to_buf::<32>("12_3")), (12, 2));
     }
@@ -749,8 +755,8 @@ mod tests {
     }
 
     /* glibc's C locale reports false for every class on the negative values a
-       signed char can hold, and c_char is unsigned on some targets, so these
-       must not depend on the platform's char signedness. */
+    signed char can hold, and c_char is unsigned on some targets, so these
+    must not depend on the platform's char signedness. */
     #[test]
     fn test_ctype_helpers() {
         assert!(!isprint_c(0x1f as c_char));
@@ -796,11 +802,23 @@ mod tests {
         assert_eq!(e[5], b'x' as c_char);
 
         /* ccmp is strcmp's ordering; ceq/cstarts are the == 0 forms */
-        assert_eq!(ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abc")), Ordering::Equal);
-        assert_eq!(ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abd")), Ordering::Less);
-        assert_eq!(ccmp(&to_buf::<16>("abd"), &to_buf::<16>("abc")), Ordering::Greater);
+        assert_eq!(
+            ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abc")),
+            Ordering::Equal
+        );
+        assert_eq!(
+            ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abd")),
+            Ordering::Less
+        );
+        assert_eq!(
+            ccmp(&to_buf::<16>("abd"), &to_buf::<16>("abc")),
+            Ordering::Greater
+        );
         /* a shorter string sorts first, as the terminating NUL does in strcmp */
-        assert_eq!(ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abcd")), Ordering::Less);
+        assert_eq!(
+            ccmp(&to_buf::<16>("abc"), &to_buf::<16>("abcd")),
+            Ordering::Less
+        );
 
         assert!(ceq(&to_buf::<16>("NAXIS"), b"NAXIS"));
         assert!(!ceq(&to_buf::<16>("NAXIS"), b"NAXIS1"));
@@ -829,7 +847,7 @@ mod tests {
     }
 
     /* The message builder has to pass bytes through untouched: fitsverify
-       echoes malformed cards, which are routinely not valid UTF-8. */
+    echoes malformed cards, which are routinely not valid UTF-8. */
     #[test]
     fn test_spf_is_byte_exact() {
         let mut b = [0 as c_char; 64];
@@ -837,7 +855,7 @@ mod tests {
         assert_eq!(cbytes(&b), b"n=42 c=\xfe!");
 
         /* Widths for numbers and &str come from std's format!; only CSW pads
-           by hand, because format! cannot take arbitrary bytes. */
+        by hand, because format! cannot take arbitrary bytes. */
         let mut w = [0 as c_char; 64];
         spf!(w; "[", format!("{:<4}", 7), "][", format!("{:>4}", 7), "]");
         assert_eq!(cbytes(&w), b"[7   ][   7]");

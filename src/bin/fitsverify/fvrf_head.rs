@@ -1,9 +1,9 @@
 /* Transpiled from cfitsio/utilities/fvrf_head.c
 
-   The `char **' working arrays (cards, tmpkwds, ttype, tform, tunit) are
-   file-statics in the C; here they are thread-locals holding owned copies.
-   `temp' / `ptemp' were only ever used to hand a pattern to key_match(), so
-   the pattern is passed directly instead.  */
+The `char **' working arrays (cards, tmpkwds, ttype, tform, tunit) are
+file-statics in the C; here they are thread-locals holding owned copies.
+`temp' / `ptemp' were only ever used to hand a pattern to key_match(), so
+the pattern is passed directly instead.  */
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -19,7 +19,7 @@ use rsfitsio::cs;
 use rsfitsio::fitscore::ffchfl_safe;
 use rsfitsio::fitsio::{
     ASCII_TBL, BINARY_TBL, BYTE_IMG, DOUBLE_IMG, FLEN_CARD, FLEN_FILENAME, FLEN_KEYWORD,
-    FLEN_VALUE, FLOAT_IMG, IMAGE_HDU, LONGLONG, LONGLONG_IMG, LONG_IMG, READONLY, SHORT_IMG,
+    FLEN_VALUE, FLOAT_IMG, IMAGE_HDU, LONG_IMG, LONGLONG, LONGLONG_IMG, READONLY, SHORT_IMG,
     ULONG_IMG, USHORT_IMG, fitsfile,
 };
 use rsfitsio::{KeywordDatatypeMut, NullValue};
@@ -93,8 +93,8 @@ fn tunit_at(i: usize) -> Vec<c_char> {
 *
 *******************************************************************************/
 /* routine to verify individual fitsfile */
-/* NB: like the C, this strips trailing whitespace in the caller's buffer -- 
-   ftverify_work() relies on that when it echoes the name fgets() read. */
+/* NB: like the C, this strips trailing whitespace in the caller's buffer --
+ftverify_work() relies on that when it echoes the name fgets() read. */
 pub(crate) fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
     let rootnam: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME]; /* Input Fits file root name */
     let mut infits: Option<Box<fitsfile>> = None; /* input fits file pointer */
@@ -282,7 +282,7 @@ fn init_hdu(
     CURTYPE.with(|c| c.set(hdutype)); /* set the current hdu number */
 
     /* check the null character in the header.(only the first one will
-       be recorded */
+    be recorded */
     let lvi = fits_null_check(infits, &mut status) as LONGLONG;
     if lvi > 0 {
         let mm = (lvi - 1) / 80 + 1;
@@ -327,8 +327,8 @@ fn init_hdu(
     }
 
     /* if there were blank cards prior to the END card, then
-       make a fake END card, because CFITSIO blocks us from reading
-       the real END card */
+    make a fake END card, because CFITSIO blocks us from reading
+    the real END card */
 
     if !cstarts(&card_at(ncards - 1), b"END     ") {
         let mut c: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -503,10 +503,10 @@ fn init_hdu(
     }
 
     /* parse the keywords after NAXISn and prepare the array for
-       sorting. We only check the keywords after the NAXISn */
+    sorting. We only check the keywords after the NAXISn */
     n = (hduptr.nkeys - 4 - hduptr.naxis).max(0) as usize; /* excluding the SIMPLE/XTENSION,
-                                                           BITPIX, NAXIS, NAXISn
-                                                           and END */
+    BITPIX, NAXIS, NAXISn
+    and END */
     hduptr.kwds = vec![FitsKey::default(); n];
     k = 3 + hduptr.naxis as usize; /* index of first keyword following NAXISn. */
     m = (hduptr.nkeys - 1) as usize; /* last key  */
@@ -522,8 +522,15 @@ fn init_hdu(
             hduptr.kwds[i].ktype,
             hduptr.kwds[i].kvalue,
         );
-        if fits_parse_card(out, 1 + j as c_int, &mut cardj, &mut kn, &mut kt, &mut kv, &mut comm)
-            != 0
+        if fits_parse_card(
+            out,
+            1 + j as c_int,
+            &mut cardj,
+            &mut kn,
+            &mut kt,
+            &mut kv,
+            &mut comm,
+        ) != 0
         {
             hduptr.kwds[i].goodkey = 0;
         }
@@ -650,8 +657,17 @@ fn test_hdu(
 
     /* floating non-indexed WCS keywords  */
     let cfltnkeys: [&std::ffi::CStr; 11] = [
-        c"RESTFRQ", c"RESTFREQ", c"RESTWAV", c"OBSGEO-X", c"OBSGEO-Y", c"OBSGEO-Z", c"VELOSYS",
-        c"ZSOURCE", c"VELANGL", c"LONPOLE", c"LATPOLE",
+        c"RESTFRQ",
+        c"RESTFREQ",
+        c"RESTWAV",
+        c"OBSGEO-X",
+        c"OBSGEO-Y",
+        c"OBSGEO-Z",
+        c"VELOSYS",
+        c"ZSOURCE",
+        c"VELANGL",
+        c"LONPOLE",
+        c"LATPOLE",
     ];
     let ncfltnkeys = 11;
 
@@ -768,7 +784,7 @@ fn test_hdu(
             wcsaxesExists = 1;
 
             /*  Removed this check on 6/28/2012.  See discussion on FITSBITS related
-                to this requirement.  */
+            to this requirement.  */
 
             parse_wcskey_suffix(
                 &hduptr.kwds[j as usize].kname,
@@ -935,7 +951,7 @@ fn test_hdu(
             }
 
             /* test the first digit (strtol stops at the '_' anyway, so the C's
-               temporary NUL there is not needed) */
+            temporary NUL there is not needed) */
             m = strtol_c(&kname[p..]).0 as c_int;
 
             if wcsaxesExists != 0 {
@@ -1196,7 +1212,7 @@ fn test_prm(
     let tmpkwds = tmpkwds_get();
 
     /* The SIMPLE, BITPIX, NAXIS, and NAXISn keywords  have been
-       checked in CFITSIO */
+    checked in CFITSIO */
 
     /* excluded keywords cannot be used. */
     for i in 0..nexlkey {
@@ -1521,7 +1537,7 @@ fn test_img_ext(
     test_ext(infits, out, hduptr);
 
     /* The XTENSION, BITPIX, NAXIS, and NAXISn keywords  have been
-       checked in CFITSIO */
+    checked in CFITSIO */
 
     if hduptr.pcount != 0 && hduptr.pcount != -99 {
         spf!(errmes; "Illegal pcount value ", hduptr.pcount as i64, " for image ext.");
@@ -2200,7 +2216,7 @@ fn test_asc_ext(
     mcol = hduptr.ncols;
 
     /* The XTENSION, BITPIX, NAXIS, NAXISn, TFIELDS, PCOUNT, GCOUNT, TFORMn,
-       TBCOLn, TTYPEn keywords  have been checked in CFITSIO */
+    TBCOLn, TTYPEn keywords  have been checked in CFITSIO */
 
     /* General extension */
     test_ext(infits, out, hduptr);
@@ -2395,7 +2411,7 @@ fn test_bin_ext(
     let tmpkwds = tmpkwds_get();
 
     /* The XTENSION, BITPIX, NAXIS, NAXISn, TFIELDS, PCOUNT, GCOUNT, TFORMn,
-       TTYPEn keywords  have been checked in CFITSIO */
+    TTYPEn keywords  have been checked in CFITSIO */
 
     /*  Check TNULLn keywords */
     key_match(&tmpkwds, numusrkey, cs!(c"TNULL"), 0, &mut k, &mut n);
@@ -2509,8 +2525,8 @@ fn test_bin_ext(
 
     /* Check THEAP keyword */
     /* The C indexes naxes[0] and naxes[1] unconditionally; a corrupt header
-       with NAXIS < 2 makes that an out-of-bounds read, so missing axes read
-       as 0 here rather than as whatever happened to be on the stack. */
+    with NAXIS < 2 makes that an out-of-bounds read, so missing axes read
+    as 0 here rather than as whatever happened to be on the stack. */
     let naxes0 = hduptr.naxes.first().copied().unwrap_or(0);
     let naxes1 = hduptr.naxes.get(1).copied().unwrap_or(0);
     hduptr.heap = (naxes0 * naxes1) as c_int;
@@ -2661,8 +2677,15 @@ fn test_header(
 
     /* string keywords */
     let strkey: [&std::ffi::CStr; 9] = [
-        c"EXTNAME", c"ORIGIN", c"AUTHOR", c"CREATOR", c"REFERENC", c"TELESCOP", c"INSTRUME",
-        c"OBSERVER", c"OBJECT",
+        c"EXTNAME",
+        c"ORIGIN",
+        c"AUTHOR",
+        c"CREATOR",
+        c"REFERENC",
+        c"TELESCOP",
+        c"INSTRUME",
+        c"OBSERVER",
+        c"OBJECT",
     ];
     let nstrkey = 9;
 
@@ -3012,7 +3035,7 @@ fn key_match(
     *ikey = -99;
 
     /* bsearch(): glibc's binary search, so that the element it lands on for a
-       run of equal keys matches the C exactly. */
+    run of equal keys matches the C exactly. */
     let mut l: c_int = 0;
     let mut u: c_int = nstr;
     let mut found: Option<c_int> = None;
@@ -3034,7 +3057,7 @@ fn key_match(
         i = *ikey - 1;
         let mut p = pos - 1;
         /* NB: `i > 0', not `i >= 0' -- the C never revisits index 0, so a run
-           of matches starting there is only partly reported.  Kept as-is. */
+        of matches starting there is only partly reported.  Kept as-is. */
         while i > 0 && fnpt(pattern, &strs[p as usize]) == Ordering::Equal {
             *mkey += 1;
             *ikey = i;
@@ -3077,7 +3100,7 @@ fn test_colnam(out: Out, hduptr: &FitsHdu) {
     }
 
     /* check whether there are any other non ASCII-text characters
-      (FITS standard R14). Also "uppercase" the working copies. */
+    (FITS standard R14). Also "uppercase" the working copies. */
     for i in 0..n as usize {
         if cstrlen(&ttype[i]) == 0 {
             spf!(errmes;
@@ -3152,9 +3175,9 @@ pub(crate) fn parse_vtform(
     infits: &mut fitsfile,
     out: Out,
     _hduptr: &FitsHdu,
-    colnum: c_int,        /* column number */
-    datacode: &mut c_int, /* data code */
-    maxlen: &mut c_long,  /* maximum length of the vector */
+    colnum: c_int,         /* column number */
+    datacode: &mut c_int,  /* data code */
+    maxlen: &mut c_long,   /* maximum length of the vector */
     isQFormat: &mut c_int, /* true if var col is 'Q' format */
 ) {
     let mut i: c_int = 0;
@@ -3449,10 +3472,10 @@ fn bitpix_text(bitpix: c_int, temp: &mut [c_char]) {
 **************************************************************/
 fn close_hdu(hduptr: &mut FitsHdu) {
     /* The C free()s cards, hduptr->kwds, datamin/datamax/tnull, naxes and
-       tmpkwds here; RAII does that for us.  (Note the C's
-       `if(hdutype == ASCII_TBL && hdutype == BINARY_TBL)' guard around the
-       ttype/tform/tunit frees can never be true, so those are leaked there
-       and simply left in place here.) */
+    tmpkwds here; RAII does that for us.  (Note the C's
+    `if(hdutype == ASCII_TBL && hdutype == BINARY_TBL)' guard around the
+    ttype/tform/tunit frees can never be true, so those are leaked there
+    and simply left in place here.) */
     hduptr.kwds.clear();
     hduptr.datamin.clear();
     hduptr.datamax.clear();
@@ -3465,7 +3488,6 @@ fn close_hdu(hduptr: &mut FitsHdu) {
 /*===========================================================================
  *  local helpers
  *==========================================================================*/
-
 
 #[allow(dead_code)]
 fn _unused_api() {
@@ -3487,7 +3509,13 @@ mod tests {
 
     #[test]
     fn test_key_match_exact() {
-        let strs = [kw("BITPIX"), kw("CRPIX1"), kw("CRPIX2"), kw("CRVAL1"), kw("NAXIS")];
+        let strs = [
+            kw("BITPIX"),
+            kw("CRPIX1"),
+            kw("CRPIX2"),
+            kw("CRVAL1"),
+            kw("NAXIS"),
+        ];
         let (mut k, mut n) = (0, 0);
 
         key_match(&strs, 5, cs!(c"NAXIS"), 1, &mut k, &mut n);
@@ -3497,7 +3525,7 @@ mod tests {
         assert_eq!((k, n), (0, 1));
 
         /* not found: the C's sentinels, which the `for (j = k; j < k+n; j++)'
-           loops rely on to iterate zero times */
+        loops rely on to iterate zero times */
         key_match(&strs, 5, cs!(c"THEAP"), 1, &mut k, &mut n);
         assert_eq!((k, n), (-99, -999));
         assert!(k + n < k);
@@ -3509,7 +3537,13 @@ mod tests {
 
     #[test]
     fn test_key_match_prefix() {
-        let strs = [kw("BITPIX"), kw("CRPIX1"), kw("CRPIX2"), kw("CRVAL1"), kw("NAXIS")];
+        let strs = [
+            kw("BITPIX"),
+            kw("CRPIX1"),
+            kw("CRPIX2"),
+            kw("CRVAL1"),
+            kw("NAXIS"),
+        ];
         let (mut k, mut n) = (0, 0);
 
         key_match(&strs, 5, cs!(c"CRPIX"), 0, &mut k, &mut n);
@@ -3523,8 +3557,8 @@ mod tests {
     }
 
     /* The C's backward scan is guarded by `i > 0', so a run of matches that
-       begins at index 0 is only partly reported when bsearch lands above it.
-       Locked in here because the port has to reproduce it. */
+    begins at index 0 is only partly reported when bsearch lands above it.
+    Locked in here because the port has to reproduce it. */
     #[test]
     fn test_key_match_index_zero_quirk() {
         let strs = [kw("CRPIX1"), kw("CRPIX2"), kw("NAXIS")];
@@ -3538,38 +3572,62 @@ mod tests {
     fn test_parse_wcskey_suffix() {
         let (mut axis, mut alt) = (0, 0);
 
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX1"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            0
+        );
         assert_eq!((axis, alt), (1, 0));
 
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX12"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX12"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            0
+        );
         assert_eq!((axis, alt), (12, 0));
 
         /* alternate WCS description: trailing A-Z maps to 1-26 */
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1A"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX1A"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            0
+        );
         assert_eq!((axis, alt), (1, 1));
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX2Z"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX2Z"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            0
+        );
         assert_eq!((axis, alt), (2, 26));
 
         /* more than one trailing char, or a non A-Z one, is rejected */
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1AB"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX1a"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX1AB"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            -1
+        );
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX1a"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            -1
+        );
 
         /* name shorter than the root */
-        assert_eq!(parse_wcskey_suffix(&kw("CR"), cs!(c"CRPIX"), &mut axis, &mut alt), -1);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CR"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            -1
+        );
 
         /* no suffix at all leaves both at 0 */
-        assert_eq!(parse_wcskey_suffix(&kw("CRPIX"), cs!(c"CRPIX"), &mut axis, &mut alt), 0);
+        assert_eq!(
+            parse_wcskey_suffix(&kw("CRPIX"), cs!(c"CRPIX"), &mut axis, &mut alt),
+            0
+        );
         assert_eq!((axis, alt), (0, 0));
     }
 }
 
 /* File-level tests.
 
-   Each fixture is a small hand-built FITS file that exercises one report path.
-   The expected (errors, warnings) pairs were read off the C fitsverify acting
-   as the oracle -- they are not recordings of what this implementation happens
-   to produce.  Every fixture here was also checked byte-for-byte (stdout,
-   stderr and exit status) against the C across all seven flag combinations. */
+Each fixture is a small hand-built FITS file that exercises one report path.
+The expected (errors, warnings) pairs were read off the C fitsverify acting
+as the oracle -- they are not recordings of what this implementation happens
+to produce.  Every fixture here was also checked byte-for-byte (stdout,
+stderr and exit status) against the C across all seven flag combinations. */
 #[cfg(test)]
 mod fits_tests {
     use super::*;
@@ -3647,8 +3705,8 @@ mod fits_tests {
     }
 
     /* Runs verify_fits over `bytes' and returns (errors, warnings).  Out::Null
-       suppresses all reporting, so only the counters are under test.  The
-       fitsverify counters are thread-locals, so these run in parallel safely. */
+    suppresses all reporting, so only the counters are under test.  The
+    fitsverify counters are thread-locals, so these run in parallel safely. */
     fn counts(bytes: &[u8]) -> (c_int, c_int) {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("t.fits");
@@ -3746,7 +3804,7 @@ mod fits_tests {
     }
 
     /* The C dereferences a NULL pr_end here and dies with SIGSEGV; this port
-       reports the malformed value instead.  A deliberate divergence. */
+    reports the malformed value instead.  A deliberate divergence. */
     #[test]
     fn test_complex_without_comma_is_reported_not_fatal() {
         let (e, _w) = counts(&pw(&["CPLX    = (1 2)"]));
@@ -3929,7 +3987,7 @@ mod fits_tests {
     }
 
     /* Every offending row is reported, not just the first: the C's `break'
-       leaves the inner character scan only, and the row loop carries on. */
+    leaves the inner character scan only, and the row loop carries on. */
     #[test]
     fn test_non_ascii_reported_for_every_bad_row() {
         assert_eq!(

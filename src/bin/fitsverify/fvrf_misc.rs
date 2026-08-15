@@ -65,8 +65,12 @@ pub(crate) fn wrtwrn(out: Out, mess: &[c_char], isheasarc: c_int) -> c_int {
     if heasarc_conv() == 0 && isheasarc != 0 {
         return 0;
     } /* heasarc warnings  but with
-      heasarc convention turns off */
-    let nwrns = NWRNS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
+    heasarc convention turns off */
+    let nwrns = NWRNS.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Warning: ", CS(mess));
@@ -92,7 +96,11 @@ pub(crate) fn wrterr(out: Out, mess: &[c_char], severity: c_int) -> c_int {
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
+    let nerrs = NERRS.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess));
@@ -133,7 +141,11 @@ pub(crate) fn wrtferr(out: Out, mess: &[c_char], status: &mut c_int, severity: c
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
+    let nerrs = NERRS.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess));
@@ -170,7 +182,7 @@ pub(crate) fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c
     /* char* errfmt = "             %.67s\n"; */
     let mut i;
     /* C declares tmp[20][80] but then prints tmp[nstack] with nstack possibly
-       == 20; one extra row keeps that in bounds. */
+    == 20; one extra row keeps that in bounds. */
     let mut tmp: [[c_char; FLEN_ERRMSG]; 21] = [[0; FLEN_ERRMSG]; 21];
     let mut nstack = 0usize;
 
@@ -178,7 +190,11 @@ pub(crate) fn wrtserr(out: Out, mess: &[c_char], status: &mut c_int, severity: c
         fits_clear_errmsg();
         return 0;
     }
-    let nerrs = NERRS.with(|c| { let v = c.get(); c.set(v + 1); v }) + 1;
+    let nerrs = NERRS.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    }) + 1;
 
     let mut temp: [c_char; TEMP_LEN] = [0; TEMP_LEN];
     spf!(temp; "*** Error:   ", CS(mess), "(from CFITSIO error stack:)");
@@ -229,14 +245,14 @@ pub(crate) fn wrtserr_str(out: Out, mess: &str, status: &mut c_int, severity: c_
 }
 
 /* Print output of messages in a 80 character record.
-    Continue lines are aligned. */
+Continue lines are aligned. */
 pub(crate) fn print_fmt(out: Out, temp: &[c_char], nprompt: c_int) {
     let mut j: usize;
     let clen: usize;
     let mut tmp: [c_char; 81] = [0; 81];
     /* The C builds a `static char cont_fmt[80]' of `nprompt' blanks followed by
-       "%.67s\n" the first time it sees a new nprompt.  Every call site in
-       fitsverify passes nprompt = 13, so the prompt is simply re-emitted here. */
+    "%.67s\n" the first time it sees a new nprompt.  Every call site in
+    fitsverify passes nprompt = 13, so the prompt is simply re-emitted here. */
 
     if out == Out::Null {
         return;
@@ -389,8 +405,8 @@ pub(crate) fn compcol(col1: &ColName, col2: &ColName) -> Ordering {
 }
 
 /* comparison function for the string pattern maching.
-   Equal when the pattern is a prefix of the candidate -- this is what lets
-   key_match() find every CRPIXn from the pattern "CRPIX". */
+Equal when the pattern is a prefix of the candidate -- this is what lets
+key_match() find every CRPIXn from the pattern "CRPIX". */
 pub(crate) fn compstrp(pattern: &[c_char], candidate: &[c_char]) -> Ordering {
     let p = cbytes(pattern);
     let q = cbytes(candidate);
@@ -406,7 +422,6 @@ pub(crate) fn compstre(str1: &[c_char], str2: &[c_char]) -> Ordering {
     ccmp(str1, str2)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,7 +436,7 @@ mod tests {
     }
 
     /* compstrp is the prefix comparator bsearch() uses for indexed keywords:
-       it reports equal when the pattern is a prefix of the array element. */
+    it reports equal when the pattern is a prefix of the array element. */
     #[test]
     fn test_compstrp() {
         assert_eq!(compstrp(&kw("CRPIX"), &kw("CRPIX1")), Ordering::Equal);
@@ -444,13 +459,25 @@ mod tests {
 
     #[test]
     fn test_compkey_and_compcol() {
-        let a = FitsKey { kname: kw("AAA"), ..Default::default() };
-        let b = FitsKey { kname: kw("AAB"), ..Default::default() };
+        let a = FitsKey {
+            kname: kw("AAA"),
+            ..Default::default()
+        };
+        let b = FitsKey {
+            kname: kw("AAB"),
+            ..Default::default()
+        };
         assert_eq!(compkey(&a, &b), Ordering::Less);
         assert_eq!(compkey(&a, &a.clone()), Ordering::Equal);
 
-        let c1 = ColName { name: cvec(&kw("ALPHA")), index: 1 };
-        let c2 = ColName { name: cvec(&kw("BETA")), index: 2 };
+        let c1 = ColName {
+            name: cvec(&kw("ALPHA")),
+            index: 1,
+        };
+        let c2 = ColName {
+            name: cvec(&kw("BETA")),
+            index: 2,
+        };
         assert_eq!(compcol(&c1, &c2), Ordering::Less);
     }
 }
