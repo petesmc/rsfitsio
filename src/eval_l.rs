@@ -71,7 +71,7 @@ use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use crate::wrappers::{
     isdigit_safe, strcat_safe, strcpy_safe, strlen_safe, strncat_safe, strncpy_safe,
 };
-use crate::{STDIN, STDOUT, cs, eval_tab::*};
+use crate::{STDOUT, cs, eval_tab::*};
 use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
     wrappers::{tolower, toupper},
@@ -466,13 +466,14 @@ pub(crate) fn fits_parser_yylex(
                 yyscanner.yy_start = 1;
             }
 
-            if (yyscanner.yyin_r).is_null() {
-                yyscanner.yyin_r = STDIN!();
-            }
-
-            if (yyscanner.yyout_r).is_null() {
-                yyscanner.yyout_r = STDOUT!();
-            }
+            /* Flex defaults yyin to stdin and yyout to stdout here.  Neither
+               default is reachable in this scanner: the input is pulled from
+               ParseData::expr by expr_read (YY_INPUT), so the FILE* in yyin is
+               never read from, and yyout is only touched by the default ECHO
+               rule, which resolves stdout for itself when it fires.  Leaving
+               both null keeps that invariant explicit -- and keeps the C
+               stdio externs out of a scanner that never uses them, which is
+               what lets Miri run the expression engine at all. */
 
             if (yyscanner.yy_buffer_stack).is_null()
                 || (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).is_none()
@@ -1109,11 +1110,21 @@ pub(crate) fn fits_parser_yylex(
                                 return c_int::from(*(yyscanner.yytext_r).offset(0));
                             }
                             30 => {
+                                /* ECHO. Resolve stdout here rather than
+                                   defaulting yyout at scanner start: this rule
+                                   only fires on input the grammar does not
+                                   match, so the common path never touches the
+                                   C stdio externs. */
+                                let out = if (yyscanner.yyout_r).is_null() {
+                                    STDOUT!()
+                                } else {
+                                    yyscanner.yyout_r
+                                };
                                 fwrite(
                                     yyscanner.yytext_r as *const c_void,
                                     yyscanner.yyleng_r as usize,
                                     1,
-                                    yyscanner.yyout_r,
+                                    out,
                                 );
                                 break '_yy_match;
                             }
