@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.470.1] - 2026.08.16
+
+### Changed
+- Large reduction in raw `libc` and unsafe pointer usage: the last raw libc string functions
+  are gone from the expression engine, references and constness changes now go through
+  `ptr::from_ref`/`from_mut`, `cast_mut`/`cast_const`, `pointer::cast` and `&raw`, and the five
+  raw-pointer cast lints are denied package-wide.
+- Pedantic clippy lints cleared across the library, tests and the transpiled binaries.
+- C-ABI buffer reinterpretations now assert pointer alignment, and the tiled-image scratch
+  buffers are allocated with explicit alignment.
+- Miri findings documented and the remaining known issues recorded.
+
+### Fixed
+- Undefined behaviour reported by Miri: aliasing in the lexer buffer stack, the
+  self-referential memory driver, and pointer provenance in `grparser` and `getcol`.
+- The lexer no longer defaults `yyin`/`yyout` to the C stdio externs.
+- Short-read handling in the memory, file, IRAF and region readers.
+- Double free when the `headstart` array fails to grow (#100).
+
 ## [0.470.0] - 2026.08.15
 
 ### Added
