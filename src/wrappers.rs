@@ -1,33 +1,14 @@
-use core::{cmp, ffi::CStr, ptr, str::FromStr};
+use core::{cmp, ffi::CStr, str::FromStr};
 
 use bytemuck::cast_slice;
 
-use crate::c_types::{c_char, c_int, c_uchar, size_t};
+use crate::c_types::{c_char, c_int};
 
 use crate::bb;
 
 // Several wrappers in this file were taken from the Redoc Relibc
 // project. The original source code can be found at:
 // https://gitlab.redox-os.org/redox-os/relibc
-
-pub(crate) unsafe fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char {
-    unsafe {
-        let mut i = 0;
-
-        loop {
-            let byte = *src.offset(i);
-            *dst.offset(i) = byte;
-
-            if byte == 0 {
-                break;
-            }
-
-            i += 1;
-        }
-
-        dst
-    }
-}
 
 pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     let mut i = 0;
@@ -113,31 +94,6 @@ pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     0
 }
 
-pub(crate) unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe { strncmp(s1, s2, size_t::MAX) }
-}
-
-pub(crate) unsafe fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t) -> c_int {
-    unsafe {
-        // Walk one byte at a time. Materialising `n`-length slices up front
-        // would read past the end of a shorter allocation, which is UB even
-        // when the comparison would have stopped at the NUL first.
-        let mut i = 0;
-        while i < n {
-            let a = *s1.add(i).cast::<c_uchar>();
-            let b = *s2.add(i).cast::<c_uchar>();
-
-            if a != b || a == 0 {
-                return c_int::from(a) - c_int::from(b);
-            }
-
-            i += 1;
-        }
-
-        0
-    }
-}
-
 pub(crate) fn strlen_safe_cstr(str: &CStr) -> usize {
     str.to_bytes().len()
 }
@@ -159,23 +115,6 @@ pub fn strlen_safe(cs: &[c_char]) -> usize {
 pub fn strnlen_safe(cs: &[c_char], n: usize) -> usize {
     let limit = cmp::min(n, cs.len());
     cs[..limit].iter().position(|&c| c == 0).unwrap_or(limit)
-}
-
-pub(crate) unsafe fn strlen(s: *const c_char) -> size_t {
-    unsafe { strnlen(s, usize::MAX) }
-}
-
-pub(crate) unsafe fn strnlen(s: *const c_char, size: size_t) -> size_t {
-    unsafe {
-        let mut i = 0;
-        while i < size {
-            if *s.add(i) == 0 {
-                break;
-            }
-            i += 1;
-        }
-        i as size_t
-    }
 }
 
 pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F as FromStr>::Err> {
@@ -227,36 +166,6 @@ pub fn strrchr_safe(cs: &[c_char], c: c_char) -> Option<usize> {
     cs[..len].iter().rposition(|&x| x == c)
 }
 
-unsafe fn inner_strstr(
-    mut haystack: *const c_char,
-    needle: *const c_char,
-    mask: c_char,
-) -> *mut c_char {
-    unsafe {
-        while *haystack != 0 {
-            let mut i = 0;
-            loop {
-                if *needle.offset(i) == 0 {
-                    // We reached the end of the needle, everything matches this far
-                    return haystack as *mut c_char;
-                }
-                if *haystack.offset(i) & mask != *needle.offset(i) & mask {
-                    break;
-                }
-
-                i += 1;
-            }
-
-            haystack = haystack.offset(1);
-        }
-        ptr::null_mut()
-    }
-}
-
-pub(crate) unsafe fn strstr(haystack: *const c_char, needle: *const c_char) -> *mut c_char {
-    unsafe { inner_strstr(haystack, needle, !0) }
-}
-
 /// Index of the first occurrence of the NUL-terminated needle `ct` in the
 /// NUL-terminated haystack `cs`, or `None` if not present. Mirrors C `strstr`:
 /// an empty needle matches at 0, and neither string is read past its NUL, so
@@ -273,29 +182,6 @@ pub fn strstr_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
     }
 
     hay.windows(needle.len()).position(|w| w == needle)
-}
-
-pub(crate) unsafe fn strcat(s1: *mut c_char, s2: *const c_char) -> *mut c_char {
-    unsafe { strncat(s1, s2, usize::MAX) }
-}
-
-pub(crate) unsafe fn strncat(s1: *mut c_char, s2: *const c_char, n: size_t) -> *mut c_char {
-    unsafe {
-        let len = strlen(s1 as *const c_char);
-        let mut i = 0;
-        while i < n {
-            let b = *s2.add(i);
-            if b == 0 {
-                break;
-            }
-
-            *s1.add(len + i) = b;
-            i += 1;
-        }
-        *s1.add(len + i) = 0;
-
-        s1
-    }
 }
 
 pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
@@ -855,25 +741,6 @@ mod tests {
             };
             assert_eq!(strpbrk_safe(s, set), expected, "set {set:?}");
         }
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn test_raw_strncmp_stops_at_nul_within_allocation() {
-        /* The raw wrapper used to materialise an n-byte slice up front, which
-        over-read whenever the strings ended sooner. Compare against libc with
-        an n far larger than either allocation. */
-        let a: &[c_char] = bytemuck::cast_slice(b"abc\0");
-        let b: &[c_char] = bytemuck::cast_slice(b"abd\0");
-
-        let ru = unsafe { libc::strncmp(a.as_ptr(), b.as_ptr(), 4096) };
-        let rs = unsafe { strncmp(a.as_ptr(), b.as_ptr(), 4096) };
-        assert_eq!(ru.signum(), rs.signum());
-
-        let ru = unsafe { libc::strcmp(a.as_ptr(), a.as_ptr()) };
-        let rs = unsafe { strcmp(a.as_ptr(), a.as_ptr()) };
-        assert_eq!(ru.signum(), rs.signum());
-        assert_eq!(rs, 0);
     }
 
     // Write test cases for strto_float_impl
