@@ -9286,6 +9286,51 @@ pub fn ffcdfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
 }
 
 /*--------------------------------------------------------------------------*/
+/// Grow the headstart array by 1000 entries.
+///
+/// `headstart` is a raw pointer owned by `FITSfile`, so growing it means
+/// briefly reconstituting the `Vec` that owns the allocation.  Ownership is
+/// handed back to `fptr` on both paths: if the reservation fails the `Vec` must
+/// not be dropped here, otherwise `fptr.Fptr.headstart` would be left dangling
+/// and freed a second time by `FITSfile::drop`.
+///
+/// The array is always kept fully initialized with `MAXHDU + 1` elements
+/// (length == capacity), which is the invariant `get_headstart_as_slice` and
+/// the `ALLOCATIONS` bookkeeping rely on.
+fn grow_headstart(fptr: &mut fitsfile) -> Result<(), c_int> {
+    let old_ptr = fptr.Fptr.headstart;
+    let l = fptr.Fptr.MAXHDU as usize + 1;
+
+    // SAFETY: headstart was registered in ALLOCATIONS as a Vec<LONGLONG> of
+    // exactly `l` elements, with length == capacity, and is not aliased here.
+    let mut vo = unsafe { Vec::from_raw_parts(old_ptr, l, l) };
+
+    let res = vo.try_reserve_exact(1000);
+    if res.is_ok() {
+        // The array is later read as a slice of MAXHDU + 1 elements, so the
+        // new entries must be initialized, not merely reserved.
+        vo.resize(l + 1000, 0);
+    }
+
+    // Hand the allocation back to `fptr` before reporting anything: on the
+    // error path the pointer is unchanged, on the success path it may have
+    // moved.  Either way `fptr` must own it again.
+    let (p, len, cap) = vec_into_raw_parts(vo);
+    let mut allocations = ALLOCATIONS.lock().unwrap();
+    allocations.remove(&(old_ptr as usize));
+    allocations.insert(p as usize, (len, cap));
+    drop(allocations);
+    fptr.Fptr.headstart = p;
+
+    if res.is_err() {
+        return Err(MEMORY_ALLOCATION);
+    }
+
+    fptr.Fptr.MAXHDU += 1000;
+    Ok(())
+}
+
+/*--------------------------------------------------------------------------*/
 /// Create Header Data unit:  Create, initialize, and move the i/o pointer
 /// to a new extension appended to the end of the FITS file.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9330,17 +9375,9 @@ pub fn ffcrhd_safe(
     if fptr.Fptr.maxhdu == fptr.Fptr.MAXHDU {
         /* allocate more space for the headstart array */
         // HEAP ALLOCATION
-        let l = fptr.Fptr.MAXHDU as usize + 1;
-        let mut vo = unsafe { Vec::from_raw_parts(fptr.Fptr.headstart, l, l) };
-
-        if vo.try_reserve_exact(1000).is_err() {
-            *status = MEMORY_ALLOCATION;
+        if let Err(e) = grow_headstart(fptr) {
+            *status = e;
             return *status;
-        } else {
-            let (p, l, c) = vec_into_raw_parts(vo);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            fptr.Fptr.MAXHDU += 1000;
-            fptr.Fptr.headstart = p;
         }
     }
 
@@ -10129,77 +10166,67 @@ pub fn ffmahd_safe(
 
     let mut exttype = exttype;
 
-    unsafe {
-        if *status > 0 {
+    if *status > 0 {
+        return *status;
+    } else if hdunum < 1 {
+        *status = BAD_HDU_NUM;
+        return *status;
+    } else if hdunum >= fptr.Fptr.MAXHDU {
+        /* allocate more space for the headstart array */
+        // HEAP ALLOCATION
+        if let Err(e) = grow_headstart(fptr) {
+            *status = e;
             return *status;
-        } else if hdunum < 1 {
-            *status = BAD_HDU_NUM;
-            return *status;
-        } else if hdunum >= fptr.Fptr.MAXHDU {
-            /* allocate more space for the headstart array */
-            // HEAP ALLOCATION
-            let l = fptr.Fptr.MAXHDU as usize + 1;
-            let mut vo = Vec::from_raw_parts(fptr.Fptr.headstart, l, l);
-
-            if vo.try_reserve_exact(1000).is_err() {
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            } else {
-                let (p, l, c) = vec_into_raw_parts(vo);
-                ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-                fptr.Fptr.MAXHDU += 1000;
-                fptr.Fptr.headstart = p;
-            }
         }
+    }
 
-        /* set logical HDU position to the actual position, in case they differ */
-        fptr.HDUposition = fptr.Fptr.curhdu;
+    /* set logical HDU position to the actual position, in case they differ */
+    fptr.HDUposition = fptr.Fptr.curhdu;
 
-        while (fptr.Fptr.curhdu) + 1 != hdunum {
-            /* at the correct HDU? */
+    while (fptr.Fptr.curhdu) + 1 != hdunum {
+        /* at the correct HDU? */
 
-            /* move directly to the extension if we know that it exists,
-            otherwise move to the highest known extension.  */
+        /* move directly to the extension if we know that it exists,
+        otherwise move to the highest known extension.  */
 
-            moveto = cmp::min(hdunum - 1, (fptr.Fptr.maxhdu) + 1);
+        moveto = cmp::min(hdunum - 1, (fptr.Fptr.maxhdu) + 1);
 
-            /* test if HDU exists */
-            let headstart = fptr.Fptr.get_headstart_as_slice();
-            if headstart[moveto as usize] < fptr.Fptr.logfilesize {
-                if ffchdu(fptr, status) <= 0 {
-                    /* close out the current HDU */
+        /* test if HDU exists */
+        let headstart = fptr.Fptr.get_headstart_as_slice();
+        if headstart[moveto as usize] < fptr.Fptr.logfilesize {
+            if ffchdu(fptr, status) <= 0 {
+                /* close out the current HDU */
 
-                    if ffgext(fptr, moveto, exttype.as_deref_mut(), status) > 0 {
-                        /* failed to get the requested extension */
-                        tstatus = 0;
-                        ffrhdu_safe(fptr, exttype.as_deref_mut(), &mut tstatus);
-                        /* restore the CHDU */
-                    };
+                if ffgext(fptr, moveto, exttype.as_deref_mut(), status) > 0 {
+                    /* failed to get the requested extension */
+                    tstatus = 0;
+                    ffrhdu_safe(fptr, exttype.as_deref_mut(), &mut tstatus);
+                    /* restore the CHDU */
                 };
-            } else {
-                *status = END_OF_FILE;
-            }
-            if *status > 0 {
-                if *status != END_OF_FILE {
-                    /* don't clutter up the message stack in the common case of */
-                    /* simply hitting the end of file (often an expected error) */
-
-                    int_snprintf!(
-                        &mut message,
-                        FLEN_ERRMSG,
-                        "Failed to move to HDU number {} (ffmahd).",
-                        hdunum,
-                    );
-
-                    ffpmsg_slice(&message);
-                }
-                return *status;
             };
+        } else {
+            *status = END_OF_FILE;
         }
+        if *status > 0 {
+            if *status != END_OF_FILE {
+                /* don't clutter up the message stack in the common case of */
+                /* simply hitting the end of file (often an expected error) */
 
-        if let Some(exttype) = exttype {
-            ffghdt_safe(fptr, exttype, status);
-        }
+                int_snprintf!(
+                    &mut message,
+                    FLEN_ERRMSG,
+                    "Failed to move to HDU number {} (ffmahd).",
+                    hdunum,
+                );
+
+                ffpmsg_slice(&message);
+            }
+            return *status;
+        };
+    }
+
+    if let Some(exttype) = exttype {
+        ffghdt_safe(fptr, exttype, status);
     }
 
     *status
