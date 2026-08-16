@@ -1964,23 +1964,23 @@ pub(crate) fn fp_test(
             }
 
             fits_set_lossy_int(outfptr.as_mut().unwrap(), fpvar.int_to_float, &mut stat);
-            if bitpix > 0 && fpvar.int_to_float != 0 {
-                if noisemin < f64::from(fpvar.n3ratio * fpvar.quantize_level)
-                    || noisemin < f64::from(fpvar.n3min)
-                {
-                    /* image contains too little noise to quantize effectively */
-                    fits_set_lossy_int(outfptr.as_mut().unwrap(), 0, &mut stat);
-                    let infptr = if rescale_flag {
-                        tempfile.as_deref_mut().unwrap()
-                    } else {
-                        inputfptr.as_deref_mut().unwrap()
-                    };
-                    fits_get_hdu_num(infptr, &mut hdunum);
+            if bitpix > 0
+                && fpvar.int_to_float != 0
+                && (noisemin < f64::from(fpvar.n3ratio * fpvar.quantize_level)
+                    || noisemin < f64::from(fpvar.n3min))
+            {
+                /* image contains too little noise to quantize effectively */
+                fits_set_lossy_int(outfptr.as_mut().unwrap(), 0, &mut stat);
+                let infptr = if rescale_flag {
+                    tempfile.as_deref_mut().unwrap()
+                } else {
+                    inputfptr.as_deref_mut().unwrap()
+                };
+                fits_get_hdu_num(infptr, &mut hdunum);
 
-                    pf(&format!(
-                        "    HDU {hdunum} does not meet noise criteria to be quantized, so losslessly compressed.\n"
-                    ));
-                }
+                pf(&format!(
+                    "    HDU {hdunum} does not meet noise criteria to be quantized, so losslessly compressed.\n"
+                ));
             }
 
             /* test compression ratio and speed for each algorithm */

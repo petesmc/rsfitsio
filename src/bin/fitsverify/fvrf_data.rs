@@ -985,15 +985,16 @@ fn test_agap(
                     wrterr(out, &errmes, 1);
                 }
                 nerr += 1;
-            } else if isascii_c(c as c_char) && !isprint_c(c as c_char) {
-                if temp[(j % rowlen) as usize] != 0 {
-                    if nerr == 0 {
-                        spf!(errmes; "row ", (j / rowlen + 1) as i64,
-                            " data contains non-ASCII-text characters.");
-                        wrterr(out, &errmes, 1);
-                    }
-                    nerr += 1;
+            } else if isascii_c(c as c_char)
+                && !isprint_c(c as c_char)
+                && temp[(j % rowlen) as usize] != 0
+            {
+                if nerr == 0 {
+                    spf!(errmes; "row ", (j / rowlen + 1) as i64,
+                        " data contains non-ASCII-text characters.");
+                    wrterr(out, &errmes, 1);
                 }
+                nerr += 1;
             }
             p += 1;
             j += 1;

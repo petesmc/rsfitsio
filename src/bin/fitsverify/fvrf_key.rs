@@ -623,14 +623,12 @@ pub(crate) fn pr_kval_err(
         wrterr(out, &errmes, 1);
     }
 
-    if errnum & UNKNOWN_TYPE != 0 {
-        if kval[0] != 0 {
-            /* don't report null keywords as an error */
-            spf!(errmes;
-                "Keyword #", kpos, ", ", CS(kname), ": Type of value \"", CS(kval),
-                "\" is unknown.");
-            wrterr(out, &errmes, 1);
-        }
+    /* don't report null keywords as an error */
+    if errnum & UNKNOWN_TYPE != 0 && kval[0] != 0 {
+        spf!(errmes;
+            "Keyword #", kpos, ", ", CS(kname), ": Type of value \"", CS(kval),
+            "\" is unknown.");
+        wrterr(out, &errmes, 1);
     }
 }
 
