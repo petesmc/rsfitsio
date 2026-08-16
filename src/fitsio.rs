@@ -914,6 +914,24 @@ impl FITSfile {
     pub fn get_filename_as_cstr(&self) -> &CStr {
         unsafe { CStr::from_ptr(self.filename) }
     }
+
+    /// The heap-allocated filename buffer as a writable slice, so callers can
+    /// use `strcpy_safe` instead of a raw `strcpy` into `self.filename`.
+    ///
+    /// The allocation's length is the one recorded in `ALLOCATIONS` when
+    /// `FITSfile::new` reserved it -- the same entry `Drop` frees against. 32
+    /// is the minimum `new` reserves, and the size `Drop` falls back to when
+    /// the entry is missing.
+    pub(crate) fn get_filename_as_mut_slice(&mut self) -> &mut [c_char] {
+        let len = ALLOCATIONS
+            .lock()
+            .unwrap()
+            .get(&(self.filename as usize))
+            .map_or(32, |&(l, _)| l);
+
+        // SAFETY: filename points at a `len`-element allocation owned by self.
+        unsafe { core::slice::from_raw_parts_mut(self.filename, len) }
+    }
 }
 
 impl Drop for FITSfile {

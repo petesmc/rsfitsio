@@ -171,17 +171,25 @@ impl FITS_PARSER_YYSTYPE {
         }
     }
 
-    /// A writable pointer to the string buffer, installing an empty one when
-    /// the slot holds something else -- the lexer writes into `yylval->str` of
-    /// a slot whose previous contents are irrelevant.
-    pub(crate) fn text_mut_ptr(&mut self) -> *mut c_char {
+    /// A writable view of the string buffer for the `*_safe` string helpers,
+    /// installing an empty one when the slot holds something else -- the lexer
+    /// writes into `yylval->str` of a slot whose previous contents are
+    /// irrelevant.
+    pub(crate) fn text_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
         if !matches!(self, FITS_PARSER_YYSTYPE::Text(_)) {
             *self = FITS_PARSER_YYSTYPE::Text([0; MAX_STRLEN as usize]);
         }
         match self {
-            FITS_PARSER_YYSTYPE::Text(v) => v.as_mut_ptr(),
+            FITS_PARSER_YYSTYPE::Text(v) => v,
             _ => unreachable!(),
         }
+    }
+
+    /// A writable pointer to the string buffer, installing an empty one when
+    /// the slot holds something else -- the lexer writes into `yylval->str` of
+    /// a slot whose previous contents are irrelevant.
+    pub(crate) fn text_mut_ptr(&mut self) -> *mut c_char {
+        self.text_mut().as_mut_ptr()
     }
 }
 

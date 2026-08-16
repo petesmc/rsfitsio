@@ -2,7 +2,14 @@
 - [ ] Investigate all code with 'WARNING'
 - [ ] Investigate all code with 'TODO'
 - [ ] Remove use a malloc and free
-- [ ] Remove use of libc unsafe functions
+- [ ] Remove use of libc unsafe functions. The raw C string functions are gone
+      from every file except `eval_y.rs` (38 sites) and `eval_f.rs` (6). Those
+      are one connected knot: the `*mut *mut c_char` per-row string buffers
+      behind `NodeValue::Buffer`, the `sptr1`/`sptr2` aliases into them, and the
+      `bit*` helpers (`bitcmp`, `bitlgte`, `bitand`, `bitor`, `bitnot`) that take
+      raw pointers. Untangling needs the string-node storage reworked, not a
+      call-site swap. `strtok_r`, `strpbrk`, `strspn`, `strcspn`, `strncpy` and
+      `strchr` have been deleted outright as dead.
 - [ ] Clean up all warnings
 - [ ] Remove clippy allow(unused_assignments)
 - [ ] Remove clippy allow(unused_variables)

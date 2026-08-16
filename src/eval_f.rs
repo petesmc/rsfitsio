@@ -94,7 +94,7 @@ use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
-use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen, strlen_safe, strncpy_safe};
+use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
@@ -3780,9 +3780,8 @@ fn fits_uncompress_hkdata(
                             row as LONGLONG,
                             1,
                             1,
-                            Some(core::slice::from_raw_parts(
-                                *str_array.wrapping_add(0),
-                                strlen(*str_array.wrapping_add(0)) as usize,
+                            Some(cast_slice::<u8, c_char>(
+                                CStr::from_ptr(*str_array).to_bytes(),
                             )),
                             &mut [core::slice::from_raw_parts_mut(
                                 *str_array.wrapping_add(currelem as usize),
@@ -4443,9 +4442,9 @@ fn find_column(
                 if !(*lParse.pixFilter).tag.add(i as usize).is_null()
                     && fits_strcasecmp(
                         colName,
-                        core::slice::from_raw_parts(
-                            (*lParse.pixFilter).tag.wrapping_add(i as usize).read(),
-                            strlen((*lParse.pixFilter).tag.wrapping_add(i as usize).read()),
+                        cast_slice::<u8, c_char>(
+                            CStr::from_ptr((*lParse.pixFilter).tag.wrapping_add(i as usize).read())
+                                .to_bytes(),
                         ),
                     ) == 0
                 {
@@ -4744,7 +4743,7 @@ fn find_keywd(
                 // 'C' as c_char
                 fits_read_key_str(fptr, keyname, &mut keyvalue, None, &mut status);
                 ktype = fits_parser_yytokentype::STRING as c_int;
-                strcpy(thelval.text_mut_ptr(), keyvalue.as_ptr());
+                strcpy_safe(thelval.text_mut(), &keyvalue);
             }
             b'L' => {
                 // 'L' as c_char
@@ -4898,7 +4897,7 @@ fn load_column(
                     let mut string_vec = Vec::new();
                     for i in 0..nRows {
                         let str_ptr = *data_ptr_array.wrapping_add(i as usize);
-                        let str_len = strlen(str_ptr as *const c_char);
+                        let str_len = CStr::from_ptr(str_ptr).to_bytes().len();
                         let str_slice = core::slice::from_raw_parts_mut(str_ptr, str_len + 1);
                         string_vec.push(str_slice);
                     }

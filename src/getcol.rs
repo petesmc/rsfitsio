@@ -2883,7 +2883,7 @@ pub unsafe extern "C" fn ffgcvn(
             true => None,
         };
 
-        ffgcvn_safer(
+        ffgcvn_safe(
             fptr, ncols, datatype, colnum, firstrow, nrows, &nulval, array, anynul, status,
         )
     }
@@ -2898,7 +2898,7 @@ pub unsafe extern "C" fn ffgcvn(
 /// Undefined elements for column i will be set equal to *(nulval[i]), unless nulval[i]=0
 /// in which case no checking for undefined values will be performed.
 /// anynul[i] is returned with a value of true if any pixels in column i are undefined.
-pub unsafe fn ffgcvn_safer(
+pub fn ffgcvn_safe(
     fptr: &mut fitsfile,          /* I - FITS file pointer                       */
     ncols: c_int,                 /* I - number of columns to read               */
     datatype: &[c_int],           /* I - datatypes of the values                 */
@@ -2910,177 +2910,176 @@ pub unsafe fn ffgcvn_safer(
     mut anynul: Option<&mut [c_int]>, /* O - anynul[i] set to 1 if any values in column i are null; else 0 */
     status: &mut c_int,               /* IO - error status                           */
 ) -> c_int {
-    unsafe {
-        let mut ntotrows: LONGLONG = 0;
-        let mut ndone: LONGLONG = 0;
-        let mut nread: LONGLONG = 0;
-        let mut currow: LONGLONG = 0;
-        let mut nrowbuf: c_long = 0;
+    let mut ntotrows: LONGLONG = 0;
+    let mut ndone: LONGLONG = 0;
+    let mut nread: LONGLONG = 0;
+    let mut currow: LONGLONG = 0;
+    let mut nrowbuf: c_long = 0;
 
-        let mut sizes: [usize; 255] = [0; 255];
+    let mut sizes: [usize; 255] = [0; 255];
 
-        sizes[TBYTE as usize] = mem::size_of::<c_char>();
-        sizes[TSBYTE as usize] = mem::size_of::<c_char>();
-        sizes[TLOGICAL as usize] = mem::size_of::<c_char>();
-        sizes[TUSHORT as usize] = mem::size_of::<c_short>();
-        sizes[TSHORT as usize] = mem::size_of::<c_short>();
-        sizes[TINT as usize] = mem::size_of::<c_int>();
-        sizes[TUINT as usize] = mem::size_of::<c_int>();
-        sizes[TLONG as usize] = mem::size_of::<c_long>();
-        sizes[TULONG as usize] = mem::size_of::<c_long>();
-        sizes[TLONGLONG as usize] = mem::size_of::<LONGLONG>();
-        sizes[TULONGLONG as usize] = mem::size_of::<LONGLONG>();
-        sizes[TFLOAT as usize] = mem::size_of::<f32>();
-        sizes[TDOUBLE as usize] = mem::size_of::<f64>();
-        sizes[TDBLCOMPLEX as usize] = 2 * mem::size_of::<f64>();
+    sizes[TBYTE as usize] = mem::size_of::<c_char>();
+    sizes[TSBYTE as usize] = mem::size_of::<c_char>();
+    sizes[TLOGICAL as usize] = mem::size_of::<c_char>();
+    sizes[TUSHORT as usize] = mem::size_of::<c_short>();
+    sizes[TSHORT as usize] = mem::size_of::<c_short>();
+    sizes[TINT as usize] = mem::size_of::<c_int>();
+    sizes[TUINT as usize] = mem::size_of::<c_int>();
+    sizes[TLONG as usize] = mem::size_of::<c_long>();
+    sizes[TULONG as usize] = mem::size_of::<c_long>();
+    sizes[TLONGLONG as usize] = mem::size_of::<LONGLONG>();
+    sizes[TULONGLONG as usize] = mem::size_of::<LONGLONG>();
+    sizes[TFLOAT as usize] = mem::size_of::<f32>();
+    sizes[TDOUBLE as usize] = mem::size_of::<f64>();
+    sizes[TDBLCOMPLEX as usize] = 2 * mem::size_of::<f64>();
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if ncols <= 0 {
+        *status = 0;
+        return *status;
+    }
+
+    let mut repeats: Vec<LONGLONG> = vec![0; ncols as usize];
+
+    ffgnrwll_safe(fptr, &mut ntotrows, status);
+    ffgrsz_safe(fptr, &mut nrowbuf, status);
+
+    /* Retrieve column repeats */
+    let mut icol: usize = 0;
+    while (icol < ncols as usize) && (icol < 1000) {
+        let mut typecode = 0;
+        let mut repeat: LONGLONG = 0;
+        let mut width: LONGLONG = 0;
+        ffgtclll_safe(
+            fptr,
+            colnum[icol],
+            Some(&mut typecode),
+            Some(&mut repeat),
+            Some(&mut width),
+            status,
+        );
+        repeats[icol] = repeat;
+
+        if datatype[icol] == TBIT
+            || datatype[icol] == TSTRING
+            || sizes[datatype[icol] as usize] == 0
+        {
+            ffpmsg_str("Cannot read from TBIT or TSTRING datatypes (ffgcvn)");
+            *status = BAD_DATATYPE;
+        }
+        if typecode < 0 {
+            ffpmsg_str("Cannot read from variable-length data (ffgcvn)");
+            *status = BAD_DIMEN;
+        }
 
         if *status > 0 {
-            return *status;
+            break;
         }
+        icol += 1;
+    }
 
-        if ncols <= 0 {
-            *status = 0;
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        let mut repeats: Vec<LONGLONG> = vec![0; ncols as usize];
-
-        ffgnrwll_safe(fptr, &mut ntotrows, status);
-        ffgrsz_safe(fptr, &mut nrowbuf, status);
-
-        /* Retrieve column repeats */
-        let mut icol: usize = 0;
-        while (icol < ncols as usize) && (icol < 1000) {
-            let mut typecode = 0;
-            let mut repeat: LONGLONG = 0;
-            let mut width: LONGLONG = 0;
-            ffgtclll_safe(
-                fptr,
-                colnum[icol],
-                Some(&mut typecode),
-                Some(&mut repeat),
-                Some(&mut width),
-                status,
-            );
-            repeats[icol] = repeat;
-
-            if datatype[icol] == TBIT
-                || datatype[icol] == TSTRING
-                || sizes[datatype[icol] as usize] == 0
-            {
-                ffpmsg_str("Cannot read from TBIT or TSTRING datatypes (ffgcvn)");
+    /* Optimize for 1 column */
+    if ncols == 1 {
+        let bytes = match bytes_per_datatype(datatype[0]) {
+            Some(x) => x * nrows as usize * repeats[0] as usize,
+            None => {
                 *status = BAD_DATATYPE;
+                return *status;
             }
-            if typecode < 0 {
-                ffpmsg_str("Cannot read from variable-length data (ffgcvn)");
-                *status = BAD_DIMEN;
-            }
+        };
 
-            if *status > 0 {
-                break;
-            }
-            icol += 1;
+        let arr = unsafe {
+            slice::from_raw_parts_mut(array[0].cast::<u8>(), bytes * (nrows * repeats[0]) as usize)
+        };
+
+        ffgcv_safe(
+            fptr,
+            datatype[0],
+            colnum[0],
+            firstrow,
+            1,
+            nrows * repeats[0],
+            nulval[0].clone(),
+            arr,
+            anynul.map(|x| &mut x[0]),
+            status,
+        );
+
+        return *status;
+    }
+
+    /* Scan through file, in chunks of nrowbuf */
+    currow = firstrow;
+    ndone = 0;
+    while ndone < nrows {
+        nread = nrows - ndone; /* Number of rows to read (not elements) */
+        if nread > nrowbuf as LONGLONG {
+            nread = nrowbuf as LONGLONG;
         }
 
-        if *status > 0 {
-            return *status;
-        }
+        for icol in 0..(ncols as usize) {
+            let nelem1: LONGLONG = nread * repeats[icol];
 
-        /* Optimize for 1 column */
-        if ncols == 1 {
-            let bytes = match bytes_per_datatype(datatype[0]) {
-                Some(x) => x * nrows as usize * repeats[0] as usize,
+            let bytes = match bytes_per_datatype(datatype[icol]) {
+                Some(x) => x * nrows as usize * repeats[icol] as usize,
                 None => {
                     *status = BAD_DATATYPE;
                     return *status;
                 }
             };
 
-            let arr = slice::from_raw_parts_mut(
-                array[0].cast::<u8>(),
-                bytes * (nrows * repeats[0]) as usize,
-            );
+            let arr = unsafe {
+                slice::from_raw_parts_mut(
+                    array[icol].cast::<u8>(),
+                    bytes * (nrows * repeats[icol]) as usize,
+                )
+            };
+            let array1 =
+                &mut arr[(repeats[icol] * ndone) as usize * (sizes[datatype[icol] as usize])..];
 
             ffgcv_safe(
                 fptr,
-                datatype[0],
-                colnum[0],
-                firstrow,
+                datatype[icol],
+                colnum[icol],
+                currow,
                 1,
-                nrows * repeats[0],
-                nulval[0].clone(),
-                arr,
-                anynul.map(|x| &mut x[0]),
+                nelem1,
+                nulval[icol].clone(),
+                array1,
+                anynul.as_deref_mut().map(|x| &mut x[icol]),
                 status,
             );
 
-            return *status;
-        }
-
-        /* Scan through file, in chunks of nrowbuf */
-        currow = firstrow;
-        ndone = 0;
-        while ndone < nrows {
-            nread = nrows - ndone; /* Number of rows to read (not elements) */
-            if nread > nrowbuf as LONGLONG {
-                nread = nrowbuf as LONGLONG;
-            }
-
-            for icol in 0..(ncols as usize) {
-                let nelem1: LONGLONG = nread * repeats[icol];
-
-                let bytes = match bytes_per_datatype(datatype[icol]) {
-                    Some(x) => x * nrows as usize * repeats[icol] as usize,
-                    None => {
-                        *status = BAD_DATATYPE;
-                        return *status;
-                    }
-                };
-
-                let arr = slice::from_raw_parts_mut(
-                    array[icol].cast::<u8>(),
-                    bytes * (nrows * repeats[icol]) as usize,
-                );
-                let array1 =
-                    &mut arr[(repeats[icol] * ndone) as usize * (sizes[datatype[icol] as usize])..];
-
-                ffgcv_safe(
-                    fptr,
-                    datatype[icol],
+            if *status > 0 {
+                let mut errmsg: [c_char; 100] = [0; 100];
+                int_snprintf!(
+                    &mut errmsg,
+                    errmsg.len(),
+                    "Failed to read column {} data rows {}-{} (ffgcvn)",
                     colnum[icol],
                     currow,
-                    1,
-                    nelem1,
-                    nulval[icol].clone(),
-                    array1,
-                    anynul.as_deref_mut().map(|x| &mut x[icol]),
-                    status,
+                    currow + nread - 1,
                 );
-
-                if *status > 0 {
-                    let mut errmsg: [c_char; 100] = [0; 100];
-                    int_snprintf!(
-                        &mut errmsg,
-                        errmsg.len(),
-                        "Failed to read column {} data rows {}-{} (ffgcvn)",
-                        colnum[icol],
-                        currow,
-                        currow + nread - 1,
-                    );
-                    ffpmsg_slice(&errmsg);
-                    break;
-                }
-            }
-
-            if *status > 0 {
+                ffpmsg_slice(&errmsg);
                 break;
             }
-            currow += nread;
-            ndone += nread;
         }
 
-        *status
+        if *status > 0 {
+            break;
+        }
+        currow += nread;
+        ndone += nread;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/

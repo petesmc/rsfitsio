@@ -186,18 +186,27 @@ impl NodeValue {
         }
     }
 
+    /// A writable view of the scalar string buffer, for the `*_safe` string
+    /// helpers.
+    ///
+    /// The C wrote into `data.str` of a node that had no value yet, so this
+    /// installs an empty `Text` first when the node holds something else.
+    pub(crate) fn text_mut(&mut self) -> &mut [c_char; MAX_STRLEN as usize] {
+        if !matches!(self, NodeValue::Text(_)) {
+            *self = NodeValue::Text([0; MAX_STRLEN as usize]);
+        }
+        match self {
+            NodeValue::Text(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
     /// A writable pointer to the scalar string buffer.
     ///
     /// The C wrote into `data.str` of a node that had no value yet, so this
     /// installs an empty `Text` first when the node holds something else.
     pub(crate) fn text_mut_ptr(&mut self) -> *mut c_char {
-        if !matches!(self, NodeValue::Text(_)) {
-            *self = NodeValue::Text([0; MAX_STRLEN as usize]);
-        }
-        match self {
-            NodeValue::Text(v) => v.as_mut_ptr(),
-            _ => unreachable!(),
-        }
+        self.text_mut().as_mut_ptr()
     }
 
     fn buffer(&self, want: BufferKind) -> *mut c_void {

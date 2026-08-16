@@ -15,7 +15,7 @@ use crate::fitsio::{
     NGP_TOKEN_NOT_EXPECT, NGP_UNREAD_QUEUE_FULL, NULL_MSG, OPT_RM_GPT, VALUE_UNDEFINED, fitsfile,
 };
 use crate::relibc::header::stdio::{sscanf_d_c, sscanf_d_n, sscanf_lg_lg_n, sscanf_lg_n};
-use crate::wrappers::{strcmp_safe, strcpy, strlen, strlen_safe, strncmp_safe, strncpy};
+use crate::wrappers::{strcmp_safe, strcpy_safe, strlen_safe, strncmp_safe, strncpy_safe};
 use crate::{FFLOCK, KeywordDatatype, KeywordDatatypeMut, bb, cs, int_snprintf};
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -1151,9 +1151,9 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
             }
 
             if let Some(comment_idx) = parser_state.NGP_CURLINE.comment_idx {
-                let comment_ptr = parser_state.NGP_CURLINE.line[comment_idx..].as_ptr();
-                strncpy(
-                    std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.comment).cast(),
+                let comment_ptr = &parser_state.NGP_CURLINE.line[comment_idx..];
+                strncpy_safe(
+                    &mut parser_state.NGP_LINKEY.comment,
                     comment_ptr,
                     NGP_MAX_COMMENT,
                 ); /* store comment */
@@ -1162,15 +1162,11 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                 parser_state.NGP_LINKEY.comment[0] = 0;
             }
 
-            let name_ptr = parser_state.NGP_CURLINE.line[name_idx..].as_ptr();
-            strncpy(
-                std::ptr::addr_of_mut!(parser_state.NGP_LINKEY.name).cast(),
-                name_ptr,
-                NGP_MAX_NAME,
-            ); /* and keyword's name */
+            let name_ptr = &parser_state.NGP_CURLINE.line[name_idx..];
+            strncpy_safe(&mut parser_state.NGP_LINKEY.name, name_ptr, NGP_MAX_NAME); /* and keyword's name */
             parser_state.NGP_LINKEY.name[NGP_MAX_NAME - 1] = 0;
 
-            if strlen(std::ptr::addr_of!(parser_state.NGP_LINKEY.name).cast()) > FLEN_KEYWORD
+            if strlen_safe(&parser_state.NGP_LINKEY.name) > FLEN_KEYWORD
             /* WDP: 20-Jun-2002:  mod to support HIERARCH */
             {
                 return NGP_BAD_ARG; /* cfitsio does not allow names > 8 chars */
@@ -1280,8 +1276,8 @@ fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_int) -> 
                     }
                     NGP_TTYPE_STRING => {
                         // value.s is a heap C string; build a slice including the NUL terminator.
-                        let val_slice =
-                            slice::from_raw_parts(token.value.s, strlen(token.value.s) + 1);
+                        let val_slice: &[c_char] =
+                            cast_slice(CStr::from_ptr(token.value.s).to_bytes_with_nul());
                         fits_write_key_longstr(
                             ffp,
                             &token.name,
@@ -1393,7 +1389,7 @@ fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
         unsafe {
             if NGP_TTYPE_STRING == token.type_ && !token.value.s.is_null() {
                 // Free by reconstructing the Box
-                let str_len = 1 + strlen(token.value.s);
+                let str_len = 1 + CStr::from_ptr(token.value.s).to_bytes().len();
                 drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
                     token.value.s,
                     str_len,
@@ -1416,13 +1412,18 @@ fn ngp_hdu_insert_token(ngph: &mut NgpHdu, newtok: &mut NgpToken) -> c_int {
 
         if NGP_TTYPE_STRING == newtok.type_ && !newtok.value.s.is_null() {
             let last_idx = ngph.tok.len() - 1;
-            let str_len = 1 + strlen(newtok.value.s);
+            let str_len = 1 + CStr::from_ptr(newtok.value.s).to_bytes().len();
             let str_boxed = match ngp_alloc_boxed(str_len) {
                 Ok(b) => b,
                 Err(e) => return e,
             };
             ngph.tok[last_idx].value.s = Box::into_raw(str_boxed).cast::<c_char>();
-            strcpy(ngph.tok[last_idx].value.s, newtok.value.s);
+            // SAFETY: the destination was just allocated with exactly str_len
+            // bytes, the length of the source string including its NUL.
+            strcpy_safe(
+                slice::from_raw_parts_mut(ngph.tok[last_idx].value.s, str_len),
+                cast_slice(CStr::from_ptr(newtok.value.s).to_bytes_with_nul()),
+            );
         }
 
         ngph.tokcnt += 1;
@@ -1482,8 +1483,8 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
             }
             if (NGP_OK == r) && !my_tform.is_null() {
                 // my_ttype / my_tform are heap C strings; build NUL-terminated slices.
-                let ttype_s = slice::from_raw_parts(my_ttype, strlen(my_ttype) + 1);
-                let tform_s = slice::from_raw_parts(my_tform, strlen(my_tform) + 1);
+                let ttype_s: &[c_char] = cast_slice(CStr::from_ptr(my_ttype).to_bytes_with_nul());
+                let tform_s: &[c_char] = cast_slice(CStr::from_ptr(my_tform).to_bytes_with_nul());
                 fits_insert_col(ff, j + 1, ttype_s, tform_s, &mut r);
             }
 
@@ -1573,7 +1574,7 @@ fn ngp_read_xtension(
                 }
                 _ => {
                     // default case - process normal keyword
-                    l = strlen(std::ptr::addr_of!(parser_state.NGP_LINKEY.name).cast()) as c_int;
+                    l = strlen_safe(&parser_state.NGP_LINKEY.name) as c_int;
                     if (l >= 2)
                         && (l <= 6)
                         && bb(b'#') == parser_state.NGP_LINKEY.name[(l - 1) as usize]
@@ -1584,7 +1585,7 @@ fn ngp_read_xtension(
                                 .copy_from_slice(&parser_state.NGP_LINKEY.name[..n]);
                             incrementor_name[n] = 0;
                         }
-                        if ((l - 1) == strlen(incrementor_name.as_ptr()) as c_int)
+                        if ((l - 1) == strlen_safe(&incrementor_name) as c_int)
                             && incrementor_name[..n] == parser_state.NGP_LINKEY.name[..n]
                         {
                             incrementor_index += 1;
@@ -1741,7 +1742,8 @@ fn ngp_read_xtension(
         }
 
         if (NGP_OK == r) && !ngph_extname.is_null() {
-            let extname_slice = slice::from_raw_parts(ngph_extname, strlen(ngph_extname) + 1);
+            let extname_slice: &[c_char] =
+                cast_slice(CStr::from_ptr(ngph_extname).to_bytes_with_nul());
             r = ngp_get_extver(parser_state, extname_slice, &mut my_version); /* write correct ext version number */
             lv = c_long::from(my_version); /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
             fits_write_key(
@@ -1837,9 +1839,11 @@ fn ngp_read_group(
 
                 NGP_TOKEN_GROUP => {
                     if NGP_TTYPE_STRING == parser_state.NGP_LINKEY.type_ {
-                        strncpy(
-                            grnm.as_mut_ptr(),
-                            parser_state.NGP_LINKEY.value.s,
+                        strncpy_safe(
+                            &mut grnm,
+                            cast_slice(
+                                CStr::from_ptr(parser_state.NGP_LINKEY.value.s).to_bytes_with_nul(),
+                            ),
                             NGP_MAX_STRING,
                         );
                     } else {
@@ -1863,7 +1867,7 @@ fn ngp_read_group(
                     /* we can have many subsequent HDU defs */
                 }
                 _ => {
-                    l = strlen(std::ptr::addr_of!(parser_state.NGP_LINKEY.name).cast()) as c_int;
+                    l = strlen_safe(&parser_state.NGP_LINKEY.name) as c_int;
                     if (l >= 2)
                         && (l <= 6)
                         && bb(b'#') == parser_state.NGP_LINKEY.name[(l - 1) as usize]
@@ -1874,7 +1878,7 @@ fn ngp_read_group(
                                 .copy_from_slice(&parser_state.NGP_LINKEY.name[..n]);
                             incrementor_name[n] = 0;
                         }
-                        if ((l - 1) == strlen(incrementor_name.as_ptr()) as c_int)
+                        if ((l - 1) == strlen_safe(&incrementor_name) as c_int)
                             && incrementor_name[..n] == parser_state.NGP_LINKEY.name[..n]
                         {
                             incrementor_index += 1;
@@ -2110,9 +2114,11 @@ pub unsafe extern "C" fn fits_execute_template(
                 }
                 NGP_TOKEN_GROUP => {
                     if NGP_TTYPE_STRING == parser_state.NGP_LINKEY.type_ {
-                        strncpy(
-                            grnm.as_mut_ptr(),
-                            parser_state.NGP_LINKEY.value.s,
+                        strncpy_safe(
+                            &mut grnm,
+                            cast_slice(
+                                CStr::from_ptr(parser_state.NGP_LINKEY.value.s).to_bytes_with_nul(),
+                            ),
                             NGP_MAX_STRING,
                         );
                     } else {
@@ -2225,7 +2231,7 @@ mod tests {
         unsafe {
             if token.type_ == NGP_TTYPE_STRING && !token.value.s.is_null() {
                 // Free by reconstructing the Box
-                let str_len = 1 + strlen(token.value.s);
+                let str_len = 1 + CStr::from_ptr(token.value.s).to_bytes().len();
                 drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
                     token.value.s,
                     str_len,

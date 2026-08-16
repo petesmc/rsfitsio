@@ -868,12 +868,12 @@ pub mod rust_api {
     pub use crate::getkey::ffdtdmll_safe as fits_decode_tdimll;
     pub use crate::getkey::fffree_safe as fits_free_memory;
     pub use crate::getkey::ffgcrd_safe as fits_read_card;
-    pub use crate::getkey::ffghbn_safer as fits_read_btblhdr;
-    pub use crate::getkey::ffghbnll_safer as fits_read_btblhdrll;
+    pub use crate::getkey::ffghbn_safe as fits_read_btblhdr;
+    pub use crate::getkey::ffghbnll_safe as fits_read_btblhdrll;
     pub use crate::getkey::ffghpr_safe as fits_read_imghdr;
     pub use crate::getkey::ffghprll_safe as fits_read_imghdrll;
-    pub use crate::getkey::ffghtb_safer as fits_read_atblhdr;
-    pub use crate::getkey::ffghtbll_safer as fits_read_atblhdrll;
+    pub use crate::getkey::ffghtb_safe as fits_read_atblhdr;
+    pub use crate::getkey::ffghtbll_safe as fits_read_atblhdrll;
     pub use crate::getkey::ffgkcsl_safe as fits_get_key_com_strlen;
     pub use crate::getkey::ffgkey_safe as fits_read_keyword;
     pub use crate::getkey::ffgkls_safe as fits_read_key_longstr;
@@ -1132,7 +1132,7 @@ pub mod rust_api {
 
     pub use crate::getcol::ffgcf_safe as fits_read_colnull;
     pub use crate::getcol::ffgcv_safe as fits_read_col;
-    pub use crate::getcol::ffgcvn_safer as fits_read_cols;
+    pub use crate::getcol::ffgcvn_safe as fits_read_cols;
     pub use crate::getcolb::ffgcvb_safe as fits_read_col_byt;
     pub use crate::getcold::ffgcvd_safe as fits_read_col_dbl;
     pub use crate::getcold::ffgcvm_safe as fits_read_col_dblcmp;

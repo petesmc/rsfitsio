@@ -110,7 +110,7 @@ pub fn ffvers_safe(version: &mut f32) -> f32 {
           *version = 4.7.0      Aug 2026
 
        Previous releases:
-          *version = 4.6.4      Apr 2026  
+          *version = 4.6.4      Apr 2026
           *version = 4.6.3      Sep 2025
           *version = 4.6.2      Mar 2025 (autotools change only)
           *version = 4.6.1      Mar 2025 (autotools/cmake config changes only)
@@ -1014,7 +1014,8 @@ pub fn fftrec_safe(
 pub unsafe extern "C" fn ffupch(string: *mut c_char) {
     unsafe {
         if !string.is_null() {
-            let len = strlen(string);
+            // SAFETY: the C contract is a writable, NUL-terminated string.
+            let len = CStr::from_ptr(string).to_bytes().len();
             let s = slice::from_raw_parts_mut(string, len + 1); //+1 for null char
 
             ffupch_safe(s);

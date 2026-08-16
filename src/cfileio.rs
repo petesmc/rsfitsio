@@ -305,9 +305,7 @@ pub fn ffomem_safer(
     Fptr.MAXHDU = 1000; /* initial size of headstart */
     Fptr.filehandle = handle; /* file handle */
     Fptr.driver = driver; /* driver number */
-    unsafe {
-        strcpy(Fptr.filename, name[url..].as_ptr()); /* full input filename */
-    }
+    strcpy_safe(Fptr.get_filename_as_mut_slice(), &name[url..]); /* full input filename */
     Fptr.filesize = filesize as LONGLONG; /* physical file size */
     Fptr.logfilesize = filesize as LONGLONG; /* logical file size */
     Fptr.writemode = mode; /* read-write mode    */
@@ -1189,7 +1187,7 @@ pub fn ffopen_safe(
             Fptr.MAXHDU = 1000; /* initial size of headstart */
             Fptr.filehandle = handle; /* file handle */
             Fptr.driver = driver; /* driver number */
-            strcpy(Fptr.filename, url.as_ptr()); /* full input filename */
+            strcpy_safe(Fptr.get_filename_as_mut_slice(), url); /* full input filename */
             Fptr.filesize = filesize as LONGLONG; /* physical file size */
             Fptr.logfilesize = filesize as LONGLONG; /* logical file size */
             Fptr.writemode = mode; /* read-write mode    */
@@ -5392,9 +5390,7 @@ pub fn ffinit_safe(
     Fptr.filehandle = handle; /* store the file pointer */
     Fptr.driver = driver; /*  driver number         */
 
-    unsafe {
-        strcpy(Fptr.filename, url.as_ptr());
-    } /* full input filename    */
+    strcpy_safe(Fptr.get_filename_as_mut_slice(), url); /* full input filename    */
     Fptr.filesize = 0; /* physical file size     */
     Fptr.logfilesize = 0; /* logical file size      */
     Fptr.writemode = 1; /* read-write mode        */
@@ -5553,9 +5549,7 @@ pub fn ffimem_safer(
     Fptr.MAXHDU = 1000; /* initial size of headstart */
     Fptr.filehandle = handle; /* file handle */
     Fptr.driver = driver; /* driver number */
-    unsafe {
-        strcpy(Fptr.filename, cs!(c"memfile").as_ptr()); /* dummy filename */
-    }
+    strcpy_safe(Fptr.get_filename_as_mut_slice(), cs!(c"memfile")); /* dummy filename */
     Fptr.filesize = *buffsize as LONGLONG; /* physical file size */
     Fptr.logfilesize = *buffsize as LONGLONG; /* logical file size */
     Fptr.writemode = 1; /* read-write mode    */

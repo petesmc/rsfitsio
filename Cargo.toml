@@ -54,7 +54,6 @@ ricecomp = "0.5"
 pliocomp = "0.7"
 hcompress = "0.4"
 chrono = ">=0.4.20"
-cbitset = "0.2"
 memchr = { version = "2.8.3", default-features = false }
 errno = "0.3.14"
 # Used by the fpack/funpack binaries: temporary output files (fpack's fp_tmpnam)

@@ -3567,7 +3567,11 @@ pub fn ffiter_safe(
                                 if tstatus == 0
                                     && let ColNullValue::StringNull(ptr) = col[jj].null
                                 {
-                                    libc::strncat(ptr, nullstr.as_ptr(), rept as usize);
+                                    // SAFETY: `ptr` is the calloc'd rept+1 byte
+                                    // null-value buffer allocated just above.
+                                    let nullval =
+                                        slice::from_raw_parts_mut(ptr, (rept + 1) as usize);
+                                    strncat_safe(nullval, &nullstr, rept as usize);
                                 }
                             } else {
                                 ffpmsg_str("ffiter failed to allocate memory arrays");

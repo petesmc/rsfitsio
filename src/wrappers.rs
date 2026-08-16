@@ -1,7 +1,6 @@
 use core::{cmp, ffi::CStr, ptr, str::FromStr};
 
 use bytemuck::cast_slice;
-use cbitset::BitSet256;
 
 use crate::c_types::{c_char, c_int, c_uchar, size_t};
 
@@ -24,23 +23,6 @@ pub(crate) unsafe fn strcpy(dst: *mut c_char, src: *const c_char) -> *mut c_char
             }
 
             i += 1;
-        }
-
-        dst
-    }
-}
-
-pub(crate) unsafe fn strncpy(dst: *mut c_char, src: *const c_char, n: size_t) -> *mut c_char {
-    unsafe {
-        let mut i = 0;
-
-        while *src.add(i) != 0 && i < n {
-            *dst.add(i) = *src.add(i);
-            i += 1;
-        }
-
-        for i in i..n {
-            *dst.add(i) = 0;
         }
 
         dst
@@ -132,19 +114,24 @@ pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
 }
 
 pub(crate) unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
-    unsafe { strncmp(s1, s2, 1024) }
+    unsafe { strncmp(s1, s2, size_t::MAX) }
 }
 
 pub(crate) unsafe fn strncmp(s1: *const c_char, s2: *const c_char, n: size_t) -> c_int {
     unsafe {
-        let s1 = core::slice::from_raw_parts(s1.cast::<c_uchar>(), n);
-        let s2 = core::slice::from_raw_parts(s2.cast::<c_uchar>(), n);
+        // Walk one byte at a time. Materialising `n`-length slices up front
+        // would read past the end of a shorter allocation, which is UB even
+        // when the comparison would have stopped at the NUL first.
+        let mut i = 0;
+        while i < n {
+            let a = *s1.add(i).cast::<c_uchar>();
+            let b = *s2.add(i).cast::<c_uchar>();
 
-        for (&a, &b) in s1.iter().zip(s2.iter()) {
-            let val = c_int::from(a) - c_int::from(b);
             if a != b || a == 0 {
-                return val;
+                return c_int::from(a) - c_int::from(b);
             }
+
+            i += 1;
         }
 
         0
@@ -155,18 +142,23 @@ pub(crate) fn strlen_safe_cstr(str: &CStr) -> usize {
     str.to_bytes().len()
 }
 
+/// Length of the NUL-terminated string `cs`, not counting the terminator.
+///
+/// Panics if `cs` holds no NUL at all -- that is a malformed C string, and
+/// every caller here goes on to index the buffer expecting one.
 pub fn strlen_safe(cs: &[c_char]) -> usize {
-    let mut ii = 0;
-    let len = cs.len();
-    while ii < len {
-        if cs[ii] == 0 {
-            return ii;
-        }
-        ii += 1;
+    match strnlen_safe(cs, cs.len()) {
+        n if n < cs.len() => n,
+        _ => panic!("Invalid C Style String"),
     }
+}
 
-    panic!("Invalid C Style String");
-    len
+/// Length of `cs`, stopping at the first NUL or after `n` characters,
+/// whichever comes first. Unlike [`strlen_safe`] this never panics: a buffer
+/// with no terminator within the limit simply reports the limit.
+pub fn strnlen_safe(cs: &[c_char], n: usize) -> usize {
+    let limit = cmp::min(n, cs.len());
+    cs[..limit].iter().position(|&c| c == 0).unwrap_or(limit)
 }
 
 pub(crate) unsafe fn strlen(s: *const c_char) -> size_t {
@@ -223,19 +215,6 @@ pub fn strtod_safe(s: &[c_char], endp: &mut usize) -> f64 {
     strto_float_impl(s, endp)
 }
 
-pub(crate) unsafe fn strchr(mut s: *const c_char, c: c_int) -> *mut c_char {
-    unsafe {
-        let c = c as c_char;
-        while *s != 0 {
-            if *s == c {
-                return s as *mut c_char;
-            }
-            s = s.offset(1);
-        }
-        ptr::null_mut()
-    }
-}
-
 pub fn strchr_safe(cs: &[c_char], c: c_char) -> Option<usize> {
     cs.iter().position(|&x| x == c)
 }
@@ -278,16 +257,22 @@ pub(crate) unsafe fn strstr(haystack: *const c_char, needle: *const c_char) -> *
     unsafe { inner_strstr(haystack, needle, !0) }
 }
 
+/// Index of the first occurrence of the NUL-terminated needle `ct` in the
+/// NUL-terminated haystack `cs`, or `None` if not present. Mirrors C `strstr`:
+/// an empty needle matches at 0, and neither string is read past its NUL, so
+/// trailing buffer padding is ignored.
 pub fn strstr_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
-    unsafe {
-        let t = strstr(cs.as_ptr(), ct.as_ptr());
+    let hay = &cs[..strlen_safe(cs)];
+    let needle = &ct[..strlen_safe(ct)];
 
-        if t.is_null() {
-            None
-        } else {
-            Some(t.offset_from(cs.as_ptr()) as usize)
-        }
+    if needle.is_empty() {
+        return Some(0);
     }
+    if needle.len() > hay.len() {
+        return None;
+    }
+
+    hay.windows(needle.len()).position(|w| w == needle)
 }
 
 pub(crate) unsafe fn strcat(s1: *mut c_char, s2: *const c_char) -> *mut c_char {
@@ -373,102 +358,12 @@ pub fn isdigit_safe(c: c_char) -> bool {
     (b'0' as c_char) <= c && c <= (b'9' as c_char)
 }
 
-pub(crate) fn ffstrtok(
-    str: *mut c_char,
-    delim: *const c_char,
-    saveptr: *mut *mut c_char,
-) -> *mut c_char {
-    unsafe { strtok_r(str, delim, saveptr) }
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
-pub(crate) unsafe fn strtok_r(
-    s: *mut c_char,
-    delimiter: *const c_char,
-    lasts: *mut *mut c_char,
-) -> *mut c_char {
-    unsafe {
-        // Loosely based on GLIBC implementation
-        let mut haystack = s;
-        if haystack.is_null() {
-            if (*lasts).is_null() {
-                return ptr::null_mut();
-            }
-            haystack = *lasts;
-        }
-
-        // Skip past any extra delimiter left over from previous call
-        haystack = haystack.add(strspn(haystack, delimiter));
-        if *haystack == 0 {
-            *lasts = ptr::null_mut();
-            return ptr::null_mut();
-        }
-
-        // Build token by injecting null byte into delimiter
-        let token = haystack;
-        haystack = strpbrk(token, delimiter);
-        if !haystack.is_null() {
-            haystack.write(0);
-            haystack = haystack.add(1);
-            *lasts = haystack;
-        } else {
-            *lasts = ptr::null_mut();
-        }
-
-        token
-    }
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
-unsafe fn strpbrk(s1: *const c_char, s2: *const c_char) -> *mut c_char {
-    unsafe {
-        let p = s1.add(strcspn(s1, s2));
-        if *p != 0 {
-            p as *mut c_char
-        } else {
-            ptr::null_mut()
-        }
-    }
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
-unsafe fn strspn(s1: *const c_char, s2: *const c_char) -> size_t {
-    unsafe { inner_strspn(s1, s2, true) }
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
-unsafe fn strcspn(s1: *const c_char, s2: *const c_char) -> size_t {
-    unsafe { inner_strspn(s1, s2, false) }
-}
-
-// Copied from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/header/string/mod.rs
-unsafe fn inner_strspn(s1: *const c_char, s2: *const c_char, cmp: bool) -> size_t {
-    unsafe {
-        let mut s1 = s1.cast::<u8>();
-        let mut s2 = s2.cast::<u8>();
-
-        // The below logic is effectively ripped from the musl implementation. It
-        // works by placing each byte as it's own bit in an array of numbers. Each
-        // number can hold up to 8 * mem::size_of::<usize>() bits. We need 256 bits
-        // in total, to fit one byte.
-
-        let mut set = BitSet256::new();
-
-        while *s2 != 0 {
-            set.insert(*s2 as usize);
-            s2 = s2.offset(1);
-        }
-
-        let mut i = 0;
-        while *s1 != 0 {
-            if set.contains(*s1 as usize) != cmp {
-                break;
-            }
-            i += 1;
-            s1 = s1.offset(1);
-        }
-        i
-    }
+/// Index of the first character of `cs` that is in the set `ct`, or `None` if
+/// none is. The safe counterpart of C `strpbrk`, returning an index rather than
+/// an interior pointer.
+pub fn strpbrk_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
+    let i = strcspn_safe(cs, ct);
+    (cs[i] != 0).then_some(i)
 }
 
 // Copied and modified from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/macros.rs
@@ -849,6 +744,136 @@ mod tests {
         let ru = unsafe { libc::strcmp(s1.as_ptr(), s2.as_ptr()) };
         let rs = strcmp_safe(s3, s4);
         assert_eq!(ru.signum(), rs.signum());
+    }
+
+    #[test]
+    fn test_strnlen_safe() {
+        let s: &[c_char] = bytemuck::cast_slice(b"hello\0world\0");
+
+        assert_eq!(strnlen_safe(s, 12), 5);
+        assert_eq!(strnlen_safe(s, 5), 5);
+        // stops at the limit before reaching the NUL
+        assert_eq!(strnlen_safe(s, 3), 3);
+        assert_eq!(strnlen_safe(s, 0), 0);
+        // limit past the end of the slice is clamped, not a panic
+        assert_eq!(strnlen_safe(s, usize::MAX), 5);
+
+        // no terminator within the slice at all -- reports the whole length
+        let unterminated: &[c_char] = bytemuck::cast_slice(b"abcd");
+        assert_eq!(strnlen_safe(unterminated, usize::MAX), 4);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_compare_strnlen_strnlen_safe() {
+        let s: &[c_char] = bytemuck::cast_slice(b"hello\0");
+
+        for n in 0..=6 {
+            let ru = unsafe { libc::strnlen(s.as_ptr(), n) };
+            assert_eq!(ru, strnlen_safe(s, n), "n = {n}");
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid C Style String")]
+    fn test_strlen_safe_rejects_unterminated() {
+        let s: &[c_char] = bytemuck::cast_slice(b"abcd");
+        strlen_safe(s);
+    }
+
+    #[test]
+    fn test_strstr_safe() {
+        let hay: &[c_char] = bytemuck::cast_slice(b"the quick brown fox\0");
+
+        assert_eq!(strstr_safe(hay, bytemuck::cast_slice(b"quick\0")), Some(4));
+        assert_eq!(strstr_safe(hay, bytemuck::cast_slice(b"the\0")), Some(0));
+        assert_eq!(strstr_safe(hay, bytemuck::cast_slice(b"fox\0")), Some(16));
+        assert_eq!(strstr_safe(hay, bytemuck::cast_slice(b"cat\0")), None);
+        /* C strstr: the empty needle matches at position 0 */
+        assert_eq!(strstr_safe(hay, bytemuck::cast_slice(b"\0")), Some(0));
+        /* needle longer than the haystack */
+        assert_eq!(
+            strstr_safe(
+                bytemuck::cast_slice(b"ab\0"),
+                bytemuck::cast_slice(b"abc\0")
+            ),
+            None
+        );
+        /* overlapping prefix must not stop the scan early */
+        assert_eq!(
+            strstr_safe(
+                bytemuck::cast_slice(b"aaab\0"),
+                bytemuck::cast_slice(b"aab\0")
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_compare_strstr_strstr_safe() {
+        /* Padding after the NUL must be ignored, exactly as C strstr does. */
+        let mut hay = [0 as c_char; 32];
+        hay[..20].copy_from_slice(bytemuck::cast_slice(b"the quick brown fox\0"));
+        hay[20..].copy_from_slice(bytemuck::cast_slice(b"cat and dog\0"));
+
+        for needle in [&b"quick\0"[..], b"fox\0", b"cat\0", b"the\0", b"\0"] {
+            let needle: &[c_char] = bytemuck::cast_slice(needle);
+            let ru = unsafe { libc::strstr(hay.as_ptr(), needle.as_ptr()) };
+            let expected = if ru.is_null() {
+                None
+            } else {
+                Some(unsafe { ru.offset_from(hay.as_ptr()) } as usize)
+            };
+            assert_eq!(strstr_safe(&hay, needle), expected, "needle {needle:?}");
+        }
+    }
+
+    #[test]
+    fn test_strpbrk_safe() {
+        let s: &[c_char] = bytemuck::cast_slice(b"hello, world\0");
+
+        assert_eq!(strpbrk_safe(s, bytemuck::cast_slice(b",;\0")), Some(5));
+        assert_eq!(strpbrk_safe(s, bytemuck::cast_slice(b"ol\0")), Some(2));
+        assert_eq!(strpbrk_safe(s, bytemuck::cast_slice(b"xyz\0")), None);
+        /* an empty set matches nothing */
+        assert_eq!(strpbrk_safe(s, bytemuck::cast_slice(b"\0")), None);
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_compare_strpbrk_strpbrk_safe() {
+        let s: &[c_char] = bytemuck::cast_slice(b"hello, world\0");
+
+        for set in [&b",;\0"[..], b"ol\0", b"xyz\0", b"\0", b"h\0", b"d\0"] {
+            let set: &[c_char] = bytemuck::cast_slice(set);
+            let ru = unsafe { libc::strpbrk(s.as_ptr(), set.as_ptr()) };
+            let expected = if ru.is_null() {
+                None
+            } else {
+                Some(unsafe { ru.offset_from(s.as_ptr()) } as usize)
+            };
+            assert_eq!(strpbrk_safe(s, set), expected, "set {set:?}");
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_raw_strncmp_stops_at_nul_within_allocation() {
+        /* The raw wrapper used to materialise an n-byte slice up front, which
+        over-read whenever the strings ended sooner. Compare against libc with
+        an n far larger than either allocation. */
+        let a: &[c_char] = bytemuck::cast_slice(b"abc\0");
+        let b: &[c_char] = bytemuck::cast_slice(b"abd\0");
+
+        let ru = unsafe { libc::strncmp(a.as_ptr(), b.as_ptr(), 4096) };
+        let rs = unsafe { strncmp(a.as_ptr(), b.as_ptr(), 4096) };
+        assert_eq!(ru.signum(), rs.signum());
+
+        let ru = unsafe { libc::strcmp(a.as_ptr(), a.as_ptr()) };
+        let rs = unsafe { strcmp(a.as_ptr(), a.as_ptr()) };
+        assert_eq!(ru.signum(), rs.signum());
+        assert_eq!(rs, 0);
     }
 
     // Write test cases for strto_float_impl

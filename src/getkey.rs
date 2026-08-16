@@ -4066,6 +4066,54 @@ pub fn ffghprll_safe(
 }
 
 /*--------------------------------------------------------------------------*/
+/// Number of entries of the `char *arr[]` output arrays of ffghtb/ffghbn that
+/// the safe implementation may touch.
+///
+/// The C API passes those arrays as bare `char **` with no length, so the count
+/// has to be recovered here. It is exactly the `maxf` the C computes,
+/// `min(maxfield, TFIELDS)` — or all TFIELDS of them when `maxfield` is
+/// negative ("return them all"). `maxfield` alone will not do: callers routinely
+/// pass a `maxfield` larger than the table's TFIELDS and size their arrays for
+/// the real column count, so reading `maxfield` entries would run off the end.
+///
+/// A header without TFIELDS is not a table at all, and the `_safe` call that
+/// follows rejects it before touching the arrays, so 0 is the right answer there.
+fn ffgh_array_len(fptr: &mut fitsfile, maxfield: c_int) -> usize {
+    let mut tstatus: c_int = 0;
+    let mut fields: c_long = 0;
+    if ffgkyj_safe(fptr, cs!(c"TFIELDS"), &mut fields, None, &mut tstatus) > 0 || fields < 0 {
+        return 0;
+    }
+
+    if maxfield < 0 {
+        fields as usize
+    } else {
+        cmp::min(maxfield as c_long, fields) as usize
+    }
+}
+
+/// Rebuild a C `char *arr[nelem]` output array as the slice-of-slices the
+/// `_safe` signatures take. Each element points at an `FLEN_VALUE` buffer, the
+/// size CFITSIO documents for these arrays.
+///
+/// SAFETY: `arr` is either NULL or points to `nelem` valid `char *`, each of
+/// which points to at least `FLEN_VALUE` writable bytes.
+unsafe fn ffgh_str_array<'a>(arr: *mut *mut c_char, nelem: usize) -> Option<Vec<&'a mut [c_char]>> {
+    if arr.is_null() {
+        return None;
+    }
+
+    unsafe {
+        Some(
+            slice::from_raw_parts_mut(arr, nelem)
+                .iter_mut()
+                .map(|item| slice::from_raw_parts_mut(*item, FLEN_VALUE))
+                .collect(),
+        )
+    }
+}
+
+/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
@@ -4087,237 +4135,240 @@ pub unsafe extern "C" fn ffghtb(
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        ffghtb_safer(
-            fptr, maxfield, naxis1, naxis2, tfields, ttype, tbcol, tform, tunit, extnm, status,
+        let nelem = ffgh_array_len(fptr, maxfield);
+
+        let mut v_ttype = ffgh_str_array(ttype, nelem);
+        let mut v_tform = ffgh_str_array(tform, nelem);
+        let mut v_tunit = ffgh_str_array(tunit, nelem);
+        let mut v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
+        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+
+        ffghtb_safe(
+            fptr,
+            maxfield,
+            naxis1.as_mut(),
+            naxis2.as_mut(),
+            tfields.as_mut(),
+            v_ttype.as_deref_mut(),
+            v_tbcol.as_deref_mut(),
+            v_tform.as_deref_mut(),
+            v_tunit.as_deref_mut(),
+            v_extnm.as_deref_mut(),
+            status,
         )
     }
 }
 
-/// Safe internal implementation of ffghtb
-pub unsafe fn ffghtb_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis1: *mut c_long,     /* O - length of table row in bytes             */
-    naxis2: *mut c_long,     /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tbcol: *mut c_long,      /* O - byte offset in row to each column        */
-    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
-    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    status: &mut c_int,      /* IO - error status                            */
+/*--------------------------------------------------------------------------*/
+/// Get keywords from the Header of the ASCII TaBle:
+/// Check that the keywords conform to the FITS standard and return the
+/// parameters which describe the table.
+///
+/// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
+/// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
+/// when `maxfield` is negative), and so must `tbcol`.
+pub fn ffghtb_safe(
+    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
+    maxfield: c_int,             /* I - maximum no. of columns to read;          */
+    naxis1: Option<&mut c_long>, /* O - length of table row in bytes             */
+    naxis2: Option<&mut c_long>, /* O - number of rows in the table              */
+    tfields: Option<&mut c_int>, /* O - number of columns in the table           */
+    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
+    tbcol: Option<&mut [c_long]>, /* O - byte offset in row to each column        */
+    tform: Option<&mut [&mut [c_char]]>, /* O - value of TFORMn keyword for each column  */
+    mut tunit: Option<&mut [&mut [c_char]]>, /* O - value of TUNITn keyword for each column */
+    extnm: Option<&mut [c_char]>, /* O - value of EXTNAME keyword, if any         */
+    status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
-    unsafe {
-        let mut maxf: c_int = 0;
-        let mut nfound: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut fields: c_long = 0;
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut llnaxis1: LONGLONG = 0;
-        let mut llnaxis2: LONGLONG = 0;
-        let mut pcount: LONGLONG = 0;
+    let mut maxf: c_int = 0;
+    let mut nfound: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut fields: c_long = 0;
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut llnaxis1: LONGLONG = 0;
+    let mut llnaxis2: LONGLONG = 0;
+    let mut pcount: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* read the first keyword of the extension */
+    ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
+
+    if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
+        if ffc2s(&value, &mut xtension, status) > 0 {
+            /* get the value string */
+            ffpmsg_str("Bad value string for XTENSION keyword:");
+            ffpmsg_slice(&value);
+            return *status;
+        }
+
+        /* allow the quoted string value to begin in any column and */
+        /* allow any number of trailing blanks before the closing quote */
+        /* first char must be a quote */
+        if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "This is not a TABLE extension: {}",
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+            *status = NOT_ATABLE;
+            return *status;
+        }
+    } else {
+        /* error: 1st keyword of extension != XTENSION */
+
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "First keyword of the extension is not XTENSION: {}",
+            slice_to_str!(&name),
+        );
+        ffpmsg_slice(&message);
+        *status = NO_XTENSION;
+        return *status;
+    }
+
+    if ffgttb(
+        fptr,
+        &mut llnaxis1,
+        &mut llnaxis2,
+        &mut pcount,
+        &mut fields,
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    if let Some(naxis1) = naxis1 {
+        *naxis1 = llnaxis1 as c_long;
+    }
+
+    if let Some(naxis2) = naxis2 {
+        *naxis2 = llnaxis2 as c_long;
+    }
+
+    if pcount != 0 {
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "PCOUNT = {:.0} is illegal in ASCII table; must = 0",
+            pcount as f64,
+        );
+        ffpmsg_slice(&message);
+        *status = BAD_PCOUNT;
+        return *status;
+    }
+
+    if let Some(tfields) = tfields {
+        *tfields = fields as c_int;
+    }
+
+    if maxfield < 0 {
+        maxf = fields as c_int;
+    } else {
+        maxf = cmp::min(maxfield, fields as c_int);
+    }
+
+    if maxf > 0 {
+        let maxfu = maxf as usize;
+
+        for ii in 0..maxfu {
+            /* initialize optional keyword values */
+            if let Some(ttype) = ttype.as_deref_mut() {
+                ttype[ii][0] = 0;
+            }
+
+            if let Some(tunit) = tunit.as_deref_mut() {
+                tunit[ii][0] = 0;
+            }
+        }
+
+        if let Some(ttype) = ttype.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TTYPE"),
+                1,
+                maxf,
+                &mut ttype[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
+
+        if let Some(tunit) = tunit.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TUNIT"),
+                1,
+                maxf,
+                &mut tunit[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
 
         if *status > 0 {
             return *status;
         }
 
-        /* read the first keyword of the extension */
-        ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
-
-        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
-            if ffc2s(&value, &mut xtension, status) > 0 {
-                /* get the value string */
-                ffpmsg_str("Bad value string for XTENSION keyword:");
-                ffpmsg_slice(&value);
-                return *status;
-            }
-
-            /* allow the quoted string value to begin in any column and */
-            /* allow any number of trailing blanks before the closing quote */
-            /* first char must be a quote */
-            if (value[0] != bb(b'\'')) || (strcmp_safe(&xtension, cs!(c"TABLE")) != 0) {
-                int_snprintf!(
-                    &mut message,
-                    FLEN_ERRMSG,
-                    "This is not a TABLE extension: {}",
-                    slice_to_str!(&value),
-                );
-                ffpmsg_slice(&message);
-                *status = NOT_ATABLE;
-                return *status;
-            }
-        } else {
-            /* error: 1st keyword of extension != XTENSION */
-
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "First keyword of the extension is not XTENSION: {}",
-                slice_to_str!(&name),
+        if let Some(tbcol) = tbcol {
+            ffgknj_safe(
+                fptr,
+                cs!(c"TBCOL"),
+                1,
+                maxf,
+                &mut tbcol[..maxfu],
+                &mut nfound,
+                status,
             );
-            ffpmsg_slice(&message);
-            *status = NO_XTENSION;
-            return *status;
-        }
 
-        if ffgttb(
-            fptr,
-            &mut llnaxis1,
-            &mut llnaxis2,
-            &mut pcount,
-            &mut fields,
-            status,
-        ) > 0
-        {
-            return *status;
-        }
-
-        if let Some(naxis1) = naxis1.as_mut() {
-            *naxis1 = llnaxis1 as c_long;
-        }
-
-        if let Some(naxis2) = naxis2.as_mut() {
-            *naxis2 = llnaxis2 as c_long;
-        }
-
-        if pcount != 0 {
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "PCOUNT = {:.0} is illegal in ASCII table; must = 0",
-                pcount as f64,
-            );
-            ffpmsg_slice(&message);
-            *status = BAD_PCOUNT;
-            return *status;
-        }
-
-        if let Some(tfields) = tfields.as_mut() {
-            *tfields = fields as c_int;
-        }
-
-        if maxfield < 0 {
-            maxf = fields as c_int;
-        } else {
-            maxf = cmp::min(maxfield, fields as c_int);
-        }
-
-        if maxf > 0 {
-            for ii in 0..(maxf as usize) {
-                /* initialize optional keyword values */
-                if !ttype.is_null() {
-                    let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                    *(ttype[ii]) = 0;
-                }
-
-                if !tunit.is_null() {
-                    let tunit_arr = slice::from_raw_parts_mut(tunit, maxf as usize);
-                    (*(tunit_arr[ii])) = 0;
-                }
-            }
-
-            if !ttype.is_null() {
-                let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                let mut v_ttype = Vec::new();
-
-                for item in ttype {
-                    let ttype_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_ttype.push(ttype_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TTYPE"),
-                    1,
-                    maxf,
-                    &mut v_ttype,
-                    &mut nfound,
-                    status,
-                );
-            }
-
-            if !tunit.is_null() {
-                let tunit_arr = slice::from_raw_parts_mut(tunit, maxf as usize);
-                let mut v_tunit = Vec::new();
-
-                for item in tunit_arr {
-                    let tunit_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tunit.push(tunit_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TUNIT"),
-                    1,
-                    maxf,
-                    &mut v_tunit,
-                    &mut nfound,
-                    status,
-                );
-            }
-
-            if *status > 0 {
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str("Required TBCOL keyword(s) not found in ASCII table header (ffghtb).");
+                *status = NO_TBCOL;
                 return *status;
             }
-
-            if !tbcol.is_null() {
-                let tbcol = slice::from_raw_parts_mut(tbcol, maxf as usize);
-
-                ffgknj_safe(fptr, cs!(c"TBCOL"), 1, maxf, tbcol, &mut nfound, status);
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtb).",
-                    );
-                    *status = NO_TBCOL;
-                    return *status;
-                }
-            }
-
-            if !tform.is_null() {
-                let tform = slice::from_raw_parts_mut(tform, maxf as usize);
-                let mut v_tform = Vec::new();
-
-                for item in tform {
-                    let tform_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tform.push(tform_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TFORM"),
-                    1,
-                    maxf,
-                    &mut v_tform,
-                    &mut nfound,
-                    status,
-                );
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TFORM keyword(s) not found in ASCII table header (ffghtb).",
-                    );
-                    *status = NO_TFORM;
-                    return *status;
-                }
-            }
         }
 
-        if !extnm.is_null() {
-            let extnm = slice::from_raw_parts_mut(extnm, 69);
-            extnm[0] = 0;
+        if let Some(tform) = tform {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TFORM"),
+                1,
+                maxf,
+                &mut tform[..maxfu],
+                &mut nfound,
+                status,
+            );
 
-            tstatus = *status;
-            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
-
-            if *status == KEY_NO_EXIST {
-                *status = tstatus; /* keyword not required, so ignore error */
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str("Required TFORM keyword(s) not found in ASCII table header (ffghtb).");
+                *status = NO_TFORM;
+                return *status;
             }
         }
-
-        *status
     }
+
+    if let Some(extnm) = extnm {
+        extnm[0] = 0;
+
+        tstatus = *status;
+        ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
+
+        if *status == KEY_NO_EXIST {
+            *status = tstatus; /* keyword not required, so ignore error */
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -4342,8 +4393,26 @@ pub unsafe extern "C" fn ffghtbll(
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        ffghtbll_safer(
-            fptr, maxfield, naxis1, naxis2, tfields, ttype, tbcol, tform, tunit, extnm, status,
+        let nelem = ffgh_array_len(fptr, maxfield);
+
+        let mut v_ttype = ffgh_str_array(ttype, nelem);
+        let mut v_tform = ffgh_str_array(tform, nelem);
+        let mut v_tunit = ffgh_str_array(tunit, nelem);
+        let mut v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
+        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+
+        ffghtbll_safe(
+            fptr,
+            maxfield,
+            naxis1.as_mut(),
+            naxis2.as_mut(),
+            tfields.as_mut(),
+            v_ttype.as_deref_mut(),
+            v_tbcol.as_deref_mut(),
+            v_tform.as_deref_mut(),
+            v_tunit.as_deref_mut(),
+            v_extnm.as_deref_mut(),
+            status,
         )
     }
 }
@@ -4352,18 +4421,22 @@ pub unsafe extern "C" fn ffghtbll(
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
-pub unsafe fn ffghtbll_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis1: *mut LONGLONG,   /* O - length of table row in bytes             */
-    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tbcol: *mut LONGLONG,    /* O - byte offset in row to each column        */
-    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
-    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    status: &mut c_int,      /* IO - error status                            */
+///
+/// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
+/// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
+/// when `maxfield` is negative), and so must `tbcol`.
+pub fn ffghtbll_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
+    maxfield: c_int,               /* I - maximum no. of columns to read;          */
+    naxis1: Option<&mut LONGLONG>, /* O - length of table row in bytes             */
+    naxis2: Option<&mut LONGLONG>, /* O - number of rows in the table              */
+    tfields: Option<&mut c_int>,   /* O - number of columns in the table           */
+    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
+    tbcol: Option<&mut [LONGLONG]>, /* O - byte offset in row to each column        */
+    tform: Option<&mut [&mut [c_char]]>, /* O - value of TFORMn keyword for each column  */
+    mut tunit: Option<&mut [&mut [c_char]]>, /* O - value of TUNITn keyword for each column */
+    extnm: Option<&mut [c_char]>,  /* O - value of EXTNAME keyword, if any         */
+    status: &mut c_int,            /* IO - error status                            */
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -4433,14 +4506,12 @@ pub unsafe fn ffghtbll_safer(
         return *status;
     }
 
-    unsafe {
-        if let Some(naxis1) = naxis1.as_mut() {
-            *naxis1 = llnaxis1;
-        }
+    if let Some(naxis1) = naxis1 {
+        *naxis1 = llnaxis1;
+    }
 
-        if let Some(naxis2) = naxis2.as_mut() {
-            *naxis2 = llnaxis2;
-        }
+    if let Some(naxis2) = naxis2 {
+        *naxis2 = llnaxis2;
     }
 
     if pcount != 0 {
@@ -4455,10 +4526,8 @@ pub unsafe fn ffghtbll_safer(
         return *status;
     }
 
-    unsafe {
-        if let Some(tfields) = tfields.as_mut() {
-            *tfields = fields as c_int;
-        }
+    if let Some(tfields) = tfields {
+        *tfields = fields as c_int;
     }
 
     if maxfield < 0 {
@@ -4468,119 +4537,92 @@ pub unsafe fn ffghtbll_safer(
     }
 
     if maxf > 0 {
-        unsafe {
-            for ii in 0..(maxf as usize) {
-                /* initialize optional keyword values */
-                if !ttype.is_null() {
-                    let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                    (*ttype[ii]) = 0;
-                }
+        let maxfu = maxf as usize;
 
-                if !tunit.is_null() {
-                    let tunit = slice::from_raw_parts_mut(tunit, maxf as usize);
-                    (*tunit[ii]) = 0;
-                }
+        for ii in 0..maxfu {
+            /* initialize optional keyword values */
+            if let Some(ttype) = ttype.as_deref_mut() {
+                ttype[ii][0] = 0;
             }
 
-            if !ttype.is_null() {
-                let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                let mut v_ttype = Vec::new();
-
-                for item in ttype {
-                    let ttype_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_ttype.push(ttype_item);
-                }
-
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TTYPE"),
-                    1,
-                    maxf,
-                    &mut v_ttype,
-                    &mut nfound,
-                    status,
-                );
+            if let Some(tunit) = tunit.as_deref_mut() {
+                tunit[ii][0] = 0;
             }
+        }
 
-            if !tunit.is_null() {
-                let tunit_arr = slice::from_raw_parts_mut(tunit, maxf as usize);
-                let mut v_tunit = Vec::new();
+        if let Some(ttype) = ttype.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TTYPE"),
+                1,
+                maxf,
+                &mut ttype[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
 
-                for item in tunit_arr {
-                    let tunit_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tunit.push(tunit_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TUNIT"),
-                    1,
-                    maxf,
-                    &mut v_tunit,
-                    &mut nfound,
-                    status,
-                );
-            }
+        if let Some(tunit) = tunit.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TUNIT"),
+                1,
+                maxf,
+                &mut tunit[..maxfu],
+                &mut nfound,
+                status,
+            );
         }
 
         if *status > 0 {
             return *status;
         }
 
-        unsafe {
-            if !tbcol.is_null() {
-                let tbcol = slice::from_raw_parts_mut(tbcol, maxf as usize);
+        if let Some(tbcol) = tbcol {
+            ffgknjj_safe(
+                fptr,
+                cs!(c"TBCOL"),
+                1,
+                maxf,
+                &mut tbcol[..maxfu],
+                &mut nfound,
+                status,
+            );
 
-                ffgknjj_safe(fptr, cs!(c"TBCOL"), 1, maxf, tbcol, &mut nfound, status);
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TBCOL keyword(s) not found in ASCII table header (ffghtbll).",
-                    );
-                    *status = NO_TBCOL;
-                    return *status;
-                }
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str("Required TBCOL keyword(s) not found in ASCII table header (ffghtbll).");
+                *status = NO_TBCOL;
+                return *status;
             }
+        }
 
-            if !tform.is_null() {
-                let tform = slice::from_raw_parts_mut(tform, maxf as usize);
-                let mut v_tform = Vec::new();
+        if let Some(tform) = tform {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TFORM"),
+                1,
+                maxf,
+                &mut tform[..maxfu],
+                &mut nfound,
+                status,
+            );
 
-                for item in tform {
-                    let tform_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tform.push(tform_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TFORM"),
-                    1,
-                    maxf,
-                    &mut v_tform,
-                    &mut nfound,
-                    status,
-                );
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TFORM keyword(s) not found in ASCII table header (ffghtbll).",
-                    );
-                    *status = NO_TFORM;
-                    return *status;
-                }
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str("Required TFORM keyword(s) not found in ASCII table header (ffghtbll).");
+                *status = NO_TFORM;
+                return *status;
             }
         }
     }
 
-    unsafe {
-        if !extnm.is_null() {
-            let extnm = slice::from_raw_parts_mut(extnm, 69);
-            extnm[0] = 0;
+    if let Some(extnm) = extnm {
+        extnm[0] = 0;
 
-            tstatus = *status;
-            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
+        tstatus = *status;
+        ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
-            if *status == KEY_NO_EXIST {
-                *status = tstatus; /* keyword not required, so ignore error */
-            }
+        if *status == KEY_NO_EXIST {
+            *status = tstatus; /* keyword not required, so ignore error */
         }
     }
 
@@ -4608,8 +4650,24 @@ pub unsafe extern "C" fn ffghbn(
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        ffghbn_safer(
-            fptr, maxfield, naxis2, tfields, ttype, tform, tunit, extnm, pcount, status,
+        let nelem = ffgh_array_len(fptr, maxfield);
+
+        let mut v_ttype = ffgh_str_array(ttype, nelem);
+        let mut v_tform = ffgh_str_array(tform, nelem);
+        let mut v_tunit = ffgh_str_array(tunit, nelem);
+        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+
+        ffghbn_safe(
+            fptr,
+            maxfield,
+            naxis2.as_mut(),
+            tfields.as_mut(),
+            v_ttype.as_deref_mut(),
+            v_tform.as_deref_mut(),
+            v_tunit.as_deref_mut(),
+            v_extnm.as_deref_mut(),
+            pcount.as_mut(),
+            status,
         )
     }
 }
@@ -4618,17 +4676,21 @@ pub unsafe extern "C" fn ffghbn(
 /// Get keywords from the Header of the BiNary table:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
-pub unsafe fn ffghbn_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis2: *mut c_long,     /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
-    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    pcount: *mut c_long,     /* O - value of PCOUNT keyword                  */
-    status: &mut c_int,      /* IO - error status                            */
+///
+/// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
+/// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
+/// when `maxfield` is negative).
+pub fn ffghbn_safe(
+    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
+    maxfield: c_int,             /* I - maximum no. of columns to read;          */
+    naxis2: Option<&mut c_long>, /* O - number of rows in the table              */
+    tfields: Option<&mut c_int>, /* O - number of columns in the table           */
+    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
+    tform: Option<&mut [&mut [c_char]]>, /* O - TFORMn value for each column             */
+    mut tunit: Option<&mut [&mut [c_char]]>, /* O - TUNITn value for each column          */
+    extnm: Option<&mut [c_char]>, /* O - value of EXTNAME keyword, if any         */
+    pcount: Option<&mut c_long>, /* O - value of PCOUNT keyword                  */
+    status: &mut c_int,          /* IO - error status                            */
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -4702,18 +4764,16 @@ pub unsafe fn ffghbn_safer(
         return *status;
     }
 
-    unsafe {
-        if let Some(naxis2) = naxis2.as_mut() {
-            *naxis2 = naxis2ll as c_long;
-        }
+    if let Some(naxis2) = naxis2 {
+        *naxis2 = naxis2ll as c_long;
+    }
 
-        if let Some(pcount) = pcount.as_mut() {
-            *pcount = pcountll as c_long;
-        }
+    if let Some(pcount) = pcount {
+        *pcount = pcountll as c_long;
+    }
 
-        if let Some(tfields) = tfields.as_mut() {
-            *tfields = fields as c_int;
-        }
+    if let Some(tfields) = tfields {
+        *tfields = fields as c_int;
     }
 
     if maxfield < 0 {
@@ -4723,103 +4783,74 @@ pub unsafe fn ffghbn_safer(
     }
 
     if maxf > 0 {
-        unsafe {
-            for ii in 0..(maxf as usize) {
-                /* initialize optional keyword values */
-                if !ttype.is_null() {
-                    let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                    *(ttype[ii]) = 0;
-                }
+        let maxfu = maxf as usize;
 
-                if !tunit.is_null() {
-                    let tunit = slice::from_raw_parts_mut(tunit, maxf as usize);
-                    *(tunit[ii]) = 0;
-                }
+        for ii in 0..maxfu {
+            /* initialize optional keyword values */
+            if let Some(ttype) = ttype.as_deref_mut() {
+                ttype[ii][0] = 0;
             }
 
-            if !ttype.is_null() {
-                let ttype = slice::from_raw_parts_mut(ttype, maxf as usize);
-                let mut v_ttype = Vec::new();
-
-                for item in ttype {
-                    let ttype_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_ttype.push(ttype_item);
-                }
-
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TTYPE"),
-                    1,
-                    maxf,
-                    &mut v_ttype,
-                    &mut nfound,
-                    status,
-                );
+            if let Some(tunit) = tunit.as_deref_mut() {
+                tunit[ii][0] = 0;
             }
+        }
 
-            if !tunit.is_null() {
-                let tunit_arr = slice::from_raw_parts_mut(tunit, maxf as usize);
-                let mut v_tunit = Vec::new();
+        if let Some(ttype) = ttype.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TTYPE"),
+                1,
+                maxf,
+                &mut ttype[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
 
-                for item in tunit_arr {
-                    let tunit_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tunit.push(tunit_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TUNIT"),
-                    1,
-                    maxf,
-                    &mut v_tunit,
-                    &mut nfound,
-                    status,
-                );
-            }
+        if let Some(tunit) = tunit.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TUNIT"),
+                1,
+                maxf,
+                &mut tunit[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
 
-            if *status > 0 {
+        if *status > 0 {
+            return *status;
+        }
+
+        if let Some(tform) = tform {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TFORM"),
+                1,
+                maxf,
+                &mut tform[..maxfu],
+                &mut nfound,
+                status,
+            );
+
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str("Required TFORM keyword(s) not found in binary table header (ffghbn).");
+                *status = NO_TFORM;
                 return *status;
-            }
-
-            if !tform.is_null() {
-                let tform = slice::from_raw_parts_mut(tform, maxf as usize);
-                let mut v_tform = Vec::new();
-
-                for item in tform {
-                    let tform_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tform.push(tform_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TFORM"),
-                    1,
-                    maxf,
-                    &mut v_tform,
-                    &mut nfound,
-                    status,
-                );
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TFORM keyword(s) not found in binary table header (ffghbn).",
-                    );
-                    *status = NO_TFORM;
-                    return *status;
-                }
             }
         }
     }
 
-    unsafe {
-        if !extnm.is_null() {
-            let extnm = slice::from_raw_parts_mut(extnm, 69);
-            extnm[0] = 0;
+    if let Some(extnm) = extnm {
+        extnm[0] = 0;
 
-            tstatus = *status;
-            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
+        tstatus = *status;
+        ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
 
-            if *status == KEY_NO_EXIST {
-                *status = tstatus; /* keyword not required, so ignore error */
-            }
+        if *status == KEY_NO_EXIST {
+            *status = tstatus; /* keyword not required, so ignore error */
         }
     }
 
@@ -4847,212 +4878,212 @@ pub unsafe extern "C" fn ffghbnll(
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        ffghbnll_safer(
-            fptr, maxfield, naxis2, tfields, ttype, tform, tunit, extnm, pcount, status,
+        let nelem = ffgh_array_len(fptr, maxfield);
+
+        let mut v_ttype = ffgh_str_array(ttype, nelem);
+        let mut v_tform = ffgh_str_array(tform, nelem);
+        let mut v_tunit = ffgh_str_array(tunit, nelem);
+        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+
+        ffghbnll_safe(
+            fptr,
+            maxfield,
+            naxis2.as_mut(),
+            tfields.as_mut(),
+            v_ttype.as_deref_mut(),
+            v_tform.as_deref_mut(),
+            v_tunit.as_deref_mut(),
+            v_extnm.as_deref_mut(),
+            pcount.as_mut(),
+            status,
         )
     }
 }
 
-pub unsafe fn ffghbnll_safer(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
-    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    pcount: *mut LONGLONG,   /* O - value of PCOUNT keyword                  */
-    status: &mut c_int,      /* IO - error status                            */
+/*--------------------------------------------------------------------------*/
+/// Get keywords from the Header of the BiNary table:
+/// Check that the keywords conform to the FITS standard and return the
+/// parameters which describe the table.
+///
+/// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
+/// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
+/// when `maxfield` is negative).
+pub fn ffghbnll_safe(
+    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
+    maxfield: c_int,               /* I - maximum no. of columns to read;          */
+    naxis2: Option<&mut LONGLONG>, /* O - number of rows in the table              */
+    tfields: Option<&mut c_int>,   /* O - number of columns in the table           */
+    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
+    tform: Option<&mut [&mut [c_char]]>, /* O - TFORMn value for each column             */
+    mut tunit: Option<&mut [&mut [c_char]]>, /* O - TUNITn value for each column          */
+    extnm: Option<&mut [c_char]>,  /* O - value of EXTNAME keyword, if any         */
+    pcount: Option<&mut LONGLONG>, /* O - value of PCOUNT keyword                  */
+    status: &mut c_int,            /* IO - error status                            */
 ) -> c_int {
-    unsafe {
-        let mut maxf: c_int = 0;
-        let mut nfound: c_int = 0;
-        let mut tstatus: c_int = 0;
-        let mut fields: c_long = 0;
-        let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
-        let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
-        let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let mut naxis1ll: LONGLONG = 0;
-        let mut naxis2ll: LONGLONG = 0;
-        let mut pcountll: LONGLONG = 0;
+    let mut maxf: c_int = 0;
+    let mut nfound: c_int = 0;
+    let mut tstatus: c_int = 0;
+    let mut fields: c_long = 0;
+    let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut xtension: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let mut naxis1ll: LONGLONG = 0;
+    let mut naxis2ll: LONGLONG = 0;
+    let mut pcountll: LONGLONG = 0;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    /* read the first keyword of the extension */
+    ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
+
+    if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
+        if ffc2s(&value, &mut xtension, status) > 0 {
+            /* get the value string */
+            ffpmsg_str("Bad value string for XTENSION keyword:");
+            ffpmsg_slice(&value);
+            return *status;
+        }
+
+        /* allow the quoted string value to begin in any column and */
+        /* allow any number of trailing blanks before the closing quote */
+        /* first char must be a quote */
+        if (value[0] != bb(b'\''))
+            || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
+                && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
+                && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
+        {
+            int_snprintf!(
+                &mut message,
+                FLEN_ERRMSG,
+                "This is not a BINTABLE extension: {}",
+                slice_to_str!(&value),
+            );
+            ffpmsg_slice(&message);
+            *status = NOT_BTABLE;
+            return *status;
+        }
+    } else {
+        /* error: 1st keyword of extension != XTENSION */
+        int_snprintf!(
+            &mut message,
+            FLEN_ERRMSG,
+            "First keyword of the extension is not XTENSION: {}",
+            slice_to_str!(&name),
+        );
+        ffpmsg_slice(&message);
+        *status = NO_XTENSION;
+        return *status;
+    }
+
+    if ffgttb(
+        fptr,
+        &mut naxis1ll,
+        &mut naxis2ll,
+        &mut pcountll,
+        &mut fields,
+        status,
+    ) > 0
+    {
+        return *status;
+    }
+
+    if let Some(naxis2) = naxis2 {
+        *naxis2 = naxis2ll;
+    }
+
+    if let Some(pcount) = pcount {
+        *pcount = pcountll;
+    }
+
+    if let Some(tfields) = tfields {
+        *tfields = fields as c_int;
+    }
+
+    if maxfield < 0 {
+        maxf = fields as c_int;
+    } else {
+        maxf = cmp::min(maxfield, fields as c_int);
+    }
+
+    if maxf > 0 {
+        let maxfu = maxf as usize;
+
+        for ii in 0..maxfu {
+            /* initialize optional keyword values */
+            if let Some(ttype) = ttype.as_deref_mut() {
+                ttype[ii][0] = 0;
+            }
+
+            if let Some(tunit) = tunit.as_deref_mut() {
+                tunit[ii][0] = 0;
+            }
+        }
+
+        if let Some(ttype) = ttype.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TTYPE"),
+                1,
+                maxf,
+                &mut ttype[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
+
+        if let Some(tunit) = tunit.as_deref_mut() {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TUNIT"),
+                1,
+                maxf,
+                &mut tunit[..maxfu],
+                &mut nfound,
+                status,
+            );
+        }
 
         if *status > 0 {
             return *status;
         }
 
-        /* read the first keyword of the extension */
-        ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
-
-        if strcmp_safe(&name, cs!(c"XTENSION")) == 0 {
-            if ffc2s(&value, &mut xtension, status) > 0 {
-                /* get the value string */
-                ffpmsg_str("Bad value string for XTENSION keyword:");
-                ffpmsg_slice(&value);
-                return *status;
-            }
-
-            /* allow the quoted string value to begin in any column and */
-            /* allow any number of trailing blanks before the closing quote */
-            /* first char must be a quote */
-            if (value[0] != bb(b'\''))
-                || (strcmp_safe(&xtension, cs!(c"BINTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!(c"A3DTABLE")) != 0)
-                    && (strcmp_safe(&xtension, cs!(c"3DTABLE")) != 0)
-            {
-                int_snprintf!(
-                    &mut message,
-                    FLEN_ERRMSG,
-                    "This is not a BINTABLE extension: {}",
-                    slice_to_str!(&value),
-                );
-                ffpmsg_slice(&message);
-                *status = NOT_BTABLE;
-                return *status;
-            }
-        } else {
-            /* error: 1st keyword of extension != XTENSION */
-            int_snprintf!(
-                &mut message,
-                FLEN_ERRMSG,
-                "First keyword of the extension is not XTENSION: {}",
-                slice_to_str!(&name),
+        if let Some(tform) = tform {
+            ffgkns_safe(
+                fptr,
+                cs!(c"TFORM"),
+                1,
+                maxf,
+                &mut tform[..maxfu],
+                &mut nfound,
+                status,
             );
-            ffpmsg_slice(&message);
-            *status = NO_XTENSION;
-            return *status;
-        }
 
-        if ffgttb(
-            fptr,
-            &mut naxis1ll,
-            &mut naxis2ll,
-            &mut pcountll,
-            &mut fields,
-            status,
-        ) > 0
-        {
-            return *status;
-        }
-
-        if let Some(naxis2) = naxis2.as_mut() {
-            *naxis2 = naxis2ll;
-        }
-
-        if let Some(pcount) = pcount.as_mut() {
-            *pcount = pcountll;
-        }
-
-        if let Some(tfields) = tfields.as_mut() {
-            *tfields = fields as c_int;
-        }
-
-        if maxfield < 0 {
-            maxf = fields as c_int;
-        } else {
-            maxf = cmp::min(maxfield, fields as c_int);
-        }
-
-        if maxf > 0 {
-            for ii in 0..(maxf as usize) {
-                /* initialize optional keyword values */
-                if !ttype.is_null() {
-                    let ttype_int = slice::from_raw_parts_mut(ttype, maxf as usize);
-                    (*ttype_int[ii]) = 0;
-                }
-
-                if !tunit.is_null() {
-                    let tunit = slice::from_raw_parts_mut(tunit, maxf as usize);
-                    (*tunit[ii]) = 0;
-                }
-            }
-
-            if !ttype.is_null() {
-                let ttype_int = slice::from_raw_parts_mut(ttype, maxf as usize);
-                let mut v_ttype = Vec::new();
-
-                for item in ttype_int {
-                    let ttype_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_ttype.push(ttype_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TTYPE"),
-                    1,
-                    maxf,
-                    &mut v_ttype,
-                    &mut nfound,
-                    status,
+            if *status > 0 || nfound != maxf {
+                ffpmsg_str(
+                    "Required TFORM keyword(s) not found in binary table header (ffghbnll).",
                 );
-            }
-
-            if !tunit.is_null() {
-                let tunit_arr = slice::from_raw_parts_mut(tunit, maxf as usize);
-                let mut v_tunit = Vec::new();
-
-                for item in tunit_arr {
-                    let tunit_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tunit.push(tunit_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TUNIT"),
-                    1,
-                    maxf,
-                    &mut v_tunit,
-                    &mut nfound,
-                    status,
-                );
-            }
-
-            if *status > 0 {
+                *status = NO_TFORM;
                 return *status;
             }
-
-            if !tform.is_null() {
-                let tform = slice::from_raw_parts_mut(tform, maxf as usize);
-                let mut v_tform = Vec::new();
-
-                for item in tform {
-                    let tform_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
-                    v_tform.push(tform_item);
-                }
-                ffgkns_safe(
-                    fptr,
-                    cs!(c"TFORM"),
-                    1,
-                    maxf,
-                    &mut v_tform,
-                    &mut nfound,
-                    status,
-                );
-
-                if *status > 0 || nfound != maxf {
-                    ffpmsg_str(
-                        "Required TFORM keyword(s) not found in binary table header (ffghbnll).",
-                    );
-                    *status = NO_TFORM;
-                    return *status;
-                }
-            }
         }
-
-        if !extnm.is_null() {
-            let extnm = slice::from_raw_parts_mut(extnm, 69);
-            extnm[0] = 0;
-
-            tstatus = *status;
-            ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
-
-            if *status == KEY_NO_EXIST {
-                *status = tstatus; /* keyword not required, so ignore error */
-            }
-        }
-
-        *status
     }
+
+    if let Some(extnm) = extnm {
+        extnm[0] = 0;
+
+        tstatus = *status;
+        ffgkys_safe(fptr, cs!(c"EXTNAME"), extnm, Some(&mut comm), status);
+
+        if *status == KEY_NO_EXIST {
+            *status = tstatus; /* keyword not required, so ignore error */
+        }
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -6374,20 +6405,18 @@ mod tests {
             let mut tfields: c_int = 0;
             let mut pcount: LONGLONG = 0;
             let mut extname = [0 as c_char; FLEN_VALUE];
-            unsafe {
-                ffghbnll_safer(
-                    fptr.as_deref_mut().unwrap(),
-                    99,
-                    &mut nrows,
-                    &mut tfields,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    extname.as_mut_ptr(),
-                    &mut pcount,
-                    &mut status,
-                );
-            }
+            ffghbnll_safe(
+                fptr.as_deref_mut().unwrap(),
+                99,
+                Some(&mut nrows),
+                Some(&mut tfields),
+                None,
+                None,
+                None,
+                Some(&mut extname),
+                Some(&mut pcount),
+                &mut status,
+            );
             assert_eq!(status, 0, "ffghbnll failed");
             assert_eq!(nrows, 100);
             assert_eq!(tfields, 2);
@@ -6431,25 +6460,219 @@ mod tests {
             let mut nrows: LONGLONG = 0;
             let mut tfields: c_int = 0;
             let mut extname = [0 as c_char; FLEN_VALUE];
-            unsafe {
-                ffghtbll_safer(
-                    fptr.as_deref_mut().unwrap(),
-                    99,
-                    &mut rowlen,
-                    &mut nrows,
-                    &mut tfields,
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    ptr::null_mut(),
-                    extname.as_mut_ptr(),
-                    &mut status,
-                );
-            }
+            ffghtbll_safe(
+                fptr.as_deref_mut().unwrap(),
+                99,
+                Some(&mut rowlen),
+                Some(&mut nrows),
+                Some(&mut tfields),
+                None,
+                None,
+                None,
+                None,
+                Some(&mut extname),
+                &mut status,
+            );
             assert_eq!(status, 0, "ffghtbll failed");
             assert_eq!(nrows, 20);
             assert_eq!(tfields, 1);
             assert_eq!(strcmp_safe(&extname, cs!(c"ATABLE")), 0);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghbn_safe_fills_string_arrays() {
+        /* ffghbn with the ttype/tform/tunit arrays actually supplied -- the
+        path the old raw-pointer `_safer` signature made untestable. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype_in = [Some(cs!(c"ALPHA")), Some(cs!(c"BETA"))];
+            let tform_in = [cs!(c"1J"), cs!(c"1E")];
+            let tunit_in = [Some(cs!(c"count")), Some(cs!(c"Jy"))];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffcrtb_safe(
+                fptr.as_deref_mut().unwrap(),
+                BINARY_TBL,
+                7,
+                2,
+                &ttype_in,
+                &tform_in,
+                Some(&tunit_in),
+                Some(cs!(c"BTAB")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut nrows: c_long = 0;
+            let mut tfields: c_int = 0;
+            let mut pcount: c_long = -1;
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            /* fixed stack buffers, as the C uses -- one row per column */
+            let mut ttype_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut tform_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut tunit_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut ttype = ttype_buf.each_mut().map(|c| c.as_mut_slice());
+            let mut tform = tform_buf.each_mut().map(|c| c.as_mut_slice());
+            let mut tunit = tunit_buf.each_mut().map(|c| c.as_mut_slice());
+
+            ffghbn_safe(
+                fptr.as_deref_mut().unwrap(),
+                2,
+                Some(&mut nrows),
+                Some(&mut tfields),
+                Some(&mut ttype),
+                Some(&mut tform),
+                Some(&mut tunit),
+                Some(&mut extname),
+                Some(&mut pcount),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffghbn failed");
+            assert_eq!(nrows, 7);
+            assert_eq!(tfields, 2);
+            assert_eq!(pcount, 0);
+            assert_eq!(strcmp_safe(&extname, cs!(c"BTAB")), 0);
+            assert_eq!(strcmp_safe(&ttype_buf[0], cs!(c"ALPHA")), 0);
+            assert_eq!(strcmp_safe(&ttype_buf[1], cs!(c"BETA")), 0);
+            assert_eq!(strcmp_safe(&tform_buf[0], cs!(c"1J")), 0);
+            assert_eq!(strcmp_safe(&tform_buf[1], cs!(c"1E")), 0);
+            assert_eq!(strcmp_safe(&tunit_buf[0], cs!(c"count")), 0);
+            assert_eq!(strcmp_safe(&tunit_buf[1], cs!(c"Jy")), 0);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghtb_safe_fills_string_arrays_and_tbcol() {
+        /* ffghtb over an ASCII table, with every optional output supplied. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype_in = [Some(cs!(c"XPOS")), Some(cs!(c"YPOS"))];
+            let tform_in = [cs!(c"I6"), cs!(c"I6")];
+            let tbcol_in: [c_long; 2] = [1, 8];
+            let tunit_in = [Some(cs!(c"pix")), Some(cs!(c"pix"))];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffitab_safe(
+                fptr.as_deref_mut().unwrap(),
+                14,
+                3,
+                2,
+                &ttype_in,
+                Some(&tbcol_in),
+                &tform_in,
+                Some(&tunit_in),
+                Some(cs!(c"ATAB")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut rowlen: c_long = 0;
+            let mut nrows: c_long = 0;
+            let mut tfields: c_int = 0;
+            let mut extname = [0 as c_char; FLEN_VALUE];
+            let mut tbcol: [c_long; 2] = [0; 2];
+            let mut ttype_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut tform_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut tunit_buf = [[0 as c_char; FLEN_VALUE]; 2];
+            let mut ttype = ttype_buf.each_mut().map(|c| c.as_mut_slice());
+            let mut tform = tform_buf.each_mut().map(|c| c.as_mut_slice());
+            let mut tunit = tunit_buf.each_mut().map(|c| c.as_mut_slice());
+
+            /* maxfield < 0 means "all TFIELDS columns" */
+            ffghtb_safe(
+                fptr.as_deref_mut().unwrap(),
+                -1,
+                Some(&mut rowlen),
+                Some(&mut nrows),
+                Some(&mut tfields),
+                Some(&mut ttype),
+                Some(&mut tbcol),
+                Some(&mut tform),
+                Some(&mut tunit),
+                Some(&mut extname),
+                &mut status,
+            );
+            assert_eq!(status, 0, "ffghtb failed");
+            assert_eq!(rowlen, 14);
+            assert_eq!(nrows, 3);
+            assert_eq!(tfields, 2);
+            assert_eq!(tbcol, tbcol_in);
+            assert_eq!(strcmp_safe(&extname, cs!(c"ATAB")), 0);
+            assert_eq!(strcmp_safe(&ttype_buf[0], cs!(c"XPOS")), 0);
+            assert_eq!(strcmp_safe(&ttype_buf[1], cs!(c"YPOS")), 0);
+            assert_eq!(strcmp_safe(&tform_buf[0], cs!(c"I6")), 0);
+            assert_eq!(strcmp_safe(&tform_buf[1], cs!(c"I6")), 0);
+            assert_eq!(strcmp_safe(&tunit_buf[0], cs!(c"pix")), 0);
+            assert_eq!(strcmp_safe(&tunit_buf[1], cs!(c"pix")), 0);
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+        });
+    }
+
+    #[test]
+    fn test_ffghbn_safe_rejects_ascii_table() {
+        /* Wrong extension type must come back NOT_BTABLE without touching
+        the caller's arrays. */
+        with_temp_file(|filename| {
+            let mut status = 0;
+            let name = to_buf(filename);
+            let ttype_in = [Some(cs!(c"VALUE"))];
+            let tform_in = [cs!(c"I10")];
+            let tbcol_in: [c_long; 1] = [1];
+
+            let mut fptr: Option<Box<fitsfile>> = None;
+            ffinit_safe(&mut fptr, &name, &mut status);
+            ffphps_safe(fptr.as_deref_mut().unwrap(), BYTE_IMG, 0, &[], &mut status);
+            ffitab_safe(
+                fptr.as_deref_mut().unwrap(),
+                10,
+                2,
+                1,
+                &ttype_in,
+                Some(&tbcol_in),
+                &tform_in,
+                None,
+                Some(cs!(c"ATABLE")),
+                &mut status,
+            );
+            assert_eq!(status, 0, "setup failed");
+            ffclos_safe(fptr.take().unwrap(), &mut status);
+
+            ffopen_safe(&mut fptr, &name, READONLY, &mut status);
+            ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
+
+            let mut nrows: c_long = -1;
+            ffghbn_safe(
+                fptr.as_deref_mut().unwrap(),
+                -1,
+                Some(&mut nrows),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                &mut status,
+            );
+            assert_eq!(status, NOT_BTABLE);
+            assert_eq!(nrows, -1, "outputs must be left alone on error");
+            status = 0;
             ffclos_safe(fptr.take().unwrap(), &mut status);
         });
     }

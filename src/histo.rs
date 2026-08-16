@@ -37,13 +37,13 @@ use crate::putcol::fits_iter_set_iotype_safe;
 // Alias for fits_iterate_data
 use crate::putcol::ffiter_safe as fits_iterate_data;
 use crate::putkey::ffcrim_safe;
+use crate::wrappers::isdigit_safe;
 use crate::wrappers::strcat_safe;
 use crate::wrappers::strcpy_safe;
 use crate::wrappers::strcspn_safe;
 use crate::wrappers::strlen_safe;
 use crate::wrappers::strncat_safe;
 use crate::wrappers::strtod_safe;
-use crate::wrappers::{isdigit_safe, strlen};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -1005,7 +1005,9 @@ pub unsafe extern "C" fn ffbinr(
 
         let ptr = ptr.as_mut().expect(NULL_MSG);
 
-        let ptr_slice = slice::from_raw_parts(*ptr, strlen(*ptr));
+        // ffbinre indexes up to and including the terminator, so the slice has
+        // to carry it -- the old `strlen`-sized slice stopped one short.
+        let ptr_slice: &[c_char] = cast_slice(CStr::from_ptr(*ptr).to_bytes_with_nul());
 
         ffbinr_safe(
             &mut &ptr_slice[..],

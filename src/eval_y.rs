@@ -159,8 +159,8 @@ use crate::simplerng::{
     simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform, simplerng_srand,
 };
 use crate::wcssub::ffgtcs_safe;
-use crate::wrappers::strncpy_safe;
 use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
+use crate::wrappers::{strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe, strstr_safe};
 use crate::{atoi, cs, int_snprintf};
 
 pub type yy_state_t = yytype_int16;
@@ -1976,7 +1976,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
-                                (strlen(yyvs[yyvsp].text_mut_ptr()))
+                                (strlen_safe(yyvs[yyvsp].text_mut()))
                                     .wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             ));
@@ -1984,7 +1984,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 current_block = 4830776507462815627;
                             } else {
                                 (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
-                                    strlen(yyvs[yyvsp].text_mut_ptr()) as c_long;
+                                    strlen_safe(yyvs[yyvsp].text_mut()) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
@@ -2908,7 +2908,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 1].text_mut_ptr(), c"RANDOM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 1].text_mut(), cs!(c"RANDOM("))
                             }) == 0
                             {
                                 /* Scalar RANDOM() */
@@ -2935,7 +2935,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 1].text_mut_ptr(), c"RANDOMN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 1].text_mut(), cs!(c"RANDOMN("))
                             }) == 0
                             {
                                 /*Scalar RANDOMN()*/
@@ -2979,7 +2979,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SUM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3005,7 +3005,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NELEM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
@@ -3028,7 +3028,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ACCUM("))
                             }) == 0
                             {
                                 let mut zero: c_long = 0;
@@ -3073,7 +3073,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"AXISELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"AXISELEM("))
                             }) == 0
                             {
                                 /* AXISELEM(V,n) */
@@ -3142,7 +3142,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"NAXES(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"NAXES("))
                             }) == 0
                             {
                                 /* NAXES(V,n) */
@@ -3225,7 +3225,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARRAY(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"ARRAY("))
                             }) == 0
                             {
                                 /* NAXES(bexpr,n) */
@@ -3268,7 +3268,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NELEM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
@@ -3291,7 +3291,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NVALID("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3334,7 +3334,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NELEM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
@@ -3357,7 +3357,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NVALID("))
                             }) == 0
                             {
                                 /* Bit arrays do not have NULL */
@@ -3381,7 +3381,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SUM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3407,7 +3407,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"MIN("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3439,7 +3439,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ACCUM("))
                             }) == 0
                             {
                                 let mut zero_0: c_long = 0;
@@ -3467,7 +3467,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"MAX("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3516,7 +3516,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SUM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3544,7 +3544,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"AVERAGE(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"AVERAGE("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3570,7 +3570,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"STDDEV(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"STDDEV("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3596,7 +3596,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MEDIAN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"MEDIAN("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3624,7 +3624,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NELEM("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
@@ -3647,7 +3647,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NVALID(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NVALID("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3673,7 +3673,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ACCUM("))
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == ValueSort::Long
@@ -3706,7 +3706,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACCUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ACCUM("))
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == ValueSort::Double
@@ -3736,7 +3736,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SEQDIFF("))
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == ValueSort::Long
@@ -3766,7 +3766,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SEQDIFF(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SEQDIFF("))
                             }) == 0
                                 && ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).ntype
                                     == ValueSort::Double
@@ -3796,7 +3796,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ABS(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ABS("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3822,7 +3822,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"MIN("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3850,7 +3850,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"MAX("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3878,7 +3878,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"RANDOM("))
                             }) == 0
                             {
                                 /* Vector RANDOM() */
@@ -3911,7 +3911,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOMN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"RANDOMN("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -3943,7 +3943,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ELEMENTNUM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ELEMENTNUM("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize]).operation
@@ -3988,7 +3988,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"NAXIS(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"NAXIS("))
                             }) == 0
                             {
                                 /* NAXIS(V) */
@@ -4043,7 +4043,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SIN(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SIN("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4069,7 +4069,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"COS(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"COS("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4095,7 +4095,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"TAN(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"TAN("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4121,7 +4121,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCSIN(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ARCSIN("))
                                 }) == 0
                                     || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ASIN"))[0])
@@ -4132,7 +4132,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         1
                                     } else {
-                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ASIN(".as_ptr())
+                                        strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ASIN("))
                                     }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4158,7 +4158,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCCOS(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ARCCOS("))
                                 }) == 0
                                     || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ACOS"))[0])
@@ -4169,7 +4169,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         1
                                     } else {
-                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ACOS(".as_ptr())
+                                        strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ACOS("))
                                     }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4195,7 +4195,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ARCTAN(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ARCTAN("))
                                 }) == 0
                                     || (if c_int::from(yyvs[yyvsp - 2].text()[0])
                                         < c_int::from((cs!(c"ATAN"))[0])
@@ -4206,7 +4206,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         1
                                     } else {
-                                        strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ATAN(".as_ptr())
+                                        strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ATAN("))
                                     }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4232,7 +4232,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SINH(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SINH("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4258,7 +4258,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"COSH(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"COSH("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4284,7 +4284,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"TANH(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"TANH("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4310,7 +4310,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"EXP(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"EXP("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4336,7 +4336,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"LOG(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"LOG("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4362,7 +4362,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"LOG10(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"LOG10("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4388,7 +4388,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"SQRT(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"SQRT("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4414,7 +4414,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ROUND(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ROUND("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4440,7 +4440,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"FLOOR(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"FLOOR("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4466,7 +4466,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"CEIL(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"CEIL("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4492,7 +4492,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"RANDOMP(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"RANDOMP("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4540,7 +4540,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"STRSTR(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"STRSTR("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -4582,7 +4582,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"DEFNULL("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
@@ -4655,7 +4655,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARCTAN2(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"ARCTAN2("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
@@ -4724,7 +4724,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"MIN(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"MIN("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
@@ -4796,7 +4796,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"MAX(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"MAX("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).ntype
@@ -4868,7 +4868,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"SETNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"SETNULL("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize]).operation
@@ -4921,7 +4921,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"AXISELEM(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"AXISELEM("))
                             }) == 0
                             {
                                 /* AXISELEM(V,n) */
@@ -4990,7 +4990,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"NAXES(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"NAXES("))
                             }) == 0
                             {
                                 /* NAXES(V,n) */
@@ -5073,7 +5073,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"ARRAY(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"ARRAY("))
                             }) == 0
                             {
                                 /* NAXES(expr,n) */
@@ -5112,7 +5112,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 8].text_mut_ptr(), c"ANGSEP(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 8].text_mut(), cs!(c"ANGSEP("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 7].node() as usize]).ntype
@@ -6120,7 +6120,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ISNULL("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6163,7 +6163,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ISNULL("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6206,7 +6206,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 2].text_mut_ptr(), c"ISNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 2].text_mut(), cs!(c"ISNULL("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6246,7 +6246,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"DEFNULL("))
                             }) == 0
                             {
                                 if ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
@@ -6348,7 +6348,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 6].text_mut_ptr(), c"NEAR(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 6].text_mut(), cs!(c"NEAR("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6483,7 +6483,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 10].text_mut_ptr(), c"CIRCLE(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 10].text_mut(), cs!(c"CIRCLE("))
                             }) == 0
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6667,7 +6667,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 14].text_mut_ptr(), c"BOX(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 14].text_mut(), cs!(c"BOX("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -6693,7 +6693,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     1
                                 } else {
-                                    strcmp(yyvs[yyvsp - 14].text_mut_ptr(), c"ELLIPSE(".as_ptr())
+                                    strcmp_safe(yyvs[yyvsp - 14].text_mut(), cs!(c"ELLIPSE("))
                                 }) == 0
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
@@ -7120,7 +7120,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
                                 yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
-                                (strlen(yyvs[yyvsp].text_mut_ptr()))
+                                (strlen_safe(yyvs[yyvsp].text_mut()))
                                     .wrapping_add((1).try_into().unwrap())
                                     as c_long,
                             ));
@@ -7128,7 +7128,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 current_block = 4830776507462815627;
                             } else {
                                 (((lParse.Nodes)[yyval.node() as usize]).value).nelem =
-                                    strlen(yyvs[yyvsp].text_mut_ptr()) as c_long;
+                                    strlen_safe(yyvs[yyvsp].text_mut()) as c_long;
                                 current_block = 17353983478346836848;
                             }
                         }
@@ -7290,7 +7290,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 4].text_mut_ptr(), c"DEFNULL(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 4].text_mut(), cs!(c"DEFNULL("))
                             }) == 0
                             {
                                 /* Since the output can be calculated now, as a constant
@@ -7361,7 +7361,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 1
                             } else {
-                                strcmp(yyvs[yyvsp - 6].text_mut_ptr(), c"STRMID(".as_ptr())
+                                strcmp_safe(yyvs[yyvsp - 6].text_mut(), cs!(c"STRMID("))
                             }) == 0
                             {
                                 let mut len: c_int = 0;
@@ -7964,7 +7964,7 @@ fn load_gti(
                     continue;
                 }
                 ffupch_safe(&mut extname);
-                if !(strstr(extname.as_mut_ptr(), c"GTI".as_ptr())).is_null() {
+                if strstr_safe(&extname, cs!(c"GTI")).is_some() {
                     break;
                 }
             }
@@ -11147,13 +11147,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     pVals[i as usize].data =
                         NodeValue::Logical((lParse.Nodes[theParams[i as usize]]).value.data.log());
                 } else {
-                    strcpy(
-                        pVals[i as usize].data.text_mut_ptr(),
-                        (lParse.Nodes[theParams[i as usize]])
-                            .value
-                            .data
-                            .text_mut_ptr(),
-                    );
+                    let src = *(lParse.Nodes[theParams[i as usize]]).value.data.text_mut();
+                    strcpy_safe(pVals[i as usize].data.text_mut(), &src);
                 }
                 pNull[i as usize] = 0;
             }
@@ -11572,15 +11567,11 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::STRPOS_FCT => {
-                    let res: *mut c_char =
-                        strstr(pVals[0].data.text_mut_ptr(), pVals[1].data.text_mut_ptr());
-                    if res.is_null() {
-                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
-                    } else {
-                        (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(
-                            res.offset_from(pVals[0].data.text_mut_ptr()) as c_long + 1,
-                        );
-                    }
+                    /* copy the needle out first so only one &mut pVals is live */
+                    let needle = *pVals[1].data.text_mut();
+                    let res = strstr_safe(pVals[0].data.text_mut(), &needle);
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Long(res.map_or(0, |i| i as c_long + 1));
                     current_block_139 = 7627602990488000394;
                 }
                 _ => {
@@ -11594,10 +11585,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Long {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(pVals[0].data.lng());
                 } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
-                    strcpy(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                        pVals[0].data.text_mut_ptr(),
-                    );
+                    let src = *pVals[0].data.text_mut();
+                    strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), &src);
                 }
             }
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
@@ -16210,7 +16199,7 @@ fn cstrmid(
     let mut endpos: usize = 0;
 
     if src_len == 0 {
-        src_len = unsafe { strlen(src_str) };
+        src_len = unsafe { CStr::from_ptr(src_str).to_bytes().len() };
     } /* .. if constant */
 
     let src_str = unsafe { core::slice::from_raw_parts(src_str, src_len + 1) };
