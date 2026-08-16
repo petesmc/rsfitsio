@@ -427,19 +427,27 @@ pub fn ffsrow_safe(
         /*  Fill out Info data for parser  */
         /***********************************/
 
-        Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>());
-        Info.nullPtr = ptr::null_mut();
-        Info.maxRows = inExt.numRows as c_long;
-        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
-        if Info.dataPtr.is_null() {
+        /* The row-selection flags are owned here and handed to the parser as a
+        raw pointer, so the error returns below cannot leak them. Everything
+        after this point reaches them through Info.dataPtr, never through
+        `row_flags` directly, so the pointer stays the only live borrow. */
+        let mut row_flags: Vec<c_char> = Vec::new();
+        if row_flags
+            .try_reserve_exact((inExt.numRows + 1) as usize)
+            .is_err()
+        {
             ffpmsg_str("Unable to allocate memory for row selection");
             ffcprs(&mut lParse);
             *status = MEMORY_ALLOCATION;
             return *status;
         }
+        /* resize also zero terminates the array */
+        row_flags.resize((inExt.numRows + 1) as usize, 0);
 
-        /* make sure array is zero terminated */
-        *Info.dataPtr.cast::<c_char>().add(inExt.numRows as usize) = 0;
+        Info.dataPtr = row_flags.as_mut_ptr().cast::<c_void>();
+        Info.nullPtr = ptr::null_mut();
+        Info.maxRows = inExt.numRows as c_long;
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
 
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
@@ -480,7 +488,7 @@ pub fn ffsrow_safe(
                 .try_reserve_exact(cmp::max(500000, rdlen) as usize)
                 .is_err()
             {
-                FREE!(Info.dataPtr);
+
                 ffcprs(&mut lParse);
                 *status = MEMORY_ALLOCATION;
                 return *status;
@@ -658,7 +666,6 @@ pub fn ffsrow_safe(
             } /*  End of HEAP copy  */
         }
 
-        FREE!(Info.dataPtr);
         ffcprs(&mut lParse);
 
         ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
