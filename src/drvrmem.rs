@@ -63,7 +63,7 @@ struct memdriver {
     memaddrptr: *mut *mut c_char, /* Pointer to memory address pointer; points either into the caller's variables or into owned_cell. */
     memsizeptr: *mut usize, /* Pointer to the size of the memory allocation; points either into the caller's variables or into owned_cell. */
     owned_cell: *mut OwnedMem, /* non-null iff this slot allocated its own address/size cell (see mem_createmem) */
-    deltasize: usize, /* Suggested increment for reallocating memory */
+    deltasize: usize,          /* Suggested increment for reallocating memory */
     mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* realloc function */
     currentpos: LONGLONG,   /* current file position, relative to start */
     fitsfilesize: LONGLONG, /* size of the FITS file (always <= *memsizeptr) */
@@ -280,9 +280,9 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
     }
 
     /* Use an internally allocated address/size cell.  The C points memaddrptr
-       at the struct's own memaddr field; doing that here would make the table
-       slot self-referential, so the cell gets its own allocation and the
-       pointers are derived from it instead. */
+    at the struct's own memaddr field; doing that here would make the table
+    slot self-referential, so the cell gets its own allocation and the
+    pointers are derived from it instead. */
     let cell = Box::into_raw(Box::new(OwnedMem {
         addr: ptr::null_mut(),
         size: 0,
@@ -592,8 +592,8 @@ pub(crate) fn stdin2file(handle: c_int) -> c_int {
     }
 
     /* fill up the remainder of the buffer.  stdin is typically a pipe, where
-       short reads are the norm rather than the exception, so loop until the
-       buffer is full or the stream ends. */
+    short reads are the norm rather than the exception, so loop until the
+    buffer is full or the stream ends. */
     let mut nread = read_fill(&mut stdin_hdl, cast_slice_mut(&mut recbuf[6..RECBUFLEN])).unwrap();
 
     nread += 6; /* add in the 6 characters in 'SIMPLE' */
@@ -932,7 +932,7 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
             let m = MEM_TABLE.lock().unwrap();
             (
                 m[*hdl as usize].memaddrptr,
-                m[*hdl as usize].memsizeptr.as_mut().unwrap() as *mut usize,
+                core::ptr::from_mut::<usize>(m[*hdl as usize].memsizeptr.as_mut().unwrap()),
             )
         };
 
@@ -1403,8 +1403,10 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         /* compress file in  memory to a .gz disk file */
 
         let mut m = MEM_TABLE.lock().unwrap();
-        let in_mem =
-            slice::from_raw_parts(*m[handle as usize].memaddrptr, *m[handle as usize].memsizeptr);
+        let in_mem = slice::from_raw_parts(
+            *m[handle as usize].memaddrptr,
+            *m[handle as usize].memsizeptr,
+        );
 
         if compress2file_from_mem(
             in_mem,
@@ -1584,9 +1586,9 @@ pub(crate) unsafe fn bzip2uncompress2mem(
     *status = 0;
 
     unsafe {
-        b = BZ2_bzReadOpen(&mut bzerror, diskfile, 0, 0, ptr::null_mut(), 0);
+        b = BZ2_bzReadOpen(&raw mut bzerror, diskfile, 0, 0, ptr::null_mut(), 0);
         if bzerror != BZ_OK {
-            BZ2_bzReadClose(&mut bzerror, b);
+            BZ2_bzReadClose(&raw mut bzerror, b);
             if bzerror == BZ_MEM_ERROR {
                 ffpmsg_str("failed to open a bzip2 file: out of memory\n");
             } else if bzerror == BZ_CONFIG_ERROR {
@@ -1603,7 +1605,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
         while bzerror == BZ_OK {
             let mut nread = 0;
             nread = BZ2_bzRead(
-                &mut bzerror,
+                &raw mut bzerror,
                 b,
                 buf.as_ptr() as *mut c_void,
                 mem::size_of_val(&buf) as c_int,
@@ -1611,7 +1613,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
             if bzerror == BZ_OK || bzerror == BZ_STREAM_END {
                 *status = mem_write_unsafe(hdl, cast_slice(&buf), nread as usize);
                 if *status != 0 {
-                    BZ2_bzReadClose(&mut bzerror, b);
+                    BZ2_bzReadClose(&raw mut bzerror, b);
                     if *status == MEMORY_ALLOCATION {
                         ffpmsg_str("Failed to reallocate memory while uncompressing bzip2 file");
                     }
@@ -1637,7 +1639,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
                 );
             }
         }
-        BZ2_bzReadClose(&mut bzerror, b);
+        BZ2_bzReadClose(&raw mut bzerror, b);
         if bzerror != BZ_OK {
             if errormsg[0] != 0 {
                 ffpmsg_slice(&errormsg);

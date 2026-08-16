@@ -5425,7 +5425,7 @@ mod tests {
                 let fp = f.as_deref_mut().unwrap();
                 // SAFETY: ffcpcl is called with the same input/output file in C
                 // (ffcpcl(f, f, ...)); replicate that aliasing here.
-                let fp2: &mut fitsfile = unsafe { &mut *(fp as *mut fitsfile) };
+                let fp2: &mut fitsfile = unsafe { &mut *core::ptr::from_mut::<fitsfile>(fp) };
                 fits_copy_col(fp, fp2, 1, 3, 1, &mut status);
             }
             let mut ncols = 0;

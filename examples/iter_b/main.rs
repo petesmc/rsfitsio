@@ -38,10 +38,10 @@ pub fn main() -> ExitCode {
     /* open the file and move to the correct extension */
     unsafe {
         fits_open_file(
-            &mut fptr,
+            &raw mut fptr,
             CString::new(filename).unwrap().as_ptr(),
             READWRITE,
-            &mut status,
+            &raw mut status,
         );
     }
 
@@ -53,7 +53,7 @@ pub fn main() -> ExitCode {
                 BINARY_TBL,
                 extname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             );
         }
     }
@@ -65,14 +65,14 @@ pub fn main() -> ExitCode {
 
         unsafe {
             fits_iter_set_by_name(
-                &mut cols[0],
+                &raw mut cols[0],
                 fptr_box.as_mut(),
                 avalue_name.as_ptr(),
                 TSTRING,
                 INPUT_OUTPUT_COL as c_int,
             );
             fits_iter_set_by_name(
-                &mut cols[1],
+                &raw mut cols[1],
                 fptr_box.as_mut(),
                 lvalue_name.as_ptr(),
                 TLOGICAL,
@@ -92,14 +92,14 @@ pub fn main() -> ExitCode {
             rows_per_loop,
             str_iter,
             ptr::null_mut(),
-            &mut status,
+            &raw mut status,
         );
     }
 
     /* all done */
     if let Some(fptr_box) = fptr {
         unsafe {
-            fits_close_file(Some(fptr_box), &mut status);
+            fits_close_file(Some(fptr_box), &raw mut status);
         }
     }
 
@@ -135,15 +135,15 @@ extern "C" fn str_iter(
                 return -1; /* number of columns incorrect */
             }
 
-            if fits_iter_get_datatype(&mut cols[0]) != TSTRING
-                || fits_iter_get_datatype(&mut cols[1]) != TLOGICAL
+            if fits_iter_get_datatype(&raw mut cols[0]) != TSTRING
+                || fits_iter_get_datatype(&raw mut cols[1]) != TLOGICAL
             {
                 return -2; /* bad data type */
             }
 
             /* assign the input pointers to the appropriate arrays */
-            STRINGVALS = fits_iter_get_array(&mut cols[0]) as *mut *mut c_char;
-            LOGICALVALS = fits_iter_get_array(&mut cols[1]) as *mut c_char;
+            STRINGVALS = fits_iter_get_array(&raw mut cols[0]) as *mut *mut c_char;
+            LOGICALVALS = fits_iter_get_array(&raw mut cols[1]) as *mut c_char;
 
             println!("Total rows, No. rows = {totalrows} {nrows}");
         }

@@ -467,13 +467,13 @@ pub(crate) fn fits_parser_yylex(
             }
 
             /* Flex defaults yyin to stdin and yyout to stdout here.  Neither
-               default is reachable in this scanner: the input is pulled from
-               ParseData::expr by expr_read (YY_INPUT), so the FILE* in yyin is
-               never read from, and yyout is only touched by the default ECHO
-               rule, which resolves stdout for itself when it fires.  Leaving
-               both null keeps that invariant explicit -- and keeps the C
-               stdio externs out of a scanner that never uses them, which is
-               what lets Miri run the expression engine at all. */
+            default is reachable in this scanner: the input is pulled from
+            ParseData::expr by expr_read (YY_INPUT), so the FILE* in yyin is
+            never read from, and yyout is only touched by the default ECHO
+            rule, which resolves stdout for itself when it fires.  Leaving
+            both null keeps that invariant explicit -- and keeps the C
+            stdio externs out of a scanner that never uses them, which is
+            what lets Miri run the expression engine at all. */
 
             if (yyscanner.yy_buffer_stack).is_null()
                 || (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)).is_none()
@@ -823,8 +823,9 @@ pub(crate) fn fits_parser_yylex(
                             5 => {
                                 let mut constval: c_long = 0;
                                 let mut p: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p = core::ptr::from_mut::<c_char>(
+                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
+                                );
                                 while *p != 0 {
                                     constval = constval << 1
                                         | c_int::from(c_int::from(*p) == '1' as i32) as c_long;
@@ -836,8 +837,9 @@ pub(crate) fn fits_parser_yylex(
                             6 => {
                                 let mut constval_0: c_long = 0;
                                 let mut p_0: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_0 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p_0 = core::ptr::from_mut::<c_char>(
+                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
+                                );
                                 while *p_0 != 0 {
                                     constval_0 = constval_0 << 3 as c_int
                                         | c_long::from(c_int::from(*p_0) - '0' as i32);
@@ -849,8 +851,9 @@ pub(crate) fn fits_parser_yylex(
                             7 => {
                                 let mut constval_1: c_long = 0;
                                 let mut p_1: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_1 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p_1 = core::ptr::from_mut::<c_char>(
+                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
+                                );
                                 while *p_1 != 0 {
                                     let v: c_int = if isdigit_safe(*p_1) {
                                         c_int::from(*p_1) - '0' as i32
@@ -1111,10 +1114,10 @@ pub(crate) fn fits_parser_yylex(
                             }
                             30 => {
                                 /* ECHO. Resolve stdout here rather than
-                                   defaulting yyout at scanner start: this rule
-                                   only fires on input the grammar does not
-                                   match, so the common path never touches the
-                                   C stdio externs. */
+                                defaulting yyout at scanner start: this rule
+                                only fires on input the grammar does not
+                                match, so the common path never touches the
+                                C stdio externs. */
                                 let out = if (yyscanner.yyout_r).is_null() {
                                     STDOUT!()
                                 } else {
@@ -1443,7 +1446,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             YY_END_OF_BUFFER_CHAR;
         (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] =
             YY_END_OF_BUFFER_CHAR;
-        yyscanner.yytext_r = &mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
+        yyscanner.yytext_r = &raw mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         ret_val
     }
 }
@@ -1531,9 +1534,9 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
             fits_parser_yyensure_buffer_stack(yyscanner);
 
             /* Create the buffer before taking a reference to the slot:
-               fits_parser_yy_create_buffer re-enters the scanner and retags
-               this same slot, so a reference taken first would be dead by the
-               time the assignment dropped the old value through it. */
+            fits_parser_yy_create_buffer re-enters the scanner and retags
+            this same slot, so a reference taken first would be dead by the
+            time the assignment dropped the old value through it. */
             let b = fits_parser_yy_create_buffer(yyscanner.yyin_r, YY_BUF_SIZE as c_int, yyscanner);
             *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top) = Some(b);
         }
@@ -1560,7 +1563,7 @@ unsafe fn yy_current_buffer_ptr(yyscanner: &yyguts_t) -> *mut yy_buffer_state {
         }
         let slot = (yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
         match (*slot).as_ref() {
-            Some(b) => &raw const **b as *mut yy_buffer_state,
+            Some(b) => (&raw const **b).cast_mut(),
             None => ptr::null_mut(),
         }
     }
@@ -1697,12 +1700,12 @@ fn fits_parser_yy_init_buffer(b: *mut yy_buffer_state, file: *mut FILE, yyscanne
         };
 
         /* The C flushes first, but flushing can call yy_load_buffer_state,
-           which re-enters the scanner and invalidates `b` when b is the
-           current buffer.  The fields flushed and the fields set above are
-           disjoint, so doing it last is equivalent; the one visible
-           difference is that yy_load_buffer_state then observes the new
-           yy_input_file, and yyrestart -- the only caller that passes the
-           current buffer -- reloads the state immediately afterwards anyway. */
+        which re-enters the scanner and invalidates `b` when b is the
+        current buffer.  The fields flushed and the fields set above are
+        disjoint, so doing it last is equivalent; the one visible
+        difference is that yy_load_buffer_state then observes the new
+        yy_input_file, and yyrestart -- the only caller that passes the
+        current buffer -- reloads the state immediately afterwards anyway. */
         fits_parser_yy_flush_buffer(b, yyscanner);
 
         set_errno(Errno(oerrno));
@@ -1732,8 +1735,8 @@ pub(crate) fn fits_parser_yy_flush_buffer(b: *mut yy_buffer_state, yyscanner: &m
         (*b).yy_buffer_status = YY_BUFFER_NEW;
 
         /* Nothing may touch `b` past this point: yy_load_buffer_state takes its
-           own &mut to the current buffer, which invalidates `b` when they are
-           the same buffer. */
+        own &mut to the current buffer, which invalidates `b` when they are
+        the same buffer. */
         if ptr::addr_eq(b, yy_current_buffer_ptr(yyscanner)) {
             fits_parser_yy_load_buffer_state(yyscanner);
         }

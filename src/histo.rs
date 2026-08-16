@@ -439,11 +439,11 @@ pub(crate) fn ffbinse(
                 exprbeg[ii] = binspec
                     .as_ptr()
                     .wrapping_add(offset_from_binspec + exprbeg_idx)
-                    as *mut c_char;
+                    .cast_mut();
                 exprend[ii] = binspec
                     .as_ptr()
                     .wrapping_add(offset_from_binspec + exprend_idx)
-                    as *mut c_char;
+                    .cast_mut();
             }
 
             if *status > 0 {
@@ -553,8 +553,8 @@ pub(crate) fn ffbinse(
         if exprbeg_idx != 0 {
             has_exprs = true;
             // Convert indices to pointers
-            exprbeg[4] = ptr.as_ptr().wrapping_add(exprbeg_idx) as *mut c_char;
-            exprend[4] = ptr.as_ptr().wrapping_add(exprend_idx) as *mut c_char;
+            exprbeg[4] = ptr.as_ptr().wrapping_add(exprbeg_idx).cast_mut();
+            exprend[4] = ptr.as_ptr().wrapping_add(exprend_idx).cast_mut();
         }
 
         if *status > 0 {
@@ -1803,7 +1803,7 @@ pub fn ffhist_safe(
         histData.himagetype = imagetype;
         histData.haxis = naxis;
         histData.rowselector = selectrow
-            .map(|s| s.as_ptr() as *mut c_char)
+            .map(|s| s.as_ptr().cast_mut())
             .unwrap_or(ptr::null_mut());
 
         if imagetype == TBYTE {
@@ -2292,7 +2292,7 @@ pub fn ffhist_safe(
             offset,
             n_per_loop,
             ffwritehisto,
-            ((&mut histData) as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(&mut histData).cast::<c_void>(),
             status,
         ) != 0
         {
@@ -4033,14 +4033,14 @@ pub(crate) fn fits_make_histde(
     histData.weight = weight;
     histData.wtcolnum = wtcolnum;
     histData.wtexpr = wtexpr
-        .map(|s| s.as_ptr() as *mut c_char)
+        .map(|s| s.as_ptr().cast_mut())
         .unwrap_or(ptr::null_mut());
     histData.wtrecip = recip;
     histData.tblptr = fptr;
     histData.himagetype = imagetype;
     histData.haxis = naxis;
     histData.rowselector = selectrow
-        .map(|s| s.as_ptr() as *mut c_char)
+        .map(|s| s.as_ptr().cast_mut())
         .unwrap_or(ptr::null_mut());
 
     #[allow(clippy::never_loop)] // transpiled do{}while(0)
@@ -4177,7 +4177,7 @@ pub(crate) fn fits_make_histde(
                     &mut (parsers[ii]),
                     &mut (infos[ii]),
                     nrows,
-                    (&mut (double_nulval) as *mut f64).cast::<c_void>(),
+                    core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
                     status,
                 ) != 0
                 {
@@ -4191,7 +4191,8 @@ pub(crate) fn fits_make_histde(
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
                         core::mem::size_of::<iteratorCol>(),
-                    ) as *mut iteratorCol
+                    )
+                    .cast::<iteratorCol>()
                 };
                 if iterCols.is_null() {
                     *status = MEMORY_ALLOCATION;
@@ -4262,7 +4263,7 @@ pub(crate) fn fits_make_histde(
                 &mut (parsers[4]),
                 &mut (infos[4]),
                 nrows,
-                (&mut (double_nulval) as *mut f64).cast::<c_void>(),
+                core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
                 status,
             ) != 0
             {
@@ -4276,7 +4277,8 @@ pub(crate) fn fits_make_histde(
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
                     core::mem::size_of::<iteratorCol>(),
-                ) as *mut iteratorCol
+                )
+                .cast::<iteratorCol>()
             };
             if iterCols.is_null() {
                 *status = MEMORY_ALLOCATION;
@@ -4384,7 +4386,7 @@ pub(crate) fn fits_make_histde(
             offset,
             n_per_loop,
             ffwritehisto,
-            (&mut histData as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(&mut histData).cast::<c_void>(),
             status,
         );
 
@@ -4734,14 +4736,14 @@ fn fits_get_expr_minmax(
         return *status;
     }
 
-    Info.parseData = &mut lParse;
+    Info.parseData = &raw mut lParse;
 
     /* Add a temporary column which contains the expression value */
     if fits_parser_set_temporary_col(
         &mut lParse,
         &mut Info,
         nrows,
-        (&mut double_nulval as *mut f64).cast::<c_void>(),
+        core::ptr::from_mut::<f64>(&mut double_nulval).cast::<c_void>(),
         status,
     ) != 0
     {
@@ -4750,7 +4752,7 @@ fn fits_get_expr_minmax(
     }
 
     /* Initialize the work function computing min/max */
-    minmaxWorkFn.Info = &mut Info;
+    minmaxWorkFn.Info = &raw mut Info;
     minmaxWorkFn.datamax = DOUBLENULLVALUE;
     minmaxWorkFn.datamin = DOUBLENULLVALUE;
     minmaxWorkFn.ngood = 0;
@@ -4771,7 +4773,7 @@ fn fits_get_expr_minmax(
                 *mut iteratorCol,
                 *mut c_void,
             ) -> c_int,
-        (&mut minmaxWorkFn as *mut histo_minmax_workfn_struct).cast::<c_void>(),
+        core::ptr::from_mut::<histo_minmax_workfn_struct>(&mut minmaxWorkFn).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -4892,7 +4894,7 @@ fn ffwritehisto_safe(
                     *mut iteratorCol,
                     *mut c_void,
                 ) -> c_int,
-            (histData as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(histData).cast::<c_void>(),
             &mut status,
         );
     }
@@ -4956,7 +4958,7 @@ extern "C" fn ffcalchist(
                 nrows,
                 nCols,
                 colData_slice,
-                ((&mut (histData.infos[ii])) as *mut parseInfo).cast::<c_void>(),
+                core::ptr::from_mut::<parseInfo>(&mut (histData.infos[ii])).cast::<c_void>(),
             );
             if status != 0 {
                 return status;
@@ -5132,7 +5134,7 @@ extern "C" fn ffcalchist(
         } /* end of loop over elements per row */
     } /* end of main loop over all rows */
 
-    histData.rowselector_cur = rowselect as *mut c_char; /* Save row pointer for next go-round */
+    histData.rowselector_cur = rowselect.cast_mut(); /* Save row pointer for next go-round */
     status
 }
 

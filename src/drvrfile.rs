@@ -584,6 +584,9 @@ fn file_seek_internal(handle: &mut diskdriver, offset: u64) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// read bytes from the current position in the file
+// clippy points ErrorKind at core::io, but that re-export is still behind the
+// unstable `core_io` feature, so the std path has to stay.
+#[allow(clippy::std_instead_of_core)]
 pub(crate) fn file_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     //let h = handleTable.lock().unwrap();
     let mut h = HANDLE_TABLE.lock().unwrap();
@@ -597,10 +600,10 @@ pub(crate) fn file_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     }
 
     /* Read::read is permitted to return fewer bytes than requested (short
-       read), which is not an error -- it happens on NFS/FUSE mounts, when a
-       signal interrupts the call, and under emulation.  Loop until the buffer
-       is full or we hit a genuine end-of-file, so that the nread checks below
-       see the true total rather than the size of the first chunk. */
+    read), which is not an error -- it happens on NFS/FUSE mounts, when a
+    signal interrupts the call, and under emulation.  Loop until the buffer
+    is full or we hit a genuine end-of-file, so that the nread checks below
+    see the true total rather than the size of the first chunk. */
     let stream = handle.fileptr.as_mut().unwrap();
     let mut nread = 0;
     while nread < nbytes {

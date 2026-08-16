@@ -258,13 +258,17 @@ pub(crate) fn fp_get_param(argc: c_int, argv: &Argv, fpptr: &mut fpstate) -> FpR
                 eprintln!("Note: The table compression method used by fpack has been");
                 eprintln!(" officially approved as part of FITS format standard since 2016.");
                 eprintln!(" However users should be aware that the compressed table files may");
-                eprintln!(" only be readable by a limited number of applications (including fpack).");
+                eprintln!(
+                    " only be readable by a limited number of applications (including fpack)."
+                );
             } else if strcmp_safe(arg, cs!(c"-table")) == 0 {
                 fpptr.do_tables = 1;
                 eprintln!("Note: The table compression method used by fpack has been");
                 eprintln!(" officially approved as part of FITS format standard since 2016.");
                 eprintln!(" However users should be aware that the compressed table files may");
-                eprintln!(" only be readable by a limited number of applications (including fpack).");
+                eprintln!(
+                    " only be readable by a limited number of applications (including fpack)."
+                );
             } else if arg[1] == bb(b't') {
                 if gottile != 0 {
                     fp_msg_str("Error: multiple tile specifications\n");

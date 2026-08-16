@@ -3717,7 +3717,7 @@ pub unsafe extern "C" fn ffpky(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        let datatype_with_data = KeywordDatatype::from_datatype(datatype, value as *mut _);
+        let datatype_with_data = KeywordDatatype::from_datatype(datatype, value.cast_mut());
 
         ffpky_safe(fptr, datatype_with_data, keyname, comm, status)
     }
@@ -6734,7 +6734,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
+            unsafe { fits_free_memory(result.cast::<libc::c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7402,7 +7402,10 @@ mod tests {
             status = 0;
             fits_write_key(
                 f.as_deref_mut().unwrap(),
-                KeywordDatatype::from_datatype(9999, &value as *const c_int as *const libc::c_void),
+                KeywordDatatype::from_datatype(
+                    9999,
+                    core::ptr::from_ref::<c_int>(&value).cast::<libc::c_void>(),
+                ),
                 &cc("BADTYPE"),
                 Some(&cc("bad datatype")),
                 &mut status,
@@ -7793,7 +7796,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
+            unsafe { fits_free_memory(result.cast::<libc::c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -7836,7 +7839,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
+            unsafe { fits_free_memory(result.cast::<libc::c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -8283,7 +8286,7 @@ mod tests {
                 .unwrap()
                 .to_string();
             assert_eq!(got, longstr);
-            unsafe { fits_free_memory(result as *mut libc::c_void, &mut status) };
+            unsafe { fits_free_memory(result.cast::<libc::c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }

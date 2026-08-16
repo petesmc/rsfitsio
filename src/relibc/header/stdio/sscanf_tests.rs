@@ -54,13 +54,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -108,13 +110,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -162,13 +166,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_long,
+                    core::ptr::from_mut::<c_long>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -216,14 +222,14 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_double,
+                    core::ptr::from_mut::<c_double>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(
-                    &mut our_val as *mut c_double as *const c_void,
+                    core::ptr::from_mut::<c_double>(&mut our_val) as *const c_void,
                 ));
 
                 let input_cstr = to_c_string(input);
@@ -274,13 +280,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_char,
+                    core::ptr::from_mut::<c_char>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_char = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_char as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_char>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -434,16 +442,20 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val1 as *mut c_int,
-                    &mut libc_val2 as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val1),
+                    core::ptr::from_mut::<c_int>(&mut libc_val2),
                 );
 
                 // Test with our implementation
                 let mut our_val1: c_int = 0;
                 let mut our_val2: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_val2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val2) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -503,8 +515,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val1 as *mut c_uint,
-                    &mut libc_val2 as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val1),
+                    core::ptr::from_mut::<c_uint>(&mut libc_val2),
                 );
 
                 // Test with our implementation
@@ -512,10 +524,10 @@ mod tests {
                 let mut our_val2: c_uint = 0;
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(
-                    &mut our_val1 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val1) as *const c_void
                 ));
                 valist.push(VaArg::pointer(
-                    &mut our_val2 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val2) as *const c_void
                 ));
 
                 let input_cstr = to_c_string(input);
@@ -580,8 +592,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val1 as *mut c_long,
-                    &mut libc_val2 as *mut c_long,
+                    core::ptr::from_mut::<c_long>(&mut libc_val1),
+                    core::ptr::from_mut::<c_long>(&mut libc_val2),
                 );
 
                 // Test with our implementation
@@ -589,10 +601,10 @@ mod tests {
                 let mut our_val2: c_long = 0;
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(
-                    &mut our_val1 as *mut c_long as *const c_void,
+                    core::ptr::from_mut::<c_long>(&mut our_val1) as *const c_void
                 ));
                 valist.push(VaArg::pointer(
-                    &mut our_val2 as *mut c_long as *const c_void,
+                    core::ptr::from_mut::<c_long>(&mut our_val2) as *const c_void
                 ));
 
                 let input_cstr = to_c_string(input);
@@ -653,13 +665,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -708,8 +722,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val1 as *mut c_uint,
-                    &mut libc_val2 as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val1),
+                    core::ptr::from_mut::<c_uint>(&mut libc_val2),
                 );
 
                 // Test with our implementation
@@ -717,10 +731,10 @@ mod tests {
                 let mut our_val2: c_uint = 0;
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(
-                    &mut our_val1 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val1) as *const c_void
                 ));
                 valist.push(VaArg::pointer(
-                    &mut our_val2 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val2) as *const c_void
                 ));
 
                 let input_cstr = to_c_string(input);
@@ -781,13 +795,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -839,8 +855,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val1 as *mut c_uint,
-                    &mut libc_val2 as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_val1),
+                    core::ptr::from_mut::<c_uint>(&mut libc_val2),
                 );
 
                 // Test with our implementation
@@ -848,10 +864,10 @@ mod tests {
                 let mut our_val2: c_uint = 0;
                 let mut valist = CustomVaList::new();
                 valist.push(VaArg::pointer(
-                    &mut our_val1 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val1) as *const c_void
                 ));
                 valist.push(VaArg::pointer(
-                    &mut our_val2 as *mut c_uint as *const c_void,
+                    core::ptr::from_mut::<c_uint>(&mut our_val2) as *const c_void
                 ));
 
                 let input_cstr = to_c_string(input);
@@ -1103,7 +1119,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("3.24", "%lf", valist, 1);
             assert!((val - 3.24).abs() < 1e-10);
@@ -1114,7 +1132,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("42", "%lf", valist, 1);
             assert!((val - 42.0).abs() < 1e-10);
@@ -1125,7 +1145,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("-2.5", "%lf", valist, 1);
             assert!((val - (-2.5)).abs() < 1e-10);
@@ -1136,7 +1158,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("1.23e-4", "%lf", valist, 1);
             assert!((val - 1.23e-4).abs() < 1e-10);
@@ -1147,7 +1171,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("2.5E+3", "%lf", valist, 1);
             assert!((val - 2500.0).abs() < 1e-10);
@@ -1158,7 +1184,9 @@ mod tests {
         {
             let mut val: c_double = 999.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("0.0", "%lf", valist, 1);
             assert!((val - 0.0).abs() < 1e-10);
@@ -1169,7 +1197,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("0.000001", "%lf", valist, 1);
             assert!((val - 0.000001).abs() < 1e-10);
@@ -1180,7 +1210,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("123456.789", "%lf", valist, 1);
             assert!((val - 123456.789).abs() < 1e-6);
@@ -1191,7 +1223,9 @@ mod tests {
         {
             let mut val: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("+3.24", "%lf", valist, 1);
             assert!((val - 3.24).abs() < 1e-10);
@@ -1203,8 +1237,12 @@ mod tests {
             let mut val1: c_double = 0.0;
             let mut val2: c_double = 0.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_double as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("1.5 2.5", "%lf %lf", valist, 2);
             assert!((val1 - 1.5).abs() < 1e-10);
@@ -1242,8 +1280,12 @@ mod tests {
                 let mut val1: c_long = 0;
                 let mut val2: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_long as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val2) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("1000000 2000000", "%ld %ld", valist, 2);
                 assert_eq!(val1, 1000000);
@@ -1255,7 +1297,9 @@ mod tests {
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("DEAD", "%lx", valist, 1);
                 assert_eq!(val, 0xDEAD);
@@ -1266,7 +1310,9 @@ mod tests {
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("177777", "%lo", valist, 1);
                 assert_eq!(val, 0o177777);
@@ -1277,7 +1323,9 @@ mod tests {
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("+456789", "%ld", valist, 1);
                 assert_eq!(val, 456789);
@@ -1293,7 +1341,9 @@ mod tests {
         {
             let mut val: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("A", "%c", valist, 1);
             assert_eq!(val as u8, b'A');
@@ -1304,7 +1354,9 @@ mod tests {
         {
             let mut val: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("5", "%c", valist, 1);
             assert_eq!(val as u8, b'5');
@@ -1315,7 +1367,9 @@ mod tests {
         {
             let mut val: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal(" ", "%c", valist, 1);
             assert_eq!(val as u8, b' ');
@@ -1327,8 +1381,12 @@ mod tests {
             let mut val1: c_char = 0;
             let mut val2: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("AB", "%c%c", valist, 2);
             assert_eq!(val1 as u8, b'A');
@@ -1341,8 +1399,12 @@ mod tests {
             let mut val1: c_char = 0;
             let mut val2: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("A B", "%c %c", valist, 2);
             assert_eq!(val1 as u8, b'A');
@@ -1354,7 +1416,9 @@ mod tests {
         {
             let mut val: c_char = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_char as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_char>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("@", "%c", valist, 1);
             assert_eq!(val as u8, b'@');
@@ -1451,7 +1515,9 @@ mod tests {
                 let mut val: c_int = 0;
                 let mut buffer: [c_char; 100] = [0; 100];
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+                ));
                 valist.push(VaArg::pointer(buffer.as_mut_ptr() as *const c_void));
 
                 let result = test_sscanf_internal("42 hello", "%d %s", valist, 2);
@@ -1466,8 +1532,12 @@ mod tests {
                 let mut fval: c_double = 0.0;
                 let mut ival: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut fval as *mut c_double as *const c_void));
-                valist.push(VaArg::pointer(&mut ival as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut fval) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut ival) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("3.24 42", "%lf %d", valist, 2);
                 assert!((fval - 3.24).abs() < 1e-10);
@@ -1481,8 +1551,12 @@ mod tests {
                 let mut dec_val: c_int = 0;
                 let mut buffer: [c_char; 100] = [0; 100];
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut hex_val as *mut c_uint as *const c_void));
-                valist.push(VaArg::pointer(&mut dec_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut hex_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut dec_val) as *const c_void
+                ));
                 valist.push(VaArg::pointer(buffer.as_mut_ptr() as *const c_void));
 
                 let result = test_sscanf_internal("FF 255 test", "%x %d %s", valist, 3);
@@ -1498,8 +1572,12 @@ mod tests {
                 let mut cval: c_char = 0;
                 let mut ival: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut cval as *mut c_char as *const c_void));
-                valist.push(VaArg::pointer(&mut ival as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_char>(&mut cval) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut ival) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("A 65", "%c %d", valist, 2);
                 assert_eq!(cval as u8, b'A');
@@ -1513,8 +1591,12 @@ mod tests {
                 let mut val2: c_double = 0.0;
                 let mut buffer: [c_char; 100] = [0; 100];
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_double as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut val2) as *const c_void
+                ));
                 valist.push(VaArg::pointer(buffer.as_mut_ptr() as *const c_void));
 
                 let result =
@@ -1534,7 +1616,9 @@ mod tests {
         {
             let mut val: c_int = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("", "%d", valist, -1);
             assert_eq!(result, -1); // EOF
@@ -1544,7 +1628,9 @@ mod tests {
         {
             let mut val: c_int = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("   ", "%d", valist, -1);
             assert_eq!(result, -1); // EOF
@@ -1554,7 +1640,9 @@ mod tests {
         {
             let mut val: c_int = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("abc", "%d", valist, 0);
             assert_eq!(result, 0); // No matches
@@ -1566,8 +1654,12 @@ mod tests {
             let mut val1: c_int = 999;
             let mut val2: c_int = 888;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("42 abc", "%d %d", valist, 1);
             assert_eq!(result, 1); // Only first match
@@ -1579,7 +1671,9 @@ mod tests {
         {
             let mut val: c_int = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             // This should handle overflow gracefully
             let result = test_sscanf_internal("999999999999999999999", "%d", valist, 1);
@@ -1591,7 +1685,9 @@ mod tests {
         {
             let mut val: c_uint = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_uint>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("xyz", "%x", valist, 0);
             assert_eq!(result, 0);
@@ -1602,7 +1698,9 @@ mod tests {
         {
             let mut val: c_double = 999.0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("not.a.number", "%lf", valist, 0);
             assert_eq!(result, 0);
@@ -1614,8 +1712,12 @@ mod tests {
             let mut val1: c_int = 0;
             let mut val2: c_int = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("42", "%d %d", valist, 1);
             assert_eq!(result, 1);
@@ -1631,7 +1733,9 @@ mod tests {
             {
                 let mut val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("12345", "%3d", valist, 1);
                 assert_eq!(val, 123);
@@ -1654,7 +1758,9 @@ mod tests {
             {
                 let mut val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("ABCDEF", "%4x", valist, 1);
                 assert_eq!(val, 0xABCD);
@@ -1679,8 +1785,12 @@ mod tests {
                 let mut val1: c_int = 0;
                 let mut val2: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("123456789", "%3d%4d", valist, 2);
                 assert_eq!(val1, 123);
@@ -1696,7 +1806,9 @@ mod tests {
         {
             let mut val: c_int = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("%42", "%%%d", valist, 1);
             assert_eq!(val, 42);
@@ -1708,8 +1820,12 @@ mod tests {
             let mut val1: c_int = 0;
             let mut val2: c_int = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-            valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+            ));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+            ));
 
             let result = test_sscanf_internal("42%100", "%d%%%d", valist, 2);
             assert_eq!(val1, 42);
@@ -1721,7 +1837,9 @@ mod tests {
         {
             let mut val: c_int = 999;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+            ));
 
             let result = test_sscanf_internal("42", "%%%d", valist, 0);
             assert_eq!(result, 0); // Should fail to match
@@ -1736,7 +1854,9 @@ mod tests {
             for i in [-32767, -1000, -1, 0, 1, 1000, 32767].iter() {
                 let mut val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val) as *const c_void
+                ));
 
                 let input = format!("{i}");
                 let result = test_sscanf_internal(&input, "%d", valist, 1);
@@ -1749,8 +1869,12 @@ mod tests {
                 let mut val1: c_int = 0;
                 let mut val2: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("12 \t\n32", "%d %d", valist, 2);
                 assert_eq!(val1, 12);
@@ -1763,8 +1887,12 @@ mod tests {
                 let mut val1: c_char = 0;
                 let mut val2: c_char = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_char as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_char as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_char>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_char>(&mut val2) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("a b", "%c %c", valist, 2);
                 assert_eq!(val1 as u8, b'a');
@@ -1802,9 +1930,15 @@ mod tests {
                 let mut hex_val: c_uint = 0;
                 let mut oct_val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut dec_val as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut hex_val as *mut c_uint as *const c_void));
-                valist.push(VaArg::pointer(&mut oct_val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut dec_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut hex_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut oct_val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("255 FF 377", "%d %x %o", valist, 3);
                 assert_eq!(dec_val, 255);
@@ -1817,7 +1951,9 @@ mod tests {
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("1234567890", "%ld", valist, 1);
                 assert_eq!(val, 1234567890);
@@ -1828,7 +1964,9 @@ mod tests {
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("3.24159", "%lf", valist, 1);
                 assert!((val - 3.24159).abs() < 1e-10);
@@ -1839,7 +1977,9 @@ mod tests {
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("1.5e10", "%lf", valist, 1);
                 assert!((val - 1.5e10).abs() < 1e5);
@@ -1853,10 +1993,16 @@ mod tests {
                 let mut fval: c_double = 0.0;
                 let mut cval: c_char = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut ival as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut ival) as *const c_void
+                ));
                 valist.push(VaArg::pointer(buffer.as_mut_ptr() as *const c_void));
-                valist.push(VaArg::pointer(&mut fval as *mut c_double as *const c_void));
-                valist.push(VaArg::pointer(&mut cval as *mut c_char as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut fval) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_char>(&mut cval) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("42 hello 3.24 X", "%d %s %lf %c", valist, 4);
                 assert_eq!(ival, 42);
@@ -1889,7 +2035,9 @@ mod tests {
             {
                 let mut val: c_long = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_long as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_long>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("2147483647", "%ld", valist, 1);
                 assert_eq!(val, 2147483647);
@@ -1901,7 +2049,9 @@ mod tests {
                 let mut vals: [c_int; 10] = [0; 10];
                 let mut valist = CustomVaList::new();
                 for i in 0..10 {
-                    valist.push(VaArg::pointer(&mut vals[i] as *mut c_int as *const c_void));
+                    valist.push(VaArg::pointer(
+                        core::ptr::from_mut::<c_int>(&mut vals[i]) as *const c_void
+                    ));
                 }
 
                 let result = test_sscanf_internal(
@@ -1920,7 +2070,9 @@ mod tests {
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("1e-100", "%lf", valist, 1);
                 assert!((val - 1e-100).abs() < 1e-105);
@@ -1931,7 +2083,9 @@ mod tests {
             {
                 let mut val: c_double = 0.0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_double as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_double>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("1e50", "%lf", valist, 1);
                 assert!((val - 1e50).abs() < 1e45);
@@ -1942,7 +2096,9 @@ mod tests {
             {
                 let mut val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("01234567", "%x", valist, 1);
                 assert_eq!(val, 0x01234567);
@@ -1953,7 +2109,9 @@ mod tests {
             {
                 let mut val: c_uint = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val as *mut c_uint as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_uint>(&mut val) as *const c_void
+                ));
 
                 let result = test_sscanf_internal("01234567", "%o", valist, 1);
                 assert_eq!(val, 0o1234567);
@@ -1966,9 +2124,15 @@ mod tests {
                 let mut val2: c_int = 0;
                 let mut val3: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut val1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val2 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut val3 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val2) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut val3) as *const c_void
+                ));
 
                 let result = test_sscanf_internal(
                     "  \t\n  1   \t\n\t   2  \n\n  3  \t",
@@ -2002,13 +2166,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2057,13 +2223,15 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
 
                 // Test with our implementation
                 let mut our_val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2105,7 +2273,9 @@ mod tests {
 
             let mut our_val: c_int = 0;
             let mut valist = CustomVaList::new();
-            valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+            valist.push(VaArg::pointer(
+                core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+            ));
 
             let input_cstr = to_c_string(input);
             let format_cstr = to_c_string(format);
@@ -2124,7 +2294,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
                 println!("LIBC: result={libc_result}, value={libc_val}");
             }
@@ -2218,12 +2388,14 @@ mod tests {
                     let libc_result = libc::sscanf(
                         input_cstring.as_ptr(),
                         format_cstring.as_ptr(),
-                        &mut libc_val as *mut c_int,
+                        core::ptr::from_mut::<c_int>(&mut libc_val),
                     );
 
                     let mut our_val: c_int = 0;
                     let mut valist = CustomVaList::new();
-                    valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                    valist.push(VaArg::pointer(
+                        core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                    ));
 
                     let input_cstr = to_c_string(input);
                     let format_cstr = to_c_string(format);
@@ -2263,8 +2435,12 @@ mod tests {
         let mut our_val: c_int = 0;
         let mut our_n: c_int = -1;
         let mut valist = CustomVaList::new();
-        valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-        valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+        valist.push(VaArg::pointer(
+            core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+        ));
+        valist.push(VaArg::pointer(
+            core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+        ));
 
         let input_cstr = to_c_string(input);
         let format_cstr = to_c_string(format);
@@ -2291,15 +2467,19 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_n as *mut c_int,
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
 
                 let mut our_n: c_int = -1;
                 let mut our_val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2351,15 +2531,19 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
-                    &mut libc_n as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
                 );
 
                 let mut our_val: c_int = 0;
                 let mut our_n: c_int = -1;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2412,8 +2596,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
-                    &mut libc_n as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
                     libc_str.as_mut_ptr(),
                 );
 
@@ -2421,8 +2605,12 @@ mod tests {
                 let mut our_n: c_int = -1;
                 let mut our_str: [c_char; 20] = [0; 20];
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
                 valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
 
                 let input_cstr = to_c_string(input);
@@ -2490,8 +2678,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
-                    &mut libc_n as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
                     libc_str.as_mut_ptr(),
                 );
 
@@ -2499,8 +2687,12 @@ mod tests {
                 let mut our_n: c_int = -1;
                 let mut our_str: [c_char; 20] = [0; 20];
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
                 valist.push(VaArg::pointer(our_str.as_mut_ptr() as *const c_void));
 
                 let input_cstr = to_c_string(input);
@@ -2562,12 +2754,12 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_v1 as *mut c_int,
-                    &mut libc_n1 as *mut c_int,
-                    &mut libc_v2 as *mut c_int,
-                    &mut libc_n2 as *mut c_int,
-                    &mut libc_v3 as *mut c_int,
-                    &mut libc_n3 as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_v1),
+                    core::ptr::from_mut::<c_int>(&mut libc_n1),
+                    core::ptr::from_mut::<c_int>(&mut libc_v2),
+                    core::ptr::from_mut::<c_int>(&mut libc_n2),
+                    core::ptr::from_mut::<c_int>(&mut libc_v3),
+                    core::ptr::from_mut::<c_int>(&mut libc_n3),
                 );
 
                 let mut our_v1: c_int = 0;
@@ -2577,12 +2769,24 @@ mod tests {
                 let mut our_v3: c_int = 0;
                 let mut our_n3: c_int = -1;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_v1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n1 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_v2 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n2 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_v3 as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n3 as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_v1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n1) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_v2) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n2) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_v3) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n3) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2654,15 +2858,19 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_val as *mut c_int,
-                    &mut libc_n as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
                 );
 
                 let mut our_val: c_int = 0;
                 let mut our_n: c_int = -1;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);
@@ -2710,15 +2918,19 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input_cstring.as_ptr(),
                     format_cstring.as_ptr(),
-                    &mut libc_n as *mut c_int,
-                    &mut libc_val as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_n),
+                    core::ptr::from_mut::<c_int>(&mut libc_val),
                 );
 
                 let mut our_n: c_int = -1;
                 let mut our_val: c_int = 0;
                 let mut valist = CustomVaList::new();
-                valist.push(VaArg::pointer(&mut our_n as *mut c_int as *const c_void));
-                valist.push(VaArg::pointer(&mut our_val as *mut c_int as *const c_void));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_n) as *const c_void
+                ));
+                valist.push(VaArg::pointer(
+                    core::ptr::from_mut::<c_int>(&mut our_val) as *const c_void
+                ));
 
                 let input_cstr = to_c_string(input);
                 let format_cstr = to_c_string(format);

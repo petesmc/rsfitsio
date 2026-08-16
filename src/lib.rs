@@ -171,7 +171,7 @@ pub trait AsMutPtr<T> {
 impl<T> AsMutPtr<T> for Option<&mut [T]> {
     fn as_mut_ptr(&self) -> *mut T {
         match self {
-            Some(v) => v.as_ptr() as *mut T, // UNSAFE
+            Some(v) => v.as_ptr().cast_mut(), // UNSAFE
             None => core::ptr::null_mut(),
         }
     }

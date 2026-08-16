@@ -123,7 +123,7 @@ macro_rules! FREE {
             // keep the block so the macro stays usable from safe code.
             #[allow(unused_unsafe)]
             unsafe {
-                libc::free($x as *mut libc::c_void);
+                libc::free($x.cast::<libc::c_void>());
             }
             $x = core::ptr::null_mut();
         } else {
@@ -228,7 +228,7 @@ pub fn fffrow_safe(
         Info.dataPtr = row_status.as_mut_ptr().cast::<c_void>();
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = nrows;
-        Info.parseData = &mut lParse;
+        Info.parseData = &raw mut lParse;
 
         let colData_slice = &mut lParse.colData[..];
         if ffiter_safe(
@@ -237,7 +237,7 @@ pub fn fffrow_safe(
             firstrow - 1,
             0,
             fits_parser_workfn,
-            &Info as *const _ as *mut c_void,
+            core::ptr::from_ref(&Info) as *mut c_void,
             status,
         ) == -1
         {
@@ -430,7 +430,7 @@ pub fn ffsrow_safe(
         Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>());
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = inExt.numRows as c_long;
-        Info.parseData = &mut lParse as *mut ParseData;
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
         if Info.dataPtr.is_null() {
             ffpmsg_str("Unable to allocate memory for row selection");
             ffcprs(&mut lParse);
@@ -458,7 +458,7 @@ pub fn ffsrow_safe(
                 0,
                 0,
                 fits_parser_workfn,
-                (&mut Info as *mut parseInfo).cast::<c_void>(),
+                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 status,
             );
 
@@ -762,9 +762,9 @@ pub fn ffcrow_safe(
     }
 
     Info.dataPtr = array.as_mut_ptr().cast::<c_void>();
-    Info.nullPtr = nulval as *mut c_void;
+    Info.nullPtr = nulval.cast_mut();
     Info.maxRows = nelements / nelem1;
-    Info.parseData = &mut lParse;
+    Info.parseData = &raw mut lParse;
 
     let colData_slice = &mut lParse.colData[..];
     if ffiter_safe(
@@ -773,7 +773,7 @@ pub fn ffcrow_safe(
         firstrow - 1,
         0,
         fits_parser_workfn,
-        ((&mut Info) as *mut parseInfo).cast::<c_void>(),
+        core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -952,7 +952,7 @@ pub fn ffcalc_rng_safe(
         constant = 0;
     }
 
-    Info.parseData = &mut lParse;
+    Info.parseData = &raw mut lParse;
     /*  Case (1): If column exists put it there  */
 
     colNo = 0;
@@ -1198,7 +1198,7 @@ pub fn ffcalc_rng_safe(
                 start[i as usize] - 1,
                 c_long::from(nPerLp),
                 fits_parser_workfn,
-                &Info as *const _ as *mut c_void,
+                core::ptr::from_ref(&Info) as *mut c_void,
                 status,
             ) == -1
             {
@@ -1925,7 +1925,7 @@ pub(crate) fn fits_parser_workfn_safe(
                                 ffcvtn(
                                     lParse.datatype,
                                     result.value.data.scalar_ptr(),
-                                    &undef,
+                                    &raw const undef,
                                     result.value.nelem, /* 1 */
                                     (*(pv.userInfo)).datatype,
                                     pv.Null,
@@ -3457,7 +3457,7 @@ pub fn fffrwc_safe(
                     ntimes,
                     lParse.nCols,
                     &mut lParse.colData,
-                    ((&mut Info) as *mut parseInfo).cast::<c_void>(),
+                    core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 );
             }
         }
@@ -3576,7 +3576,7 @@ pub fn ffffrw_safer(
         } else {
             let mut workData = ffffrw_workdata {
                 prownum: rownum,
-                lParse: &mut lParse as *mut ParseData,
+                lParse: core::ptr::from_mut::<ParseData>(&mut lParse),
             };
             let colData_slice = &mut lParse.colData[..];
             if ffiter_safe(
@@ -3585,7 +3585,7 @@ pub fn ffffrw_safer(
                 0,
                 0,
                 ffffrw_work,
-                (&mut workData as *mut ffffrw_workdata).cast::<c_void>(),
+                core::ptr::from_mut::<ffffrw_workdata>(&mut workData).cast::<c_void>(),
                 status,
             ) == -1
             {
@@ -3909,6 +3909,16 @@ pub(crate) fn ffffrw_work_safe(
     }
 }
 
+/// Backing store for the C's `DEFAULT_TAGS`, which fits_pixel_filter hands to
+/// the caller through `filter->tag`.
+struct DefaultTags([*mut c_char; 1]);
+
+/* SAFETY: the single element points into a 'static string literal and is only
+ever read; nothing writes through it or through the array. */
+unsafe impl Sync for DefaultTags {}
+
+static DEFAULT_TAGS: DefaultTags = DefaultTags([c"X".as_ptr().cast_mut()]);
+
 /*--------------------------------------------------------------------------*/
 /// Apply pixel filtering operations
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -3942,7 +3952,10 @@ pub fn fits_pixel_filter_safer(
         let result: *mut Node = core::ptr::null_mut();
         let mut datatype: c_int = 0;
 
-        let default_tags: [c_char; 2] = [b'X' as c_char, 0];
+        /* C: `char *DEFAULT_TAGS[] = { "X" };` -- an array holding one string
+        pointer, not a string.  It is assigned to filter->tag, which the caller
+        owns and reads back as tag[0][0], so it must both have pointer type and
+        outlive this frame. */
         let mut msg: [c_char; 256] = [0; 256];
         let mut write_blank_kwd: c_int = 0; /* write BLANK if any output nulls? */
         let mut lParse: ParseData = ParseData::default();
@@ -3958,7 +3971,7 @@ pub fn fits_pixel_filter_safer(
         }
 
         if filter.tag.is_null() || (*filter.tag).is_null() || **filter.tag == 0 {
-            filter.tag = default_tags.as_ptr() as *mut *mut c_char;
+            filter.tag = DEFAULT_TAGS.0.as_ptr().cast_mut();
             if debug_pixfilter != 0 {
                 println!("using default tag '{}'", **filter.tag);
             }
@@ -4228,7 +4241,7 @@ pub fn fits_pixel_filter_safer(
             );
 
             info.maxRows = -1;
-            info.parseData = &mut lParse;
+            info.parseData = &raw mut lParse;
 
             if {
                 let colData_slice = &mut lParse.colData[..];
@@ -4238,7 +4251,7 @@ pub fn fits_pixel_filter_safer(
                     0,
                     0,
                     fits_parser_workfn,
-                    (&mut info as *mut parseInfo).cast::<c_void>(),
+                    core::ptr::from_mut::<parseInfo>(&mut info).cast::<c_void>(),
                     status,
                 )
             } == -1
@@ -6311,7 +6324,7 @@ mod tests {
                 &cc("INTCOL * 2"),
                 1,
                 10,
-                (&nulval as *const c_long).cast::<c_void>(),
+                core::ptr::from_ref::<c_long>(&nulval).cast::<c_void>(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,
@@ -6559,7 +6572,7 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 2.5"),
@@ -6598,7 +6611,7 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL + 100"),
@@ -6636,7 +6649,7 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 3.14159"),
@@ -6673,7 +6686,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0.0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("3.14159"),
@@ -6702,7 +6715,7 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL > 5"),
@@ -6741,7 +6754,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'test'"),
@@ -6782,7 +6795,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 2"),
@@ -6807,7 +6820,7 @@ mod tests {
             let mut results = [0u8; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL"),
@@ -6849,7 +6862,7 @@ mod tests {
             let mut results = [0i16; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 100"),
@@ -6892,7 +6905,7 @@ mod tests {
             let mut results = [0 as LONGLONG; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 1000000000"),
@@ -6934,7 +6947,7 @@ mod tests {
             let mut results = [0 as c_int; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL + 500"),
@@ -6974,7 +6987,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("42"),
@@ -7000,7 +7013,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("1==1"),
@@ -7026,7 +7039,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = [0 as c_char; FLEN_VALUE];
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'hello'"),
@@ -7051,7 +7064,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'Test history entry'"),
@@ -7072,7 +7085,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'Test comment entry'"),
@@ -7093,7 +7106,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("42"),
@@ -7119,7 +7132,7 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL > 5"),
@@ -7159,7 +7172,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut ncols = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'test'"),
@@ -7206,7 +7219,7 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("FLOATCOL * 2.5"),
@@ -7244,7 +7257,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("b11110000"),
@@ -7279,7 +7292,7 @@ mod tests {
             let mut results = [0 as LONGLONG; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 1000000000"),
@@ -7376,7 +7389,7 @@ mod tests {
             let start: [c_long; 1] = [3];
             let end: [c_long; 1] = [7];
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator_rng(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 10"),
@@ -7419,7 +7432,7 @@ mod tests {
             let start: [c_long; 2] = [1, 8];
             let end: [c_long; 2] = [3, 10];
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator_rng(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 5"),
@@ -8031,7 +8044,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp: *mut fitsfile = &mut *f;
+            let fp: *mut fitsfile = &raw mut *f;
             fits_select_rows(
                 unsafe { &mut *fp },
                 unsafe { &mut *fp },
@@ -8055,7 +8068,7 @@ mod tests {
             let mut results = [0 as c_long; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL * 2"),
@@ -8094,7 +8107,7 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("FLOATCOL + 0.5"),
@@ -8130,7 +8143,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_ascii_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("'test'"),
@@ -8170,7 +8183,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_ascii_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("INTCOL > 5"),
@@ -8850,7 +8863,7 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &mut *f;
+            let fp_self: *mut fitsfile = &raw mut *f;
             fits_calculator(
                 unsafe { &mut *fp_self },
                 &cc("(INTCOL = 3:7)"),

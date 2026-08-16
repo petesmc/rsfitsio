@@ -43,6 +43,14 @@ bzip2 = ["dep:libbz2-rs-sys"]
 shared_mem= []
 net_services = []
 
+
+[lints.clippy]
+borrow_as_ptr = "deny"
+cast_ptr_alignment = "deny"
+ptr_as_ptr = "deny"
+ptr_cast_constness = "deny"
+ref_as_ptr = "deny"
+
 [dependencies]
 libz-rs-sys = { version = "0.6.6" }
 libbz2-rs-sys = { version = "0.2.5", optional = true}

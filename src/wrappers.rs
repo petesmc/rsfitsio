@@ -369,6 +369,34 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     }
 }
 
+/*--------------------------------------------------------------------------*/
+/// Read into `buf` until it is full or end-of-file is reached, returning the
+/// total number of bytes read.
+///
+/// `Read::read` is permitted to return fewer bytes than requested; a short read
+/// is not an error and happens in practice on NFS/FUSE mounts, when a signal
+/// interrupts the call, and under emulation.  Callers that transliterate C's
+/// `fread` semantics ("I asked for N bytes, so a result < N means truncation")
+/// need this loop, otherwise a short read is misreported as a corrupt file.
+// clippy points ErrorKind at core::io, but that re-export is still behind the
+// unstable `core_io` feature, so the std path has to stay.
+#[allow(clippy::std_instead_of_core)]
+pub(crate) fn read_fill<R: std::io::Read + ?Sized>(
+    reader: &mut R,
+    buf: &mut [u8],
+) -> std::io::Result<usize> {
+    let mut nread = 0;
+    while nread < buf.len() {
+        match reader.read(&mut buf[nread..]) {
+            Ok(0) => break, /* end of file */
+            Ok(n) => nread += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(nread)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -381,7 +409,7 @@ mod tests {
         let s: &[c_char] = bytemuck::cast_slice(b"12345 XC");
         let mut endpu: *mut c_char = core::ptr::null_mut();
 
-        let ru = unsafe { libc::strtol(s.as_ptr(), &mut endpu, 10) };
+        let ru = unsafe { libc::strtol(s.as_ptr(), &raw mut endpu, 10) };
         let (rs, endps): (c_longlong, usize) = strtol_safe(s).unwrap();
 
         assert_eq!(ru, 12345);
@@ -398,7 +426,7 @@ mod tests {
         // Test with leadng whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   12345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 spaces + 5 digits
@@ -408,7 +436,7 @@ mod tests {
         // Test with leading zeros
         let s: &[c_char] = bytemuck::cast_slice(b"00012345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 zeros + 5 digits
@@ -418,7 +446,7 @@ mod tests {
         // Test with negative number
         let s: &[c_char] = bytemuck::cast_slice(b"-12345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
         assert_eq!(endp, 6); // 1 minus + 5 digits
@@ -428,7 +456,7 @@ mod tests {
         // Test with invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 5); // 5 digits
@@ -438,7 +466,7 @@ mod tests {
         // Test with empty string
         let s: &[c_char] = bytemuck::cast_slice(b"\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -447,7 +475,7 @@ mod tests {
         // Test with only whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   \0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -456,7 +484,7 @@ mod tests {
         // Test with only invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"abcde\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -465,7 +493,7 @@ mod tests {
         // Test with leading zeros and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"00012345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 zeros + 5 digits
@@ -475,7 +503,7 @@ mod tests {
         // Test with negative number and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"-12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
         assert_eq!(endp, 6); // 1 minus + 5 digits
@@ -485,7 +513,7 @@ mod tests {
         // Test with leading whitespace and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"   12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 spaces + 5 digits
@@ -795,29 +823,4 @@ mod tests {
         assert_eq!(result, 21.0);
         assert_eq!(endp, 2);
     }
-}
-
-/*--------------------------------------------------------------------------*/
-/// Read into `buf` until it is full or end-of-file is reached, returning the
-/// total number of bytes read.
-///
-/// `Read::read` is permitted to return fewer bytes than requested; a short read
-/// is not an error and happens in practice on NFS/FUSE mounts, when a signal
-/// interrupts the call, and under emulation.  Callers that transliterate C's
-/// `fread` semantics ("I asked for N bytes, so a result < N means truncation")
-/// need this loop, otherwise a short read is misreported as a corrupt file.
-pub(crate) fn read_fill<R: std::io::Read + ?Sized>(
-    reader: &mut R,
-    buf: &mut [u8],
-) -> std::io::Result<usize> {
-    let mut nread = 0;
-    while nread < buf.len() {
-        match reader.read(&mut buf[nread..]) {
-            Ok(0) => break, /* end of file */
-            Ok(n) => nread += n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(nread)
 }

@@ -131,7 +131,7 @@ pub static DRIVER_TABLE: OnceLock<Vec<fitsdriver>> = OnceLock::new(); /* allocat
 
 /* this table of Fptr pointers is used by fits_already_open */
 pub static mut FPTR_TABLE: [*mut FITSfile; NMAXFILES] =
-    [ptr::null::<FITSfile>() as *mut FITSfile; NMAXFILES];
+    [core::ptr::null_mut::<FITSfile>(); NMAXFILES];
 
 pub static NEED_TO_INITIALIZE: Mutex<bool> = Mutex::new(true); /* true if CFITSIO has not been initialized */
 
@@ -1424,7 +1424,7 @@ pub fn ffopen_safe(
 
             if !isdigit_safe(rowexpress[0]) {
                 /* is the row specification a number? */
-                sscanf_ld(&rowexpress, cs!(c"%ld"), &mut rownum);
+                sscanf_ld(&rowexpress, cs!(c"%ld"), &raw mut rownum);
                 if rownum < 1 {
                     ffpmsg_str("illegal rownum for image cell:");
                     ffpmsg_slice(&rowexpress);
@@ -1851,7 +1851,7 @@ pub fn ffreopen_safer(
     // HEAP ALLOCATION
     let mut n = Box::new(fitsfile {
         HDUposition: 0, /* set initial position to primary array */
-        Fptr: unsafe { Box::from_raw(&mut *openfptr.Fptr as *mut FITSfile) }, /* both point to the same structure */ // TODO this is very unsafe!
+        Fptr: unsafe { Box::from_raw(core::ptr::from_mut::<FITSfile>(&mut *openfptr.Fptr)) }, /* both point to the same structure */ // TODO this is very unsafe!
     });
 
     n.Fptr.open_count += 1; /* increment the file usage counter */
@@ -2196,7 +2196,7 @@ pub(crate) fn check_is_mem_fits(inputmem: &[c_char], len: usize) -> c_int {
             uncompress2mem_from_mem(
                 inputmem,
                 len,
-                &mut tstFits_ptr,
+                &raw mut tstFits_ptr,
                 &mut nBuff,
                 None,
                 Some(&mut nUncomp),
@@ -3259,7 +3259,7 @@ pub(crate) fn ffedit_columns(
 
                     // WARNING / SAFETY / TODO:  This is really ugly, but we need to
                     // pass a mutable reference to fptr into ffcalc_safe.
-                    let same_ftpr = unsafe { &mut *(fptr.as_mut() as *mut _) };
+                    let same_ftpr = unsafe { &mut *core::ptr::from_mut(fptr.as_mut()) };
 
                     if ffcalc_safe(
                         fptr,
@@ -8898,7 +8898,7 @@ pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
     CURSOR.set(cursor);
 
     /* the returned pointer is into the caller's own buffer, as in the C */
-    &mut buf[start] as *mut c_char
+    core::ptr::from_mut::<c_char>(&mut buf[start])
 }
 
 /*--------------------------------------------------------------------------*/
@@ -9512,8 +9512,8 @@ pub fn pixel_filter_helper(
             count: 1,
             path: ptr::null_mut(),
             tag: ptr::null_mut(),
-            ifptr: &mut infptr_raw,
-            expression: pixfilter[expr_idx..].as_ptr() as *mut c_char,
+            ifptr: &raw mut infptr_raw,
+            expression: pixfilter[expr_idx..].as_ptr().cast_mut(),
             bitpix,
             blank: 0,
             ofptr: ofptr.as_deref_mut().unwrap(),
@@ -10964,7 +10964,7 @@ mod tests {
         let mut fptr: Option<Box<fitsfile>> = None;
         ffimem_safer(
             &mut fptr,
-            &mut buf_addr,
+            &raw mut buf_addr,
             &mut buffsize,
             2880,
             None,
@@ -12794,7 +12794,7 @@ mod tests {
         let mut f: Option<Box<fitsfile>> = None;
         fits_create_memfile(
             &mut f,
-            &mut buffer,
+            &raw mut buffer,
             &mut bufsize,
             2880,
             Some(libc::realloc),
@@ -12830,7 +12830,7 @@ mod tests {
         let mut f: Option<Box<fitsfile>> = None;
         fits_create_memfile(
             &mut f,
-            &mut buffer,
+            &raw mut buffer,
             &mut bufsize,
             2880,
             Some(libc::realloc),
@@ -13930,8 +13930,8 @@ mod tests {
             assert!(f2.is_some());
 
             // Both should point to same underlying file.
-            let p1: *const _ = &*f1.as_deref().unwrap().Fptr;
-            let p2: *const _ = &*f2.as_deref().unwrap().Fptr;
+            let p1: *const _ = &raw const *f1.as_deref().unwrap().Fptr;
+            let p2: *const _ = &raw const *f2.as_deref().unwrap().Fptr;
             assert_eq!(p1, p2);
 
             fits_close_file(f1.take().unwrap(), &mut status);

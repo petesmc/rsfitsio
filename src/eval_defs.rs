@@ -261,9 +261,9 @@ impl NodeValue {
     /// it lives exactly as long as the borrow.
     pub(crate) fn scalar_ptr(&self) -> *const c_void {
         match self {
-            NodeValue::Long(v) => (v as *const c_long).cast(),
-            NodeValue::Double(v) => (v as *const f64).cast(),
-            NodeValue::Logical(v) => (v as *const c_char).cast(),
+            NodeValue::Long(v) => core::ptr::from_ref::<c_long>(v).cast(),
+            NodeValue::Double(v) => core::ptr::from_ref::<f64>(v).cast(),
+            NodeValue::Logical(v) => core::ptr::from_ref::<c_char>(v).cast(),
             NodeValue::Text(v) => v.as_ptr().cast(),
             NodeValue::Empty | NodeValue::Buffer { .. } | NodeValue::Region(_) => core::ptr::null(),
         }

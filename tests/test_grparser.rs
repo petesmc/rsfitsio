@@ -105,7 +105,7 @@ mod tests {
                         rsfitsio::grparser::fits_execute_template(
                             fptr.as_mut().unwrap().as_mut(),
                             template_cstr.as_ptr(),
-                            &mut status,
+                            &raw mut status,
                         );
                     }
                     assert_eq!(status, 0, "Failed to execute template");
@@ -172,7 +172,7 @@ mod tests {
                         rsfitsio::grparser::fits_execute_template(
                             fptr.as_mut().unwrap().as_mut(),
                             template_cstr.as_ptr(),
-                            &mut status,
+                            &raw mut status,
                         );
                     }
                     assert_eq!(status, 0, "Failed to execute template");
@@ -221,7 +221,7 @@ mod tests {
                         rsfitsio::grparser::fits_execute_template(
                             fptr.as_mut().unwrap().as_mut(),
                             template_cstr.as_ptr(),
-                            &mut status,
+                            &raw mut status,
                         );
                     }
                     assert_eq!(
@@ -268,7 +268,7 @@ mod tests {
                         rsfitsio::grparser::fits_execute_template(
                             fptr.as_mut().unwrap().as_mut(),
                             template_cstr.as_ptr(),
-                            &mut status,
+                            &raw mut status,
                         );
                     }
                     assert_eq!(
@@ -305,7 +305,7 @@ mod tests {
                 rsfitsio::grparser::fits_execute_template(
                     fptr.as_mut().unwrap().as_mut(),
                     template_cstr.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
             }
             assert_ne!(status, 0, "Should fail with non-existent template file");

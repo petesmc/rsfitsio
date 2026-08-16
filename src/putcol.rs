@@ -1482,9 +1482,15 @@ pub fn ffpcl_safe(
                 status,
             );
         }
+        // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
+        // as in the C, so it carries pointer alignment even though the
+        // signature types it as bytes (clippy's cast_ptr_alignment); assert
+        // that rather than assuming it.
         TSTRING => unsafe {
-            let array =
-                slice::from_raw_parts(array.as_ptr().cast::<*const c_char>(), nelem as usize);
+            #[allow(clippy::cast_ptr_alignment)]
+            let p = array.as_ptr().cast::<*const c_char>();
+            debug_assert!(p.is_aligned());
+            let array = slice::from_raw_parts(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());
@@ -1997,7 +2003,7 @@ pub fn ffpcln_safe(
         // SAFETY: array[0] points to a buffer of at least nelem*elsize bytes
         // supplied by the caller; ffpcn_safe expects exactly that many bytes.
         let array0: &[u8] =
-            unsafe { slice::from_raw_parts(array[0] as *const u8, nelem as usize * elsize) };
+            unsafe { slice::from_raw_parts(array[0].cast::<u8>(), nelem as usize * elsize) };
         let nulval0 = NullValue::from_raw_ptr(dt, nulval[0]);
         ffpcn_safe(
             fptr, dt, colnum[0], firstrow, 1, nelem, array0, nulval0, status,
@@ -2025,7 +2031,7 @@ pub fn ffpcln_safe(
             // and length mirror the C pointer arithmetic and stay within it.
             let array1: &[u8] = unsafe {
                 slice::from_raw_parts(
-                    (array[ic] as *const u8).add(byteoff),
+                    array[ic].cast::<u8>().add(byteoff),
                     nelem1 as usize * elsize,
                 )
             };
@@ -3660,7 +3666,7 @@ pub fn ffiter_safe(
                                 (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
-                                    defaultnull as *const c_void,
+                                    defaultnull.cast_const(),
                                 ),
                                 slice::from_raw_parts_mut(
                                     dataptr.cast::<u8>(),
@@ -3707,7 +3713,7 @@ pub fn ffiter_safe(
                                 (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
-                                    defaultnull as *const c_void,
+                                    defaultnull.cast_const(),
                                 ),
                                 slice::from_raw_parts_mut(
                                     dataptr.cast::<u8>(),
@@ -3803,7 +3809,7 @@ pub fn ffiter_safe(
 
                         if memcmp(
                             nullpointer as *const c_void,
-                            (&zeros as *const f64).cast::<c_void>(),
+                            core::ptr::from_ref::<f64>(&zeros).cast::<c_void>(),
                             nbytes as usize,
                         ) != 0
                         {
@@ -6034,7 +6040,7 @@ mod tests {
             let ptrs: Vec<*const c_char> = str_bufs.iter().map(|v| v.as_ptr()).collect();
             let ptr_bytes: &[u8] = unsafe {
                 core::slice::from_raw_parts(
-                    ptrs.as_ptr() as *const u8,
+                    ptrs.as_ptr().cast::<u8>(),
                     core::mem::size_of_val(&ptrs[..]),
                 )
             };
@@ -6059,7 +6065,7 @@ mod tests {
             let mut read_ptrs: [*mut c_char; 5] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let read_ptr_bytes: &mut [u8] = unsafe {
                 core::slice::from_raw_parts_mut(
-                    read_ptrs.as_mut_ptr() as *mut u8,
+                    read_ptrs.as_mut_ptr().cast::<u8>(),
                     core::mem::size_of_val(&read_ptrs),
                 )
             };

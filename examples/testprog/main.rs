@@ -94,7 +94,7 @@ pub trait AsMutPtr<T> {
 impl<T> AsMutPtr<T> for Option<Box<T>> {
     fn as_mut_ptr(&mut self) -> *mut T {
         match self {
-            Some(val) => val.as_mut() as *mut T,
+            Some(val) => core::ptr::from_mut::<T>(val.as_mut()),
             None => ptr::null_mut(),
         }
     }
@@ -294,7 +294,12 @@ pub fn main() -> ExitCode {
 
             println!("CFITSIO TESTPROG\n");
             println!("Try opening then closing a nonexistent file:");
-            fits_open_file(&mut fptr, c"tq123x.kjl".as_ptr(), READWRITE, &mut status);
+            fits_open_file(
+                &raw mut fptr,
+                c"tq123x.kjl".as_ptr(),
+                READWRITE,
+                &raw mut status,
+            );
             println!(
                 "  ffopen fptr, status  = {} {} (expect an error)",
                 if fptr.is_none() { 0 } else { 1 } as c_ulong,
@@ -302,20 +307,20 @@ pub fn main() -> ExitCode {
             );
 
             let f = fptr.take();
-            ffclos(f, &mut status);
+            ffclos(f, &raw mut status);
             println!("  ffclos status = {status}\n");
             ffcmsg();
             //status = 0;
 
             for ii in 0..21 {
                 /* allocate space for string column value */
-                inskey[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                inskey[ii] = malloc(FLEN_VALUE).cast::<c_char>();
             }
 
             for ii in 0..10 {
-                ttype[ii] = malloc(FLEN_VALUE) as *mut c_char;
-                tform[ii] = malloc(FLEN_VALUE) as *mut c_char;
-                tunit[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                ttype[ii] = malloc(FLEN_VALUE).cast::<c_char>();
+                tform[ii] = malloc(FLEN_VALUE).cast::<c_char>();
+                tunit[ii] = malloc(FLEN_VALUE).cast::<c_char>();
             }
 
             comms[0] = comm.as_mut_ptr();
@@ -331,16 +336,16 @@ pub fn main() -> ExitCode {
               #####################
             */
 
-            ffinit(&mut fptr, filename.as_ptr(), &mut status);
+            ffinit(&raw mut fptr, filename.as_ptr(), &raw mut status);
             println!("ffinit create new file status = {status}");
             if status != 0 {
                 break 'mainloop;
             }
 
             filename[0] = 0;
-            ffflnm(fptr.as_mut_ptr(), filename.as_mut_ptr(), &mut status);
+            ffflnm(fptr.as_mut_ptr(), filename.as_mut_ptr(), &raw mut status);
 
-            ffflmd(fptr.as_mut_ptr(), &mut filemode, &mut status);
+            ffflmd(fptr.as_mut_ptr(), &raw mut filemode, &raw mut status);
             println!(
                 "Name of file = {}, I/O mode = {}",
                 byte_slice_to_str!(&filename),
@@ -368,7 +373,7 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffphps status = {status}");
@@ -377,7 +382,7 @@ pub fn main() -> ExitCode {
             if ffprec(
                 fptr.as_mut_ptr(),
                 c"key_prec= 'This keyword was written by fxprec' / comment goes here".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffprec status = {status}");
@@ -391,14 +396,14 @@ pub fn main() -> ExitCode {
                 c"card1".as_ptr(),
                 card.as_ptr(),
                 c"".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgkey(
                 fptr.as_mut_ptr(),
                 c"card1".as_ptr(),
                 card2.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!(
                 " {}\n{}\n",
@@ -413,14 +418,14 @@ pub fn main() -> ExitCode {
                 c"card2".as_ptr(),
                 card.as_ptr(),
                 c"".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgkey(
                 fptr.as_mut_ptr(),
                 c"card2".as_ptr(),
                 card2.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!(
                 " {}\n{}\n",
@@ -435,14 +440,14 @@ pub fn main() -> ExitCode {
                 c"card3".as_ptr(),
                 card.as_ptr(),
                 c"".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgkey(
                 fptr.as_mut_ptr(),
                 c"card3".as_ptr(),
                 card2.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!(
                 " {}\n{}\n",
@@ -457,14 +462,14 @@ pub fn main() -> ExitCode {
                 c"card4".as_ptr(),
                 card.as_ptr(),
                 c"".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgkey(
                 fptr.as_mut_ptr(),
                 c"card4".as_ptr(),
                 card2.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!(
                 " {}\n{}\n",
@@ -477,7 +482,7 @@ pub fn main() -> ExitCode {
                 c"key_pkys".as_ptr(),
                 oskey.as_ptr(),
                 c"fxpkys comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkys status = {status}");
@@ -488,7 +493,7 @@ pub fn main() -> ExitCode {
                 c"key_pkyl".as_ptr(),
                 olkey,
                 c"fxpkyl comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyl status = {status}");
@@ -499,7 +504,7 @@ pub fn main() -> ExitCode {
                 c"key_pkyj".as_ptr(),
                 ojkey as LONGLONG,
                 c"fxpkyj comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyj status = {status}");
@@ -511,7 +516,7 @@ pub fn main() -> ExitCode {
                 ofkey,
                 5,
                 c"fxpkyf comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyf status = {status}");
@@ -523,7 +528,7 @@ pub fn main() -> ExitCode {
                 oekey,
                 6,
                 c"fxpkye comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkye status = {status}");
@@ -535,7 +540,7 @@ pub fn main() -> ExitCode {
                 ogkey,
                 14,
                 c"fxpkyg comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyg status = {status}");
@@ -547,7 +552,7 @@ pub fn main() -> ExitCode {
                 odkey,
                 14,
                 c"fxpkyd comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyd status = {status}");
@@ -556,10 +561,10 @@ pub fn main() -> ExitCode {
             if ffpkyc(
                 fptr.as_mut_ptr(),
                 c"key_pkyc".as_ptr(),
-                onekey[..2].as_ptr() as *const [f32; 2],
+                onekey[..2].as_ptr().cast::<[f32; 2]>(),
                 6,
                 c"fxpkyc comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyc status = {status}");
@@ -568,10 +573,10 @@ pub fn main() -> ExitCode {
             if ffpkym(
                 fptr.as_mut_ptr(),
                 c"key_pkym".as_ptr(),
-                ondkey[..2].as_ptr() as *const [f64; 2],
+                ondkey[..2].as_ptr().cast::<[f64; 2]>(),
                 14,
                 c"fxpkym comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkym status = {status}");
@@ -580,10 +585,10 @@ pub fn main() -> ExitCode {
             if ffpkfc(
                 fptr.as_mut_ptr(),
                 c"key_pkfc".as_ptr(),
-                onekey[..2].as_ptr() as *const [f32; 2],
+                onekey[..2].as_ptr().cast::<[f32; 2]>(),
                 6,
                 c"fxpkfc comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkfc status = {status}");
@@ -592,10 +597,10 @@ pub fn main() -> ExitCode {
             if ffpkfm(
                 fptr.as_mut_ptr(),
                 c"key_pkfm".as_ptr(),
-                ondkey[..2].as_ptr() as *const [f64; 2],
+                ondkey[..2].as_ptr().cast::<[f64; 2]>(),
                 14,
                 c"fxpkfm comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkfm status = {status}");
@@ -607,13 +612,13 @@ pub fn main() -> ExitCode {
                 c"This is a very long string value that is continued over more than one keyword."
                     .as_ptr(),
                 c"fxpkls comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkls status = {status}");
             }
 
-            if ffplsw(fptr.as_mut_ptr(), &mut status) > 0 {
+            if ffplsw(fptr.as_mut_ptr(), &raw mut status) > 0 {
                 println!("ffplsw status = {status}");
             }
 
@@ -623,7 +628,7 @@ pub fn main() -> ExitCode {
                 otint,
                 otfrac,
                 c"fxpkyt comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkyt status = {status}");
@@ -632,7 +637,7 @@ pub fn main() -> ExitCode {
             if ffpcom(
                 fptr.as_mut_ptr(),
                 c"  This keyword was written by fxpcom.".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpcom status = {status}");
@@ -641,13 +646,13 @@ pub fn main() -> ExitCode {
             if ffphis(
                 fptr.as_mut_ptr(),
                 c"    This keyword written by fxphis (w/ 2 leading spaces).".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffphis status = {status}");
             }
 
-            if ffpdat(fptr.as_mut_ptr(), &mut status) > 0 {
+            if ffpdat(fptr.as_mut_ptr(), &raw mut status) > 0 {
                 println!("ffpdat status = {status}");
                 break 'mainloop;
             }
@@ -668,8 +673,8 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onskey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkns status = {status}");
@@ -682,8 +687,8 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onlkey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpknl status = {status}");
@@ -696,8 +701,8 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onjkey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpknj status = {status}");
@@ -711,8 +716,8 @@ pub fn main() -> ExitCode {
                 nkeys,
                 onfkey.as_ptr(),
                 5,
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpknf status = {status}");
@@ -726,8 +731,8 @@ pub fn main() -> ExitCode {
                 nkeys,
                 onekey.as_ptr(),
                 6,
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkne status = {status}");
@@ -741,8 +746,8 @@ pub fn main() -> ExitCode {
                 nkeys,
                 ongkey.as_ptr(),
                 13,
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpkng status = {status}");
@@ -756,8 +761,8 @@ pub fn main() -> ExitCode {
                 nkeys,
                 ondkey.as_ptr(),
                 14,
-                comms.as_ptr() as *const *const c_char,
-                &mut status,
+                comms.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ) > 0
             {
                 println!("ffpknd status = {status}");
@@ -774,9 +779,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSTRING,
                 c"tstring".as_ptr(),
-                oskey.as_ptr() as *const _ as *const c_void,
+                oskey.as_ptr().cast::<c_void>(),
                 c"tstring comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -787,9 +792,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLOGICAL,
                 c"tlogical".as_ptr(),
-                &olkey as *const _ as *const c_void,
+                core::ptr::from_ref(&olkey).cast::<c_void>(),
                 c"tlogical comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -800,9 +805,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TBYTE,
                 c"tbyte".as_ptr(),
-                &cval as *const _ as *const c_void,
+                core::ptr::from_ref(&cval).cast::<c_void>(),
                 c"tbyte comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -813,9 +818,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSHORT,
                 c"tshort".as_ptr(),
-                &oshtkey as *const _ as *const c_void,
+                core::ptr::from_ref(&oshtkey).cast::<c_void>(),
                 c"tshort comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -826,9 +831,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TINT,
                 c"tint".as_ptr(),
-                &olkey as *const _ as *const c_void,
+                core::ptr::from_ref(&olkey).cast::<c_void>(),
                 c"tint comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -839,9 +844,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"tlong".as_ptr(),
-                &ojkey as *const _ as *const c_void,
+                core::ptr::from_ref(&ojkey).cast::<c_void>(),
                 c"tlong comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -852,9 +857,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 c"tfloat".as_ptr(),
-                &oekey as *const _ as *const c_void,
+                core::ptr::from_ref(&oekey).cast::<c_void>(),
                 c"tfloat comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -865,9 +870,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 c"tdouble".as_ptr(),
-                &odkey as *const _ as *const c_void,
+                core::ptr::from_ref(&odkey).cast::<c_void>(),
                 c"tdouble comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("ffpky status = {status}");
@@ -884,7 +889,7 @@ pub fn main() -> ExitCode {
                 c"BLANK".as_ptr(),
                 -99,
                 c"value to use for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 println!("BLANK keyword status = {status}");
@@ -918,8 +923,8 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 firstpix.as_ptr(),
                 2,
-                boutarray[0..].as_ptr() as *const _ as *const c_void,
-                &mut status,
+                boutarray[0..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 5;
             ffppx(
@@ -927,8 +932,8 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 firstpix.as_ptr(),
                 2,
-                ioutarray[4..].as_ptr() as *const _ as *const c_void,
-                &mut status,
+                ioutarray[4..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 9;
             ffppx(
@@ -936,8 +941,8 @@ pub fn main() -> ExitCode {
                 TLONG,
                 firstpix.as_ptr(),
                 2,
-                joutarray[8..].as_ptr() as *const _ as *const c_void,
-                &mut status,
+                joutarray[8..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 3;
             firstpix[1] = 2;
@@ -946,8 +951,8 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 firstpix.as_ptr(),
                 2,
-                eoutarray[12..].as_ptr() as *const _ as *const c_void,
-                &mut status,
+                eoutarray[12..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 7;
             ffppx(
@@ -955,8 +960,8 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 firstpix.as_ptr(),
                 2,
-                doutarray[16..].as_ptr() as *const _ as *const c_void,
-                &mut status,
+                doutarray[16..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
 
             /*
@@ -974,9 +979,9 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 firstpix.as_mut_ptr(),
                 2,
-                boutarray[2..].as_ptr() as *const _ as *const c_void,
-                &bnul as *const _ as *const c_void,
-                &mut status,
+                boutarray[2..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&bnul).cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 7;
             inul = 8;
@@ -985,9 +990,9 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 firstpix.as_mut_ptr(),
                 2,
-                ioutarray[6..].as_ptr() as *const _ as *const c_void,
-                &inul as *const _ as *const c_void,
-                &mut status,
+                ioutarray[6..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&inul).cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 1;
             firstpix[1] = 2;
@@ -997,9 +1002,9 @@ pub fn main() -> ExitCode {
                 TLONG,
                 firstpix.as_mut_ptr(),
                 2,
-                joutarray[10..].as_ptr() as *const _ as *const c_void,
-                &jnul as *const _ as *const c_void,
-                &mut status,
+                joutarray[10..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&jnul).cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 5;
             enul = 16.0;
@@ -1008,9 +1013,9 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 firstpix.as_mut_ptr(),
                 2,
-                eoutarray[14..].as_ptr() as *const _ as *const c_void,
-                &enul as *const _ as *const c_void,
-                &mut status,
+                eoutarray[14..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&enul).cast::<c_void>(),
+                &raw mut status,
             );
             firstpix[0] = 9;
             dnul = 20.0;
@@ -1019,21 +1024,24 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 firstpix.as_mut_ptr(),
                 2,
-                doutarray[18..].as_ptr() as *const _ as *const c_void,
-                &dnul as *const _ as *const c_void,
-                &mut status,
+                doutarray[18..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&dnul).cast::<c_void>(),
+                &raw mut status,
             );
 
-            ffppru(fptr.as_mut_ptr(), 1, 1, 1, &mut status);
+            ffppru(fptr.as_mut_ptr(), 1, 1, 1, &raw mut status);
 
             if status > 0 {
                 println!("ffppnx status = {status}");
                 break 'mainloop;
             }
 
-            ffflus(fptr.as_mut_ptr(), &mut status); /* flush all data to the disk file */
+            ffflus(fptr.as_mut_ptr(), &raw mut status); /* flush all data to the disk file */
             println!("ffflus status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /*
               ############################
@@ -1052,8 +1060,8 @@ pub fn main() -> ExitCode {
                 10,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             ffgpvb(
@@ -1063,8 +1071,8 @@ pub fn main() -> ExitCode {
                 10,
                 99,
                 binarray[10..].as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for item in &binarray[..npixels as usize] {
@@ -1079,8 +1087,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for item in &iinarray[..npixels as usize] {
@@ -1095,8 +1103,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 99,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for item in &jinarray[..npixels as usize] {
@@ -1111,8 +1119,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for item in &einarray[..npixels as usize] {
@@ -1127,8 +1135,8 @@ pub fn main() -> ExitCode {
                 10,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpvd(
                 fptr.as_mut_ptr(),
@@ -1137,8 +1145,8 @@ pub fn main() -> ExitCode {
                 10,
                 99.,
                 dinarray[10..].as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for item in &dinarray[..npixels as usize] {
@@ -1208,8 +1216,8 @@ pub fn main() -> ExitCode {
                 10,
                 binarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpfb(
                 fptr.as_mut_ptr(),
@@ -1218,8 +1226,8 @@ pub fn main() -> ExitCode {
                 10,
                 binarray[10..].as_mut_ptr(),
                 larray[10..].as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for ii in 0..npixels as usize {
@@ -1238,8 +1246,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 iinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for ii in 0..npixels as usize {
@@ -1258,8 +1266,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 jinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for ii in 0..npixels as usize {
@@ -1278,8 +1286,8 @@ pub fn main() -> ExitCode {
                 npixels as LONGLONG,
                 einarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for ii in 0..npixels as usize {
@@ -1298,8 +1306,8 @@ pub fn main() -> ExitCode {
                 10,
                 dinarray.as_mut_ptr(),
                 larray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpfd(
                 fptr.as_mut_ptr(),
@@ -1308,8 +1316,8 @@ pub fn main() -> ExitCode {
                 10,
                 dinarray[10..].as_mut_ptr(),
                 larray[10..].as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             for ii in 0..npixels as usize {
@@ -1337,23 +1345,27 @@ pub fn main() -> ExitCode {
 
             for _ii in 0..10 {
                 let f = fptr.take();
-                if ffclos(f, &mut status) > 0 {
+                if ffclos(f, &raw mut status) > 0 {
                     print!("ERROR in ftclos (1) = {status}");
                     break 'mainloop;
                 }
 
-                if fits_open_file(&mut fptr, filename.as_ptr(), READWRITE, &mut status) > 0 {
+                if fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) > 0
+                {
                     println!("ERROR: ffopen open file status = {status}");
                     break 'mainloop;
                 }
             }
             print!("\nClosed then reopened the FITS file 10 times.\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             filename[0] = 0;
-            ffflnm(fptr.as_mut_ptr(), filename.as_mut_ptr(), &mut status);
+            ffflnm(fptr.as_mut_ptr(), filename.as_mut_ptr(), &raw mut status);
 
-            ffflmd(fptr.as_mut_ptr(), &mut filemode, &mut status);
+            ffflmd(fptr.as_mut_ptr(), &raw mut filemode, &raw mut status);
             println!(
                 "Name of file = {}, I/O mode = {}",
                 byte_slice_to_str!(&filename),
@@ -1378,14 +1390,14 @@ pub fn main() -> ExitCode {
             ffghpr(
                 fptr.as_mut_ptr(),
                 99,
-                &mut simple,
-                &mut bitpix,
-                &mut naxis,
+                &raw mut simple,
+                &raw mut bitpix,
+                &raw mut naxis,
                 naxes.as_mut_ptr(),
-                &mut pcount,
-                &mut gcount,
-                &mut extend,
-                &mut status,
+                &raw mut pcount,
+                &raw mut gcount,
+                &raw mut extend,
+                &raw mut status,
             );
             println!(
                 "simple = {}, bitpix = {}, naxis = {}, naxes = ({}, {})",
@@ -1393,7 +1405,7 @@ pub fn main() -> ExitCode {
             );
             println!("  pcount = {pcount}, gcount = {gcount}, extend = {extend}");
 
-            ffgrec(fptr.as_mut_ptr(), 9, card.as_mut_ptr(), &mut status);
+            ffgrec(fptr.as_mut_ptr(), 9, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
             if strncmp_safe(&card, cs!(c"KEY_PREC= 'This"), 15) != 0 {
                 println!("ERROR in ffgrec");
@@ -1405,7 +1417,7 @@ pub fn main() -> ExitCode {
                 keyword.as_mut_ptr(),
                 value.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "{} : {} : {} :",
@@ -1421,7 +1433,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 keyword.as_ptr(),
                 card.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("{}", byte_slice_to_str!(&card));
 
@@ -1434,7 +1446,7 @@ pub fn main() -> ExitCode {
                 c"KY_PKNS1".as_ptr(),
                 value.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KY_PKNS1 : {} : {} :",
@@ -1451,7 +1463,7 @@ pub fn main() -> ExitCode {
                 c"key_pkys".as_ptr(),
                 iskey.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYS {} {} {}",
@@ -1463,9 +1475,9 @@ pub fn main() -> ExitCode {
             ffgkyl(
                 fptr.as_mut_ptr(),
                 c"key_pkyl".as_ptr(),
-                &mut ilkey,
+                &raw mut ilkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYL {} {} {}",
@@ -1477,9 +1489,9 @@ pub fn main() -> ExitCode {
             ffgkyj(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
-                &mut ijkey,
+                &raw mut ijkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYJ {} {} {}",
@@ -1491,9 +1503,9 @@ pub fn main() -> ExitCode {
             ffgkye(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
-                &mut iekey,
+                &raw mut iekey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYJ {:.6} {} {}",
@@ -1505,9 +1517,9 @@ pub fn main() -> ExitCode {
             ffgkyd(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
-                &mut idkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYJ {:.6} {} {}",
@@ -1525,9 +1537,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSTRING,
                 c"key_pkys".as_ptr(),
-                iskey.as_mut_ptr() as *mut c_void,
+                iskey.as_mut_ptr().cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY S {} {} {}",
@@ -1541,9 +1553,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLOGICAL,
                 c"key_pkyl".as_ptr(),
-                &mut ilkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ilkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY L {} {} {}",
@@ -1556,9 +1568,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TBYTE,
                 c"KEY_PKYJ".as_ptr(),
-                &mut cval as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut cval).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY BYTE {} {} {}",
@@ -1571,9 +1583,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSHORT,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ishtkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ishtkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY SHORT {} {} {}",
@@ -1586,9 +1598,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TINT,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ilkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ilkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY INT {} {} {}",
@@ -1602,9 +1614,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ijkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY J {} {} {}",
@@ -1618,9 +1630,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 c"KEY_PKYE".as_ptr(),
-                &mut iekey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut iekey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY E {:.6} {} {}",
@@ -1634,9 +1646,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 c"KEY_PKYD".as_ptr(),
-                &mut idkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut idkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY D {:.6} {} {}",
@@ -1648,9 +1660,9 @@ pub fn main() -> ExitCode {
             ffgkyd(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYF".as_ptr(),
-                &mut idkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYF {:.6} {} {}",
@@ -1662,9 +1674,9 @@ pub fn main() -> ExitCode {
             ffgkyd(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYE".as_ptr(),
-                &mut idkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYE {:.6} {} {}",
@@ -1676,9 +1688,9 @@ pub fn main() -> ExitCode {
             ffgkyd(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYG".as_ptr(),
-                &mut idkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYG {:.14} {} {}",
@@ -1690,9 +1702,9 @@ pub fn main() -> ExitCode {
             ffgkyd(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYD".as_ptr(),
-                &mut idkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYD {:.14} {} {}",
@@ -1704,9 +1716,9 @@ pub fn main() -> ExitCode {
             ffgkyc(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYC".as_ptr(),
-                inekey.as_mut_ptr() as *mut _ as *mut [f32; 2],
+                inekey.as_mut_ptr().cast::<[f32; 2]>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYC {:.6} {:.6} {} {}",
@@ -1719,9 +1731,9 @@ pub fn main() -> ExitCode {
             ffgkyc(
                 fptr.as_mut_ptr(),
                 c"KEY_PKFC".as_ptr(),
-                inekey.as_mut_ptr() as *mut _ as *mut [f32; 2],
+                inekey.as_mut_ptr().cast::<[f32; 2]>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKFC {:.6} {:.6} {} {}",
@@ -1734,9 +1746,9 @@ pub fn main() -> ExitCode {
             ffgkym(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYM".as_ptr(),
-                indkey[..2].as_mut_ptr() as *mut _ as *mut [f64; 2],
+                indkey[..2].as_mut_ptr().cast::<[f64; 2]>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYM {:.6} {:.6} {} {}",
@@ -1749,9 +1761,9 @@ pub fn main() -> ExitCode {
             ffgkym(
                 fptr.as_mut_ptr(),
                 c"KEY_PKFM".as_ptr(),
-                indkey[..2].as_mut_ptr() as *mut _ as *mut [f64; 2],
+                indkey[..2].as_mut_ptr().cast::<[f64; 2]>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKFM {:.6} {:.6} {} {}",
@@ -1764,10 +1776,10 @@ pub fn main() -> ExitCode {
             ffgkyt(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYT".as_ptr(),
-                &mut ijkey,
-                &mut idkey,
+                &raw mut ijkey,
+                &raw mut idkey,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKYT {} {:.14} {} {}",
@@ -1781,16 +1793,16 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 c"km/s/Mpc".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ijkey = 0;
             ffgky(
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ijkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY J {} {} {}",
@@ -1802,7 +1814,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("KEY_PKY units = {}", byte_slice_to_str!(&comment));
 
@@ -1810,16 +1822,16 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 c"".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ijkey = 0;
             ffgky(
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ijkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY J {} {} {}",
@@ -1831,7 +1843,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("KEY_PKY units = {}", byte_slice_to_str!(&comment));
 
@@ -1839,16 +1851,16 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 c"feet/second/second".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ijkey = 0;
             ffgky(
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                &mut ijkey as *mut _ as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "KEY_PKY J {} {} {}",
@@ -1860,16 +1872,16 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KEY_PKYJ".as_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("KEY_PKY units = {}", byte_slice_to_str!(&comment));
 
             ffgkls(
                 fptr.as_mut_ptr(),
                 c"key_pkls".as_ptr(),
-                &mut lsptr,
+                &raw mut lsptr,
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!(
                 "KEY_PKLS long string value = \n{}\n",
@@ -1877,10 +1889,15 @@ pub fn main() -> ExitCode {
             );
 
             /* free the memory for the long string value */
-            fffree(lsptr as *mut c_void, &mut status);
+            fffree(lsptr.cast::<c_void>(), &raw mut status);
 
             /* get size and position in header */
-            ffghps(fptr.as_mut_ptr(), &mut existkeys, &mut keynum, &mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             println!("header contains {existkeys} keywords; located at keyword {keynum} ");
 
             /*
@@ -1894,8 +1911,8 @@ pub fn main() -> ExitCode {
                 1,
                 3,
                 inskey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             );
             println!(
                 "ffgkns:  {}, {}, {}",
@@ -1913,8 +1930,8 @@ pub fn main() -> ExitCode {
                 1,
                 3,
                 inlkey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             );
             println!("ffgknl:  {}, {}, {}", inlkey[0], inlkey[1], inlkey[2]);
             if nfound != 3 || status > 0 {
@@ -1927,8 +1944,8 @@ pub fn main() -> ExitCode {
                 1,
                 3,
                 injkey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             );
             println!("ffgknj:  {}, {}, {}", injkey[0], injkey[1], injkey[2]);
             if nfound != 3 || status > 0 {
@@ -1941,8 +1958,8 @@ pub fn main() -> ExitCode {
                 1,
                 3,
                 inekey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             );
             println!(
                 "ffgkne:  {:.6}, {:.6}, {:.6}",
@@ -1958,8 +1975,8 @@ pub fn main() -> ExitCode {
                 1,
                 3,
                 indkey.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             );
             println!(
                 "ffgknd:  {:.6}, {:.6}, {:.6}",
@@ -1974,14 +1991,19 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"HISTORY".as_ptr(),
                 card.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
-            ffghps(fptr.as_mut_ptr(), &mut existkeys, &mut keynum, &mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             keynum -= 2;
 
             print!("\nBefore deleting the HISTORY and DATE keywords...\n");
             for ii in keynum..=(keynum + 3) {
-                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &mut status);
+                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &raw mut status);
                 println!("{:.8}", byte_slice_to_str!(&card)); /* don't print date value, so that */
             } /* the output will always be the same */
 
@@ -1991,12 +2013,12 @@ pub fn main() -> ExitCode {
               ############################
             */
 
-            ffdrec(fptr.as_mut_ptr(), keynum + 1, &mut status);
-            ffdkey(fptr.as_mut_ptr(), c"DATE".as_ptr(), &mut status);
+            ffdrec(fptr.as_mut_ptr(), keynum + 1, &raw mut status);
+            ffdkey(fptr.as_mut_ptr(), c"DATE".as_ptr(), &raw mut status);
 
             print!("\nAfter deleting the keywords...\n");
             for ii in keynum..=(keynum + 1) {
-                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &mut status);
+                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &raw mut status);
                 println!("{}", byte_slice_to_str!(&card));
             }
 
@@ -2013,28 +2035,28 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 keynum - 3,
                 c"KY_IREC = 'This keyword inserted by fxirec'".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikys(
                 fptr.as_mut_ptr(),
                 c"KY_IKYS".as_ptr(),
                 c"insert_value_string".as_ptr(),
                 c"ikys comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikyj(
                 fptr.as_mut_ptr(),
                 c"KY_IKYJ".as_ptr(),
                 49,
                 c"ikyj comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikyl(
                 fptr.as_mut_ptr(),
                 c"KY_IKYL".as_ptr(),
                 1,
                 c"ikyl comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikye(
                 fptr.as_mut_ptr(),
@@ -2042,7 +2064,7 @@ pub fn main() -> ExitCode {
                 12.3456,
                 4,
                 c"ikye comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikyd(
                 fptr.as_mut_ptr(),
@@ -2050,7 +2072,7 @@ pub fn main() -> ExitCode {
                 12.345678901234567,
                 14,
                 c"ikyd comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikyf(
                 fptr.as_mut_ptr(),
@@ -2058,7 +2080,7 @@ pub fn main() -> ExitCode {
                 12.3456,
                 4,
                 c"ikyf comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffikyg(
                 fptr.as_mut_ptr(),
@@ -2066,12 +2088,12 @@ pub fn main() -> ExitCode {
                 12.345678901234567,
                 13,
                 c"ikyg comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             print!("\nAfter inserting the keywords...\n");
             for ii in (keynum - 4)..=(keynum + 5) {
-                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &mut status);
+                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &raw mut status);
                 println!("{}", byte_slice_to_str!(&card));
             }
 
@@ -2087,47 +2109,47 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 keynum - 4,
                 c"COMMENT   This keyword was modified by fxmrec".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmcrd(
                 fptr.as_mut_ptr(),
                 c"KY_IREC".as_ptr(),
                 c"KY_MREC = 'This keyword was modified by fxmcrd'".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmnam(
                 fptr.as_mut_ptr(),
                 c"KY_IKYS".as_ptr(),
                 c"NEWIKYS".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffmcom(
                 fptr.as_mut_ptr(),
                 c"KY_IKYJ".as_ptr(),
                 c"This is a modified comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkyj(
                 fptr.as_mut_ptr(),
                 c"KY_IKYJ".as_ptr(),
                 50,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkyl(
                 fptr.as_mut_ptr(),
                 c"KY_IKYL".as_ptr(),
                 0,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkys(
                 fptr.as_mut_ptr(),
                 c"NEWIKYS".as_ptr(),
                 c"modified_string".as_ptr(),
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkye(
                 fptr.as_mut_ptr(),
@@ -2135,7 +2157,7 @@ pub fn main() -> ExitCode {
                 -12.3456,
                 4,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkyd(
                 fptr.as_mut_ptr(),
@@ -2143,7 +2165,7 @@ pub fn main() -> ExitCode {
                 -12.345678901234567,
                 14,
                 c"modified comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkyf(
                 fptr.as_mut_ptr(),
@@ -2151,7 +2173,7 @@ pub fn main() -> ExitCode {
                 -12.3456,
                 4,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffmkyg(
                 fptr.as_mut_ptr(),
@@ -2159,13 +2181,13 @@ pub fn main() -> ExitCode {
                 -12.345678901234567,
                 13,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             print!("\nAfter modifying the keywords...\n");
 
             for ii in (keynum - 4)..=(keynum + 5) {
-                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &mut status);
+                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &raw mut status);
                 println!("{}", byte_slice_to_str!(&card));
             }
             if status > 0 {
@@ -2181,7 +2203,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"KY_MREC".as_ptr(),
                 c"KY_UCRD = 'This keyword was updated by fxucrd'".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffukyj(
@@ -2189,21 +2211,21 @@ pub fn main() -> ExitCode {
                 c"KY_IKYJ".as_ptr(),
                 51,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukyl(
                 fptr.as_mut_ptr(),
                 c"KY_IKYL".as_ptr(),
                 1,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukys(
                 fptr.as_mut_ptr(),
                 c"NEWIKYS".as_ptr(),
                 c"updated_string".as_ptr(),
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukye(
                 fptr.as_mut_ptr(),
@@ -2211,7 +2233,7 @@ pub fn main() -> ExitCode {
                 -13.3456,
                 4,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukyd(
                 fptr.as_mut_ptr(),
@@ -2219,7 +2241,7 @@ pub fn main() -> ExitCode {
                 -13.345678901234567,
                 14,
                 c"modified comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukyf(
                 fptr.as_mut_ptr(),
@@ -2227,7 +2249,7 @@ pub fn main() -> ExitCode {
                 -13.3456,
                 4,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffukyg(
                 fptr.as_mut_ptr(),
@@ -2235,12 +2257,12 @@ pub fn main() -> ExitCode {
                 -13.345678901234567,
                 13,
                 c"&".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             print!("\nAfter updating the keywords...\n");
             for ii in (keynum - 4)..=(keynum + 5) {
-                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &mut status);
+                ffgrec(fptr.as_mut_ptr(), ii, card.as_mut_ptr(), &raw mut status);
                 println!("{}", byte_slice_to_str!(&card));
             }
             if status > 0 {
@@ -2248,7 +2270,7 @@ pub fn main() -> ExitCode {
             }
 
             /* move to top of header and find keywords using wild cards */
-            ffgrec(fptr.as_mut_ptr(), 0, card.as_mut_ptr(), &mut status);
+            ffgrec(fptr.as_mut_ptr(), 0, card.as_mut_ptr(), &raw mut status);
 
             print!("\nKeywords found using wildcard search (should be 13)...\n");
             nfound = 0;
@@ -2259,7 +2281,7 @@ pub fn main() -> ExitCode {
                 exclist.as_ptr(),
                 2,
                 card.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             ) == 0
             {
                 nfound += 1;
@@ -2285,7 +2307,7 @@ pub fn main() -> ExitCode {
                     1,
                     4,
                     c"KY_PKNE".as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 ffgkne(
                     fptr.as_mut_ptr(),
@@ -2293,8 +2315,8 @@ pub fn main() -> ExitCode {
                     2,
                     3,
                     inekey.as_mut_ptr(),
-                    &mut nfound,
-                    &mut status,
+                    &raw mut nfound,
+                    &raw mut status,
                 );
                 print!(
                     "\nCopied keyword: ffgkne:  {:.6}, {:.6}, {:.6}\n",
@@ -2312,7 +2334,7 @@ pub fn main() -> ExitCode {
               #  modify header using template file #
               ######################################
             */
-            if ffpktp(fptr.as_mut_ptr(), templt.as_ptr(), &mut status) != 0 {
+            if ffpktp(fptr.as_mut_ptr(), templt.as_ptr(), &raw mut status) != 0 {
                 print!("\nERROR returned by ffpktp:\n");
                 println!("Could not open or process the file 'testprog.tpt'.");
                 println!("  This file is included with the CFITSIO distribution");
@@ -2372,34 +2394,42 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             );
 
             print!("\nffibin status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /* get size and position in header, and reserve space for more keywords */
-            ffghps(fptr.as_mut_ptr(), &mut existkeys, &mut keynum, &mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             println!("header contains {existkeys} keywords; located at keyword {keynum} ");
 
             morekeys = 40;
-            ffhdef(fptr.as_mut_ptr(), morekeys, &mut status);
+            ffhdef(fptr.as_mut_ptr(), morekeys, &raw mut status);
             ffghsp(
                 fptr.as_mut_ptr(),
-                &mut existkeys,
-                &mut morekeys,
-                &mut status,
+                &raw mut existkeys,
+                &raw mut morekeys,
+                &raw mut status,
             );
             println!("header contains {existkeys} keywords with room for {morekeys} more");
 
-            fftnul(fptr.as_mut_ptr(), 4, 99, &mut status); /* define null value for int cols */
-            fftnul(fptr.as_mut_ptr(), 5, 99, &mut status);
-            fftnul(fptr.as_mut_ptr(), 6, 99, &mut status);
+            fftnul(fptr.as_mut_ptr(), 4, 99, &raw mut status); /* define null value for int cols */
+            fftnul(fptr.as_mut_ptr(), 5, 99, &raw mut status);
+            fftnul(fptr.as_mut_ptr(), 6, 99, &raw mut status);
 
             extvers = 1;
             ffpkyj(
@@ -2407,35 +2437,35 @@ pub fn main() -> ExitCode {
                 c"EXTVER".as_ptr(),
                 extvers as LONGLONG,
                 c"extension version number".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL4".as_ptr(),
                 99,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL5".as_ptr(),
                 99,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL6".as_ptr(),
                 99,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             naxis = 3;
             naxes[0] = 1;
             naxes[1] = 2;
             naxes[2] = 8;
-            ffptdm(fptr.as_mut_ptr(), 3, naxis, naxes.as_ptr(), &mut status);
+            ffptdm(fptr.as_mut_ptr(), 3, naxis, naxes.as_ptr(), &raw mut status);
 
             naxis = 0;
             naxes[0] = 0;
@@ -2445,16 +2475,16 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 3,
                 3,
-                &mut naxis,
+                &raw mut naxis,
                 naxes.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgkys(
                 fptr.as_mut_ptr(),
                 c"TDIM3".as_ptr(),
                 iskey.as_mut_ptr(),
                 comment.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!(
                 "TDIM3 = {}, {}, {}, {}, {}",
@@ -2465,7 +2495,7 @@ pub fn main() -> ExitCode {
                 naxes[2]
             );
 
-            ffrdef(fptr.as_mut_ptr(), &mut status); /* force header to be scanned (not required) */
+            ffrdef(fptr.as_mut_ptr(), &raw mut status); /* force header to be scanned (not required) */
 
             /*
               ############################
@@ -2485,8 +2515,16 @@ pub fn main() -> ExitCode {
                 doutarray[ii as usize] = ((ii + 1) * signval) as f64;
             }
 
-            ffpcls(fptr.as_mut_ptr(), 1, 1, 1, 3, onskey.as_ptr(), &mut status); /* write string values */
-            ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &mut status); /* write null value */
+            ffpcls(
+                fptr.as_mut_ptr(),
+                1,
+                1,
+                1,
+                3,
+                onskey.as_ptr(),
+                &raw mut status,
+            ); /* write string values */
+            ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &raw mut status); /* write null value */
 
             larray[0] = 0;
             larray[1] = 1;
@@ -2525,7 +2563,15 @@ pub fn main() -> ExitCode {
             larray[34] = 0;
             larray[35] = 0;
 
-            ffpclx(fptr.as_mut_ptr(), 3, 1, 1, 36, larray.as_ptr(), &mut status); /*write bits*/
+            ffpclx(
+                fptr.as_mut_ptr(),
+                3,
+                1,
+                1,
+                36,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /*write bits*/
 
             for ii in 4..9
             /* loop over cols 4 - 8 */
@@ -2537,7 +2583,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     boutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2549,7 +2595,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     ioutarray[2..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2561,7 +2607,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     koutarray[4..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2573,7 +2619,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     eoutarray[6..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2585,13 +2631,13 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     doutarray[8..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
                 }
 
-                ffpclu(fptr.as_mut_ptr(), ii, 11, 1, 1, &mut status); /* write null value */
+                ffpclu(fptr.as_mut_ptr(), ii, 11, 1, 1, &raw mut status); /* write null value */
             }
 
             ffpclc(
@@ -2601,7 +2647,7 @@ pub fn main() -> ExitCode {
                 1,
                 10,
                 eoutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpclm(
                 fptr.as_mut_ptr(),
@@ -2610,7 +2656,7 @@ pub fn main() -> ExitCode {
                 1,
                 10,
                 doutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             /* loop over cols 4 - 8 */
@@ -2623,7 +2669,7 @@ pub fn main() -> ExitCode {
                     2,
                     boutarray[11..].as_ptr(),
                     13,
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2636,7 +2682,7 @@ pub fn main() -> ExitCode {
                     2,
                     ioutarray[13..].as_ptr(),
                     15,
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2649,7 +2695,7 @@ pub fn main() -> ExitCode {
                     2,
                     koutarray[15..].as_ptr(),
                     17,
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2662,7 +2708,7 @@ pub fn main() -> ExitCode {
                     2,
                     eoutarray[17..].as_ptr(),
                     19.,
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2675,14 +2721,22 @@ pub fn main() -> ExitCode {
                     2,
                     doutarray[19..].as_ptr(),
                     21.,
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     status = 0;
                 }
             }
-            ffpcll(fptr.as_mut_ptr(), 2, 1, 1, 21, larray.as_ptr(), &mut status); /*write logicals*/
-            ffpclu(fptr.as_mut_ptr(), 2, 11, 1, 1, &mut status); /* write null value */
+            ffpcll(
+                fptr.as_mut_ptr(),
+                2,
+                1,
+                1,
+                21,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /*write logicals*/
+            ffpclu(fptr.as_mut_ptr(), 2, 11, 1, 1, &raw mut status); /* write null value */
             println!("ffpcl_ status = {status}");
 
             /*
@@ -2700,8 +2754,8 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 0,
                 c"Xvalue".as_ptr(),
-                &mut colnum,
-                &mut status,
+                &raw mut colnum,
+                &raw mut status,
             );
             print!("\nColumn Xvalue is number {colnum}; status = {status}.\n");
 
@@ -2711,8 +2765,8 @@ pub fn main() -> ExitCode {
                     1,
                     c"*ue".as_ptr(),
                     colname.as_mut_ptr(),
-                    &mut colnum,
-                    &mut status,
+                    &raw mut colnum,
+                    &raw mut status,
                 );
                 println!(
                     "Column {} is number {}; status = {}.",
@@ -2729,14 +2783,14 @@ pub fn main() -> ExitCode {
                 ffgtcl(
                     fptr.as_mut_ptr(),
                     ii + 1,
-                    &mut typecode,
-                    &mut repeat,
-                    &mut width,
-                    &mut status,
+                    &raw mut typecode,
+                    &raw mut repeat,
+                    &raw mut width,
+                    &raw mut status,
                 );
                 print!(
                     "{:>4} {:>3} {:>2} {:>2}",
-                    CStr::from_ptr(tform[ii as usize] as *const c_char)
+                    CStr::from_ptr(tform[ii as usize].cast_const())
                         .to_str()
                         .unwrap(),
                     typecode,
@@ -2748,18 +2802,18 @@ pub fn main() -> ExitCode {
                     ii + 1,
                     ttype[0],
                     tunit[0],
-                    cvalstr.as_mut_ptr() as *mut [c_char; 2],
-                    &mut repeat,
-                    &mut scale,
-                    &mut zero,
-                    &mut jnulval,
+                    cvalstr.as_mut_ptr().cast::<[c_char; 2]>(),
+                    &raw mut repeat,
+                    &raw mut scale,
+                    &raw mut zero,
+                    &raw mut jnulval,
                     tdisp.as_mut_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 println!(
                     " {}, {}, {}, {}, {:.6}, {:.6}, {}, {}.",
-                    CStr::from_ptr(ttype[0] as *const c_char).to_str().unwrap(),
-                    CStr::from_ptr(tunit[0] as *const c_char).to_str().unwrap(),
+                    CStr::from_ptr(ttype[0].cast_const()).to_str().unwrap(),
+                    CStr::from_ptr(tunit[0].cast_const()).to_str().unwrap(),
                     cvalstr[0] as u8 as char,
                     repeat,
                     scale,
@@ -2777,7 +2831,7 @@ pub fn main() -> ExitCode {
               ###############################################
             */
 
-            if ffmrhd(fptr.as_mut_ptr(), -1, &mut hdutype, &mut status) > 0 {
+            if ffmrhd(fptr.as_mut_ptr(), -1, &raw mut hdutype, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -2808,21 +2862,24 @@ pub fn main() -> ExitCode {
                 rowlen as LONGLONG,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
                 tbcol.as_ptr(),
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("ffitab status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
-            ffsnul(fptr.as_mut_ptr(), 1, c"null1".as_ptr(), &mut status); /* define null value for int cols */
-            ffsnul(fptr.as_mut_ptr(), 2, c"null2".as_ptr(), &mut status);
-            ffsnul(fptr.as_mut_ptr(), 3, c"null3".as_ptr(), &mut status);
-            ffsnul(fptr.as_mut_ptr(), 4, c"null4".as_ptr(), &mut status);
-            ffsnul(fptr.as_mut_ptr(), 5, c"null5".as_ptr(), &mut status);
+            ffsnul(fptr.as_mut_ptr(), 1, c"null1".as_ptr(), &raw mut status); /* define null value for int cols */
+            ffsnul(fptr.as_mut_ptr(), 2, c"null2".as_ptr(), &raw mut status);
+            ffsnul(fptr.as_mut_ptr(), 3, c"null3".as_ptr(), &raw mut status);
+            ffsnul(fptr.as_mut_ptr(), 4, c"null4".as_ptr(), &raw mut status);
+            ffsnul(fptr.as_mut_ptr(), 5, c"null5".as_ptr(), &raw mut status);
 
             extvers = 2;
             ffpkyj(
@@ -2830,7 +2887,7 @@ pub fn main() -> ExitCode {
                 c"EXTVER".as_ptr(),
                 extvers as LONGLONG,
                 c"extension version number".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpkys(
@@ -2838,35 +2895,35 @@ pub fn main() -> ExitCode {
                 c"TNULL1".as_ptr(),
                 c"null1".as_ptr(),
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"TNULL2".as_ptr(),
                 c"null2".as_ptr(),
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"TNULL3".as_ptr(),
                 c"null3".as_ptr(),
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"TNULL4".as_ptr(),
                 c"null4".as_ptr(),
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"TNULL5".as_ptr(),
                 c"null5".as_ptr(),
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             if status > 0 {
@@ -2888,8 +2945,16 @@ pub fn main() -> ExitCode {
                 doutarray[ii] = (ii + 1) as f64;
             }
 
-            ffpcls(fptr.as_mut_ptr(), 1, 1, 1, 3, onskey.as_ptr(), &mut status); /* write string values */
-            ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &mut status); /* write null value */
+            ffpcls(
+                fptr.as_mut_ptr(),
+                1,
+                1,
+                1,
+                3,
+                onskey.as_ptr(),
+                &raw mut status,
+            ); /* write string values */
+            ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &raw mut status); /* write null value */
 
             for ii in 2..6
             /* loop over cols 2 - 5 */
@@ -2901,7 +2966,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     boutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* char array */
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2913,7 +2978,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     ioutarray[2..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* short array */
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2925,7 +2990,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     joutarray[4..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* long array */
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2937,7 +3002,7 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     eoutarray[6..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* float array */
                 if status == NUM_OVERFLOW {
                     status = 0;
@@ -2949,13 +3014,13 @@ pub fn main() -> ExitCode {
                     1,
                     2,
                     doutarray[8..].as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* double array */
                 if status == NUM_OVERFLOW {
                     status = 0;
                 }
 
-                ffpclu(fptr.as_mut_ptr(), ii, 11, 1, 1, &mut status); /* write null value */
+                ffpclu(fptr.as_mut_ptr(), ii, 11, 1, 1, &raw mut status); /* write null value */
             }
             println!("ffpcl_ status = {status}");
 
@@ -2970,15 +3035,15 @@ pub fn main() -> ExitCode {
             ffghtb(
                 fptr.as_mut_ptr(),
                 99,
-                &mut rowlen,
-                &mut tmp_nrows,
-                &mut tfields,
+                &raw mut rowlen,
+                &raw mut tmp_nrows,
+                &raw mut tfields,
                 ttype.as_mut_ptr(),
                 tbcol.as_mut_ptr(),
                 tform.as_mut_ptr(),
                 tunit.as_mut_ptr(),
                 tblname.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             nrows = tmp_nrows as LONGLONG;
@@ -3010,8 +3075,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"UNDEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3021,8 +3086,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3032,8 +3097,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -3043,8 +3108,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3054,8 +3119,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3065,8 +3130,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values read from ASCII table:\n");
@@ -3088,11 +3153,18 @@ pub fn main() -> ExitCode {
                 20,
                 78,
                 uchars.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             uchars[78] = 0;
             print!("\n{}\n", byte_slice_to_str!(&uchars));
-            ffptbb(fptr.as_mut_ptr(), 1, 20, 78, uchars.as_ptr(), &mut status);
+            ffptbb(
+                fptr.as_mut_ptr(),
+                1,
+                20,
+                78,
+                uchars.as_ptr(),
+                &raw mut status,
+            );
 
             /*
               #########################################
@@ -3104,8 +3176,8 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 0,
                 c"name".as_ptr(),
-                &mut colnum,
-                &mut status,
+                &raw mut colnum,
+                &raw mut status,
             );
             print!("\nColumn name is number {colnum}; status = {status}.\n");
 
@@ -3115,8 +3187,8 @@ pub fn main() -> ExitCode {
                     1,
                     c"*ue".as_ptr(),
                     colname.as_mut_ptr(),
-                    &mut colnum,
-                    &mut status,
+                    &raw mut colnum,
+                    &raw mut status,
                 );
                 println!(
                     "Column {} is number {}; status = {}.",
@@ -3131,10 +3203,10 @@ pub fn main() -> ExitCode {
                 ffgtcl(
                     fptr.as_mut_ptr(),
                     ii + 1,
-                    &mut typecode,
-                    &mut repeat,
-                    &mut width,
-                    &mut status,
+                    &raw mut typecode,
+                    &raw mut repeat,
+                    &raw mut width,
+                    &raw mut status,
                 );
                 print!(
                     "{:>4} {:>3} {:>2} {:>2}",
@@ -3150,11 +3222,11 @@ pub fn main() -> ExitCode {
                     tbcol.as_mut_ptr(),
                     tunit[0],
                     tform[0],
-                    &mut scale,
-                    &mut zero,
+                    &raw mut scale,
+                    &raw mut zero,
                     nulstr.as_mut_ptr(),
                     tdisp.as_mut_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 println!(
                     " {}, {}, {}, {}, {:.6}, {:.6}, {}, {}.",
@@ -3177,7 +3249,7 @@ pub fn main() -> ExitCode {
               ###############################################
             */
 
-            if ffirow(fptr.as_mut_ptr(), 2, 3, &mut status) > 0 {
+            if ffirow(fptr.as_mut_ptr(), 2, 3, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -3190,8 +3262,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"UNDEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3201,8 +3273,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3212,8 +3284,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -3223,8 +3295,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3234,8 +3306,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3245,8 +3317,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after inserting 3 rows after row 2:\n");
@@ -3262,7 +3334,7 @@ pub fn main() -> ExitCode {
                 );
             }
 
-            if ffdrow(fptr.as_mut_ptr(), 10, 2, &mut status) > 0 {
+            if ffdrow(fptr.as_mut_ptr(), 10, 2, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -3275,8 +3347,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"UNDEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3286,8 +3358,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3297,8 +3369,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -3308,8 +3380,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3319,8 +3391,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3330,8 +3402,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after deleting 2 rows at row 10:\n");
@@ -3346,7 +3418,7 @@ pub fn main() -> ExitCode {
                     dinarray[ii]
                 );
             }
-            if ffdcol(fptr.as_mut_ptr(), 3, &mut status) > 0 {
+            if ffdcol(fptr.as_mut_ptr(), 3, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -3358,8 +3430,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"UNDEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3369,8 +3441,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3380,8 +3452,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3391,8 +3463,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3402,8 +3474,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after deleting column 3:\n");
@@ -3423,7 +3495,7 @@ pub fn main() -> ExitCode {
                 5,
                 c"INSERT_COL".as_ptr(),
                 c"F14.6".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 break 'mainloop;
@@ -3437,8 +3509,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"UNDEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3448,8 +3520,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3459,8 +3531,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3470,8 +3542,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3481,8 +3553,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -3492,8 +3564,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 99,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after inserting column 5:\n");
@@ -3519,7 +3591,7 @@ pub fn main() -> ExitCode {
             naxis = 0;
 
             strcpy_safe(&mut filename, cs!(c"!t1q2s3v6.tmp"));
-            ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
+            ffinit(&raw mut tmpfptr, filename.as_ptr(), &raw mut status);
             println!("Create temporary file: ffinit status = {status}");
 
             ffiimg(
@@ -3527,7 +3599,7 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate null primary array: ffiimg status = {status}\n");
 
@@ -3540,12 +3612,12 @@ pub fn main() -> ExitCode {
                 rowlen as LONGLONG,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
                 tbcol.as_ptr(),
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate ASCII table with 0 columns: ffitab status = {status}\n");
 
@@ -3556,7 +3628,7 @@ pub fn main() -> ExitCode {
                 4,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3565,7 +3637,7 @@ pub fn main() -> ExitCode {
                 3,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3574,7 +3646,7 @@ pub fn main() -> ExitCode {
                 2,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3583,7 +3655,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
 
@@ -3592,12 +3664,12 @@ pub fn main() -> ExitCode {
                 tmpfptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate Binary table with 0 columns: ffibin status = {status}\n");
 
@@ -3608,7 +3680,7 @@ pub fn main() -> ExitCode {
                 4,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3617,7 +3689,7 @@ pub fn main() -> ExitCode {
                 3,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3626,7 +3698,7 @@ pub fn main() -> ExitCode {
                 2,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -3635,7 +3707,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
 
@@ -3645,7 +3717,7 @@ pub fn main() -> ExitCode {
             */
 
             let t = Box::into_raw(tmpfptr.take().unwrap());
-            ffdelt(t, &mut status);
+            ffdelt(t, &raw mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
 
             if status > 0 {
@@ -3658,17 +3730,20 @@ pub fn main() -> ExitCode {
               ################################
             */
 
-            if ffmrhd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status) > 0 {
+            if ffmrhd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             ffghsp(
                 fptr.as_mut_ptr(),
-                &mut existkeys,
-                &mut morekeys,
-                &mut status,
+                &raw mut existkeys,
+                &raw mut morekeys,
+                &raw mut status,
             );
             println!("header contains {existkeys} keywords with room for {morekeys} more");
 
@@ -3676,14 +3751,14 @@ pub fn main() -> ExitCode {
             ffghbn(
                 fptr.as_mut_ptr(),
                 99,
-                &mut tmp_nrows,
-                &mut tfields,
+                &raw mut tmp_nrows,
+                &raw mut tfields,
                 ttype.as_mut_ptr(),
                 tform.as_mut_ptr(),
                 tunit.as_mut_ptr(),
                 binname.as_mut_ptr(),
-                &mut pcount,
-                &mut status,
+                &raw mut pcount,
+                &raw mut status,
             );
 
             nrows = tmp_nrows as LONGLONG;
@@ -3719,7 +3794,7 @@ pub fn main() -> ExitCode {
                 1,
                 36,
                 larray.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             for jj in 0..5 {
                 for ii in 0..8 {
@@ -3751,8 +3826,8 @@ pub fn main() -> ExitCode {
                 1,
                 c"".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             println!(
                 "null string column value = -{}- (should be --)",
@@ -3768,8 +3843,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcl(
                 fptr.as_mut_ptr(),
@@ -3778,7 +3853,7 @@ pub fn main() -> ExitCode {
                 1,
                 nrows,
                 larray.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3788,8 +3863,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 xinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -3799,8 +3874,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -3810,8 +3885,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvk(
                 fptr.as_mut_ptr(),
@@ -3821,8 +3896,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 kinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -3832,8 +3907,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -3843,8 +3918,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvc(
                 fptr.as_mut_ptr(),
@@ -3854,8 +3929,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 cinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvm(
                 fptr.as_mut_ptr(),
@@ -3865,8 +3940,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 minarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nRead columns with ffgcv_:\n");
@@ -3910,8 +3985,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 inskey.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfl(
                 fptr.as_mut_ptr(),
@@ -3921,8 +3996,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 larray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfb(
                 fptr.as_mut_ptr(),
@@ -3932,8 +4007,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 xinarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfb(
                 fptr.as_mut_ptr(),
@@ -3943,8 +4018,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 binarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfi(
                 fptr.as_mut_ptr(),
@@ -3954,8 +4029,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 iinarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfk(
                 fptr.as_mut_ptr(),
@@ -3965,8 +4040,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 kinarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfe(
                 fptr.as_mut_ptr(),
@@ -3976,8 +4051,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 einarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfd(
                 fptr.as_mut_ptr(),
@@ -3987,8 +4062,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 dinarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfc(
                 fptr.as_mut_ptr(),
@@ -3998,8 +4073,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 cinarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcfm(
                 fptr.as_mut_ptr(),
@@ -4009,8 +4084,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 minarray.as_mut_ptr(),
                 larray2.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nRead columns with ffgcf_:\n");
@@ -4045,7 +4120,7 @@ pub fn main() -> ExitCode {
             ffprec(
                 fptr.as_mut_ptr(),
                 c"key_prec= 'This keyword was written by f_prec' / comment here".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             /*
@@ -4053,7 +4128,7 @@ pub fn main() -> ExitCode {
               #  test the insert/delete row/column routines #
               ###############################################
             */
-            if ffirow(fptr.as_mut_ptr(), 2, 3, &mut status) > 0 {
+            if ffirow(fptr.as_mut_ptr(), 2, 3, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -4066,8 +4141,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -4077,8 +4152,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -4088,8 +4163,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -4099,8 +4174,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -4110,8 +4185,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -4121,8 +4196,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after inserting 3 rows after row 2:\n");
@@ -4138,7 +4213,7 @@ pub fn main() -> ExitCode {
                 );
             }
 
-            if ffdrow(fptr.as_mut_ptr(), 10, 2, &mut status) > 0 {
+            if ffdrow(fptr.as_mut_ptr(), 10, 2, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -4151,8 +4226,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -4162,8 +4237,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -4173,8 +4248,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -4184,8 +4259,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -4195,8 +4270,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -4206,8 +4281,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after deleting 2 rows at row 10:\n");
@@ -4223,7 +4298,7 @@ pub fn main() -> ExitCode {
                 );
             }
 
-            if ffdcol(fptr.as_mut_ptr(), 6, &mut status) > 0 {
+            if ffdcol(fptr.as_mut_ptr(), 6, &raw mut status) > 0 {
                 break 'mainloop;
             }
 
@@ -4235,8 +4310,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -4246,8 +4321,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -4257,8 +4332,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -4268,8 +4343,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -4279,8 +4354,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after deleting column 6:\n");
@@ -4300,7 +4375,7 @@ pub fn main() -> ExitCode {
                 8,
                 c"INSERT_COL".as_ptr(),
                 c"1E".as_ptr(),
-                &mut status,
+                &raw mut status,
             ) > 0
             {
                 break 'mainloop;
@@ -4314,8 +4389,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -4325,8 +4400,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -4336,8 +4411,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -4347,8 +4422,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -4358,8 +4433,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -4369,8 +4444,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nData values after inserting column 8:\n");
@@ -4386,7 +4461,7 @@ pub fn main() -> ExitCode {
                 );
             }
 
-            ffpclu(fptr.as_mut_ptr(), 8, 1, 1, 10, &mut status);
+            ffpclu(fptr.as_mut_ptr(), 8, 1, 1, 10, &raw mut status);
 
             ffgcvs(
                 fptr.as_mut_ptr(),
@@ -4396,8 +4471,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 c"NOT DEFINED".as_ptr(),
                 inskey.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvb(
                 fptr.as_mut_ptr(),
@@ -4407,8 +4482,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 binarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvi(
                 fptr.as_mut_ptr(),
@@ -4418,8 +4493,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 iinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcve(
                 fptr.as_mut_ptr(),
@@ -4429,8 +4504,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 einarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvd(
                 fptr.as_mut_ptr(),
@@ -4440,8 +4515,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98.,
                 dinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcvj(
                 fptr.as_mut_ptr(),
@@ -4451,8 +4526,8 @@ pub fn main() -> ExitCode {
                 nrows,
                 98,
                 jinarray.as_mut_ptr(),
-                &mut anynull,
-                &mut status,
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nValues after setting 1st 10 elements in column 8 = null:\n");
@@ -4478,7 +4553,7 @@ pub fn main() -> ExitCode {
             naxis = 0;
 
             strcpy_safe(&mut filename, cs!(c"!t1q2s3v5.tmp"));
-            ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
+            ffinit(&raw mut tmpfptr, filename.as_ptr(), &raw mut status);
             println!("Create temporary file: ffinit status = {status}");
 
             ffiimg(
@@ -4486,7 +4561,7 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate null primary array: ffiimg status = {status}\n");
 
@@ -4497,12 +4572,12 @@ pub fn main() -> ExitCode {
                 tmpfptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate binary table with 0 columns: ffibin status = {status}\n");
 
@@ -4513,7 +4588,7 @@ pub fn main() -> ExitCode {
                 7,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4522,7 +4597,7 @@ pub fn main() -> ExitCode {
                 6,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4531,7 +4606,7 @@ pub fn main() -> ExitCode {
                 5,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4540,7 +4615,7 @@ pub fn main() -> ExitCode {
                 4,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4549,7 +4624,7 @@ pub fn main() -> ExitCode {
                 3,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4558,7 +4633,7 @@ pub fn main() -> ExitCode {
                 2,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
             ffcpcl(
@@ -4567,7 +4642,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 TRUE as c_int,
-                &mut status,
+                &raw mut status,
             );
             println!("copy column, ffcpcl status = {status}");
 
@@ -4577,7 +4652,7 @@ pub fn main() -> ExitCode {
             */
 
             let t = Box::into_raw(tmpfptr.take().unwrap());
-            ffdelt(t, &mut status);
+            ffdelt(t, &raw mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
             if status > 0 {
                 break 'mainloop;
@@ -4588,7 +4663,7 @@ pub fn main() -> ExitCode {
               ####################################################
             */
 
-            ffmahd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
+            ffmahd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
 
             strcpy(tform[0], c"15A".as_ptr());
             strcpy(tform[1], c"1L".as_ptr());
@@ -4631,15 +4706,18 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 pcount as LONGLONG,
-                &mut status,
+                &raw mut status,
             );
             println!("ffibin status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             extvers = 3;
             ffpkyj(
@@ -4647,7 +4725,7 @@ pub fn main() -> ExitCode {
                 c"EXTVER".as_ptr(),
                 extvers as LONGLONG,
                 c"extension version number".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpkyj(
@@ -4655,21 +4733,21 @@ pub fn main() -> ExitCode {
                 c"TNULL4".as_ptr(),
                 77,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL5".as_ptr(),
                 77,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL6".as_ptr(),
                 77,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpkyj(
@@ -4677,21 +4755,21 @@ pub fn main() -> ExitCode {
                 c"TSCAL4".as_ptr(),
                 1000,
                 c"scaling factor".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TSCAL5".as_ptr(),
                 1,
                 c"scaling factor".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TSCAL6".as_ptr(),
                 100,
                 c"scaling factor".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpkyj(
@@ -4699,30 +4777,30 @@ pub fn main() -> ExitCode {
                 c"TZERO4".as_ptr(),
                 0,
                 c"scaling offset".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TZERO5".as_ptr(),
                 32768,
                 c"scaling offset".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TZERO6".as_ptr(),
                 100,
                 c"scaling offset".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
-            fftnul(fptr.as_mut_ptr(), 4, 77, &mut status); /* define null value for int cols */
-            fftnul(fptr.as_mut_ptr(), 5, 77, &mut status);
-            fftnul(fptr.as_mut_ptr(), 6, 77, &mut status);
+            fftnul(fptr.as_mut_ptr(), 4, 77, &raw mut status); /* define null value for int cols */
+            fftnul(fptr.as_mut_ptr(), 5, 77, &raw mut status);
+            fftnul(fptr.as_mut_ptr(), 6, 77, &raw mut status);
             /* set scaling */
-            fftscl(fptr.as_mut_ptr(), 4, 1000., 0., &mut status);
-            fftscl(fptr.as_mut_ptr(), 5, 1., 32768., &mut status);
-            fftscl(fptr.as_mut_ptr(), 6, 100., 100., &mut status);
+            fftscl(fptr.as_mut_ptr(), 4, 1000., 0., &raw mut status);
+            fftscl(fptr.as_mut_ptr(), 5, 1., 32768., &raw mut status);
+            fftscl(fptr.as_mut_ptr(), 6, 100., 100., &raw mut status);
 
             /*
               ############################
@@ -4746,14 +4824,14 @@ pub fn main() -> ExitCode {
                     1,
                     5,
                     joutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 if status == NUM_OVERFLOW {
                     println!("Overflow writing to column {ii}");
                     status = 0;
                 }
 
-                ffpclu(fptr.as_mut_ptr(), ii, 6, 1, 1, &mut status); /* write null value */
+                ffpclu(fptr.as_mut_ptr(), ii, 6, 1, 1, &raw mut status); /* write null value */
             }
 
             for jj in 4..7 {
@@ -4765,8 +4843,8 @@ pub fn main() -> ExitCode {
                     6,
                     -999,
                     jinarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
 
                 for item in &jinarray[..6] {
@@ -4777,9 +4855,9 @@ pub fn main() -> ExitCode {
 
             println!();
             /* turn off scaling, and read the unscaled values */
-            fftscl(fptr.as_mut_ptr(), 4, 1., 0., &mut status);
-            fftscl(fptr.as_mut_ptr(), 5, 1., 0., &mut status);
-            fftscl(fptr.as_mut_ptr(), 6, 1., 0., &mut status);
+            fftscl(fptr.as_mut_ptr(), 4, 1., 0., &raw mut status);
+            fftscl(fptr.as_mut_ptr(), 5, 1., 0., &raw mut status);
+            fftscl(fptr.as_mut_ptr(), 6, 1., 0., &raw mut status);
 
             for jj in 4..7 {
                 ffgcvj(
@@ -4790,8 +4868,8 @@ pub fn main() -> ExitCode {
                     6,
                     -999,
                     jinarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for item in &jinarray[..6] {
                     print!(" {item:>6}");
@@ -4813,10 +4891,13 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate image extension: ffiimg status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             for jj in 0..30 {
                 for ii in 0..19 {
@@ -4830,8 +4911,8 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_ptr() as *const c_short,
-                &mut status,
+                imgarray.as_ptr().cast::<c_short>(),
+                &raw mut status,
             );
             print!("\nWrote whole 2D array: ffp2di status = {status}\n");
 
@@ -4848,9 +4929,9 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_mut_ptr() as *mut c_short,
-                &mut anynull,
-                &mut status,
+                imgarray.as_mut_ptr().cast::<c_short>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             print!("\nRead whole 2D array: ffg2di status = {status}\n");
 
@@ -4884,8 +4965,8 @@ pub fn main() -> ExitCode {
                 naxes.as_ptr(),
                 fpixels.as_ptr(),
                 lpixels.as_ptr(),
-                imgarray2.as_ptr() as *const c_short,
-                &mut status,
+                imgarray2.as_ptr().cast::<c_short>(),
+                &raw mut status,
             );
             print!("\nWrote subset 2D array: ffpssi status = {status}\n");
 
@@ -4896,9 +4977,9 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_mut_ptr() as *mut c_short,
-                &mut anynull,
-                &mut status,
+                imgarray.as_mut_ptr().cast::<c_short>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             print!("\nRead whole 2D array: ffg2di status = {status}\n");
 
@@ -4931,9 +5012,9 @@ pub fn main() -> ExitCode {
                 lpixels.as_ptr(),
                 inc.as_ptr(),
                 0,
-                imgarray.as_mut_ptr() as *mut c_short,
-                &mut anynull,
-                &mut status,
+                imgarray.as_mut_ptr().cast::<c_short>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             print!("\nRead subset of 2D array: ffgsvi status = {status}\n");
 
@@ -4958,39 +5039,45 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nCreate image extension: ffiimg status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             strcpy_safe(&mut filename, cs!(c"t1q2s3v4.tmp"));
-            ffinit(&mut tmpfptr, filename.as_ptr(), &mut status);
+            ffinit(&raw mut tmpfptr, filename.as_ptr(), &raw mut status);
             println!("Create temporary file: ffinit status = {status}");
 
-            ffcopy(fptr.as_mut_ptr(), tmpfptr.as_mut_ptr(), 0, &mut status);
+            ffcopy(fptr.as_mut_ptr(), tmpfptr.as_mut_ptr(), 0, &raw mut status);
             println!("Copy image extension to primary array of tmp file.");
             println!("ffcopy status = {status}");
 
-            ffgrec(tmpfptr.as_mut_ptr(), 1, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 1, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
-            ffgrec(tmpfptr.as_mut_ptr(), 2, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 2, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
-            ffgrec(tmpfptr.as_mut_ptr(), 3, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 3, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
-            ffgrec(tmpfptr.as_mut_ptr(), 4, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 4, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
-            ffgrec(tmpfptr.as_mut_ptr(), 5, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 5, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
-            ffgrec(tmpfptr.as_mut_ptr(), 6, card.as_mut_ptr(), &mut status);
+            ffgrec(tmpfptr.as_mut_ptr(), 6, card.as_mut_ptr(), &raw mut status);
             println!("{}", byte_slice_to_str!(&card));
 
             let t = Box::into_raw(tmpfptr.take().unwrap());
-            ffdelt(t, &mut status);
+            ffdelt(t, &raw mut status);
             println!("Delete the tmp file: ffdelt status = {status}");
 
-            ffdhdu(fptr.as_mut_ptr(), &mut hdutype, &mut status);
+            ffdhdu(fptr.as_mut_ptr(), &raw mut hdutype, &raw mut status);
             println!("Delete the image extension; hdutype, status = {hdutype} {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /*
               ###########################################################
@@ -4998,7 +5085,7 @@ pub fn main() -> ExitCode {
               ###########################################################
             */
 
-            ffcrhd(fptr.as_mut_ptr(), &mut status);
+            ffcrhd(fptr.as_mut_ptr(), &raw mut status);
             println!("ffcrhd status = {status}");
 
             strcpy(tform[0], c"1PA".as_ptr());
@@ -5042,12 +5129,12 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 pcount as LONGLONG,
-                &mut status,
+                &raw mut status,
             );
             println!("Variable length arrays: ffphbn status = {status}");
 
@@ -5057,7 +5144,7 @@ pub fn main() -> ExitCode {
                 c"EXTVER".as_ptr(),
                 extvers as LONGLONG,
                 c"extension version number".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpkyj(
@@ -5065,21 +5152,21 @@ pub fn main() -> ExitCode {
                 c"TNULL4".as_ptr(),
                 88,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL5".as_ptr(),
                 88,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyj(
                 fptr.as_mut_ptr(),
                 c"TNULL6".as_ptr(),
                 88,
                 c"value for undefined pixels".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             /*
@@ -5129,11 +5216,27 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 1,
-                inskey.as_ptr() as *const *const c_char,
-                &mut status,
+                inskey.as_ptr().cast::<*const c_char>(),
+                &raw mut status,
             ); /* write string values */
-            ffpcll(fptr.as_mut_ptr(), 2, 1, 1, 1, larray.as_ptr(), &mut status); /* write logicals */
-            ffpclx(fptr.as_mut_ptr(), 3, 1, 1, 1, larray.as_ptr(), &mut status); /* write bits */
+            ffpcll(
+                fptr.as_mut_ptr(),
+                2,
+                1,
+                1,
+                1,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /* write logicals */
+            ffpclx(
+                fptr.as_mut_ptr(),
+                3,
+                1,
+                1,
+                1,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /* write bits */
             ffpclb(
                 fptr.as_mut_ptr(),
                 4,
@@ -5141,7 +5244,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 boutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpcli(
                 fptr.as_mut_ptr(),
@@ -5150,7 +5253,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 ioutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpclj(
                 fptr.as_mut_ptr(),
@@ -5159,7 +5262,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 joutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpcle(
                 fptr.as_mut_ptr(),
@@ -5168,7 +5271,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 eoutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpcld(
                 fptr.as_mut_ptr(),
@@ -5177,7 +5280,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 doutarray.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             /* loop over rows 1 - 20 */
@@ -5191,8 +5294,8 @@ pub fn main() -> ExitCode {
                     ii,
                     1,
                     1,
-                    inskey.as_ptr() as *const *const c_char,
-                    &mut status,
+                    inskey.as_ptr().cast::<*const c_char>(),
+                    &raw mut status,
                 ); /* write string values */
 
                 ffpcll(
@@ -5202,9 +5305,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     larray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* write logicals */
-                ffpclu(fptr.as_mut_ptr(), 2, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 2, ii, ii - 1, 1, &raw mut status);
 
                 ffpclx(
                     fptr.as_mut_ptr(),
@@ -5213,7 +5316,7 @@ pub fn main() -> ExitCode {
                     1,
                     ii as c_long,
                     larray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 ); /* write bits */
 
                 ffpclb(
@@ -5223,9 +5326,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     boutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
-                ffpclu(fptr.as_mut_ptr(), 4, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 4, ii, ii - 1, 1, &raw mut status);
 
                 ffpcli(
                     fptr.as_mut_ptr(),
@@ -5234,9 +5337,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     ioutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
-                ffpclu(fptr.as_mut_ptr(), 5, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 5, ii, ii - 1, 1, &raw mut status);
 
                 ffpclj(
                     fptr.as_mut_ptr(),
@@ -5245,9 +5348,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     joutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
-                ffpclu(fptr.as_mut_ptr(), 6, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 6, ii, ii - 1, 1, &raw mut status);
 
                 ffpcle(
                     fptr.as_mut_ptr(),
@@ -5256,9 +5359,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     eoutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
-                ffpclu(fptr.as_mut_ptr(), 7, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 7, ii, ii - 1, 1, &raw mut status);
 
                 ffpcld(
                     fptr.as_mut_ptr(),
@@ -5267,9 +5370,9 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     doutarray.as_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
-                ffpclu(fptr.as_mut_ptr(), 8, ii, ii - 1, 1, &mut status);
+                ffpclu(fptr.as_mut_ptr(), 8, ii, ii - 1, 1, &raw mut status);
             }
             println!("ffpcl_ status = {status}");
 
@@ -5279,8 +5382,8 @@ pub fn main() -> ExitCode {
               #################################
             */
 
-            ffmrhd(fptr.as_mut_ptr(), -1, &mut hdutype, &mut status);
-            ffmrhd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
+            ffmrhd(fptr.as_mut_ptr(), -1, &raw mut hdutype, &raw mut status);
+            ffmrhd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
 
             /*
               #############################
@@ -5291,9 +5394,9 @@ pub fn main() -> ExitCode {
             ffgkyj(
                 fptr.as_mut_ptr(),
                 c"PCOUNT".as_ptr(),
-                &mut pcount,
+                &raw mut pcount,
                 comm.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("PCOUNT = {pcount}");
 
@@ -5301,7 +5404,10 @@ pub fn main() -> ExitCode {
             strcpy(inskey[0], c" ".as_ptr());
             strcpy_safe(&mut iskey, cs!(c" "));
 
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
             for ii in 1..=20 as LONGLONG
             /* loop over rows 1 - 20 */
             {
@@ -5322,8 +5428,8 @@ pub fn main() -> ExitCode {
                     1,
                     iskey.as_ptr(),
                     inskey.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 print!(
                     "A {} {}\nL",
@@ -5338,7 +5444,7 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     larray.as_mut_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:>2}", larray[jj]);
@@ -5352,7 +5458,7 @@ pub fn main() -> ExitCode {
                     1,
                     ii,
                     larray.as_mut_ptr(),
-                    &mut status,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:>2}", larray[jj]);
@@ -5367,8 +5473,8 @@ pub fn main() -> ExitCode {
                     ii,
                     99,
                     boutarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:>2}", boutarray[jj]);
@@ -5383,8 +5489,8 @@ pub fn main() -> ExitCode {
                     ii,
                     99,
                     ioutarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:>2}", ioutarray[jj]);
@@ -5399,8 +5505,8 @@ pub fn main() -> ExitCode {
                     ii,
                     99,
                     joutarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:>2}", joutarray[jj]);
@@ -5415,8 +5521,8 @@ pub fn main() -> ExitCode {
                     ii,
                     99.,
                     eoutarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:2.0}", eoutarray[jj]);
@@ -5431,8 +5537,8 @@ pub fn main() -> ExitCode {
                     ii,
                     99.,
                     doutarray.as_mut_ptr(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 for jj in 0..ii as usize {
                     print!(" {:2.0}", doutarray[jj]);
@@ -5443,9 +5549,9 @@ pub fn main() -> ExitCode {
                     fptr.as_mut_ptr(),
                     8,
                     ii,
-                    &mut repeat,
-                    &mut offset,
-                    &mut status,
+                    &raw mut repeat,
+                    &raw mut offset,
+                    &raw mut status,
                 );
                 println!("Column 8 repeat and offset = {repeat} {offset}");
             }
@@ -5468,7 +5574,7 @@ pub fn main() -> ExitCode {
                 bitpix,
                 naxis,
                 naxes.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nffcrim status = {status}\n");
 
@@ -5488,56 +5594,56 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 1,
                 2,
-                boutarray[0..].as_ptr() as *const c_void,
-                &mut status,
+                boutarray[0..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TSHORT,
                 3,
                 2,
-                ioutarray[2..].as_ptr() as *const c_void,
-                &mut status,
+                ioutarray[2..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TINT,
                 5,
                 2,
-                koutarray[4..].as_ptr() as *const c_void,
-                &mut status,
+                koutarray[4..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TSHORT,
                 7,
                 2,
-                ioutarray[6..].as_ptr() as *const c_void,
-                &mut status,
+                ioutarray[6..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TLONG,
                 9,
                 2,
-                joutarray[8..].as_ptr() as *const c_void,
-                &mut status,
+                joutarray[8..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 11,
                 2,
-                eoutarray[10..].as_ptr() as *const c_void,
-                &mut status,
+                eoutarray[10..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             ffppr(
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 13,
                 2,
-                doutarray[12..].as_ptr() as *const c_void,
-                &mut status,
+                doutarray[12..].as_ptr().cast::<c_void>(),
+                &raw mut status,
             );
             println!("ffppr status = {status}");
 
@@ -5554,60 +5660,60 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 1,
                 14,
-                &mut bnul as *mut _ as *mut c_void,
-                binarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut bnul).cast::<c_void>(),
+                binarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpv(
                 fptr.as_mut_ptr(),
                 TSHORT,
                 1,
                 14,
-                &mut inul as *mut _ as *mut c_void,
-                iinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut inul).cast::<c_void>(),
+                iinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpv(
                 fptr.as_mut_ptr(),
                 TINT,
                 1,
                 14,
-                &mut knul as *mut _ as *mut c_void,
-                kinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut knul).cast::<c_void>(),
+                kinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpv(
                 fptr.as_mut_ptr(),
                 TLONG,
                 1,
                 14,
-                &mut jnul as *mut _ as *mut c_void,
-                jinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut jnul).cast::<c_void>(),
+                jinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpv(
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 1,
                 14,
-                &mut enul as *mut _ as *mut c_void,
-                einarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut enul).cast::<c_void>(),
+                einarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgpv(
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 1,
                 14,
-                &mut dnul as *mut _ as *mut c_void,
-                dinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut dnul).cast::<c_void>(),
+                dinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nImage values written with ffppr and read with ffgpv:\n");
@@ -5658,7 +5764,7 @@ pub fn main() -> ExitCode {
                 xrval,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyd(
                 fptr.as_mut_ptr(),
@@ -5666,7 +5772,7 @@ pub fn main() -> ExitCode {
                 yrval,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyd(
                 fptr.as_mut_ptr(),
@@ -5674,7 +5780,7 @@ pub fn main() -> ExitCode {
                 xrpix,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyd(
                 fptr.as_mut_ptr(),
@@ -5682,7 +5788,7 @@ pub fn main() -> ExitCode {
                 yrpix,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyd(
                 fptr.as_mut_ptr(),
@@ -5690,7 +5796,7 @@ pub fn main() -> ExitCode {
                 xinc,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkyd(
                 fptr.as_mut_ptr(),
@@ -5698,7 +5804,7 @@ pub fn main() -> ExitCode {
                 yinc,
                 10,
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             /*   ffpkyd(fptr.as_mut_ptr(), "CROTA2", rot, 10, "comment", &mut status); */
             ffpkys(
@@ -5706,14 +5812,14 @@ pub fn main() -> ExitCode {
                 c"CTYPE1".as_ptr(),
                 xcoordtype.as_ptr(),
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             ffpkys(
                 fptr.as_mut_ptr(),
                 c"CTYPE2".as_ptr(),
                 ycoordtype.as_ptr(),
                 c"comment".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nWrote WCS keywords status = {status}\n");
 
@@ -5727,15 +5833,15 @@ pub fn main() -> ExitCode {
 
             ffgics(
                 fptr.as_mut_ptr(),
-                &mut xrval,
-                &mut yrval,
-                &mut xrpix,
-                &mut yrpix,
-                &mut xinc,
-                &mut yinc,
-                &mut rot,
-                ctype.as_mut_ptr() as *mut [c_char; 5],
-                &mut status,
+                &raw mut xrval,
+                &raw mut yrval,
+                &raw mut xrpix,
+                &raw mut yrpix,
+                &raw mut xinc,
+                &raw mut yinc,
+                &raw mut rot,
+                ctype.as_mut_ptr().cast::<[c_char; 5]>(),
+                &raw mut status,
             );
             println!("Read WCS keywords with ffgics status = {status}");
 
@@ -5752,10 +5858,10 @@ pub fn main() -> ExitCode {
                 xinc,
                 yinc,
                 rot,
-                ctype.as_ptr() as *const [c_char; 5],
-                &mut xpos,
-                &mut ypos,
-                &mut status,
+                ctype.as_ptr().cast::<[c_char; 5]>(),
+                &raw mut xpos,
+                &raw mut ypos,
+                &raw mut status,
             );
 
             println!("  CRVAL1, CRVAL2 = {xrval:>16.12}, {yrval:>16.12}");
@@ -5778,10 +5884,10 @@ pub fn main() -> ExitCode {
                 xinc,
                 yinc,
                 rot,
-                ctype.as_ptr() as *const [c_char; 5],
-                &mut xpix,
-                &mut ypix,
-                &mut status,
+                ctype.as_ptr().cast::<[c_char; 5]>(),
+                &raw mut xpix,
+                &raw mut ypix,
+                &raw mut status,
             );
             println!("Calculated pixel coordinate with ffxypx status = {status}");
             println!("  Sky ({xpos:>11.6}, {ypos:>11.6}) --> ({xpix:>8.4},{ypix:>8.4}) Pixels");
@@ -5818,11 +5924,11 @@ pub fn main() -> ExitCode {
                 ASCII_TBL,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             print!("\nffcrtb status = {status}\n");
 
@@ -5832,7 +5938,7 @@ pub fn main() -> ExitCode {
                 c"EXTVER".as_ptr(),
                 extvers as LONGLONG,
                 c"extension version number".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
 
             ffpcl(
@@ -5842,8 +5948,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 3,
-                onskey.as_ptr() as *const c_void,
-                &mut status,
+                onskey.as_ptr().cast::<c_void>(),
+                &raw mut status,
             ); /* write string values */
 
             /* initialize arrays of values to write */
@@ -5867,8 +5973,8 @@ pub fn main() -> ExitCode {
                     1,
                     1,
                     2,
-                    boutarray.as_ptr() as *const c_void,
-                    &mut status,
+                    boutarray.as_ptr().cast::<c_void>(),
+                    &raw mut status,
                 );
                 ffpcl(
                     fptr.as_mut_ptr(),
@@ -5877,8 +5983,8 @@ pub fn main() -> ExitCode {
                     3,
                     1,
                     2,
-                    ioutarray[2..].as_ptr() as *const c_void,
-                    &mut status,
+                    ioutarray[2..].as_ptr().cast::<c_void>(),
+                    &raw mut status,
                 );
                 ffpcl(
                     fptr.as_mut_ptr(),
@@ -5887,8 +5993,8 @@ pub fn main() -> ExitCode {
                     5,
                     1,
                     2,
-                    joutarray[4..].as_ptr() as *const c_void,
-                    &mut status,
+                    joutarray[4..].as_ptr().cast::<c_void>(),
+                    &raw mut status,
                 );
                 ffpcl(
                     fptr.as_mut_ptr(),
@@ -5897,8 +6003,8 @@ pub fn main() -> ExitCode {
                     7,
                     1,
                     2,
-                    eoutarray[6..].as_ptr() as *const c_void,
-                    &mut status,
+                    eoutarray[6..].as_ptr().cast::<c_void>(),
+                    &raw mut status,
                 );
                 ffpcl(
                     fptr.as_mut_ptr(),
@@ -5907,8 +6013,8 @@ pub fn main() -> ExitCode {
                     9,
                     1,
                     2,
-                    doutarray[8..].as_ptr() as *const c_void,
-                    &mut status,
+                    doutarray[8..].as_ptr().cast::<c_void>(),
+                    &raw mut status,
                 );
             }
             println!("ffpcl status = {status}");
@@ -5921,10 +6027,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut bnul as *mut _ as *mut c_void,
-                binarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut bnul).cast::<c_void>(),
+                binarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcv(
                 fptr.as_mut_ptr(),
@@ -5933,10 +6039,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut inul as *mut _ as *mut c_void,
-                iinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut inul).cast::<c_void>(),
+                iinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcv(
                 fptr.as_mut_ptr(),
@@ -5945,10 +6051,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut knul as *mut _ as *mut c_void,
-                kinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut knul).cast::<c_void>(),
+                kinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcv(
                 fptr.as_mut_ptr(),
@@ -5957,10 +6063,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut jnul as *mut _ as *mut c_void,
-                jinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut jnul).cast::<c_void>(),
+                jinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcv(
                 fptr.as_mut_ptr(),
@@ -5969,10 +6075,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut enul as *mut _ as *mut c_void,
-                einarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut enul).cast::<c_void>(),
+                einarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
             ffgcv(
                 fptr.as_mut_ptr(),
@@ -5981,10 +6087,10 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                &mut dnul as *mut _ as *mut c_void,
-                dinarray.as_mut_ptr() as *mut c_void,
-                &mut anynull,
-                &mut status,
+                core::ptr::from_mut(&mut dnul).cast::<c_void>(),
+                dinarray.as_mut_ptr().cast::<c_void>(),
+                &raw mut anynull,
+                &raw mut status,
             );
 
             print!("\nColumn values written with ffpcl and read with ffgcl:\n");
@@ -6026,16 +6132,16 @@ pub fn main() -> ExitCode {
             */
             print!("\nRepeatedly move to the 1st 4 HDUs of the file:\n");
             for _ii in 0..10 {
-                ffmahd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
-                print!("{}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
-                ffmrhd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
-                print!("{}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
-                ffmrhd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
-                print!("{}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
-                ffmrhd(fptr.as_mut_ptr(), 1, &mut hdutype, &mut status);
-                print!("{}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
-                ffmrhd(fptr.as_mut_ptr(), -1, &mut hdutype, &mut status);
-                print!("{}", ffghdn(fptr.as_mut_ptr(), &mut hdunum));
+                ffmahd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
+                print!("{}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+                ffmrhd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
+                print!("{}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+                ffmrhd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
+                print!("{}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+                ffmrhd(fptr.as_mut_ptr(), 1, &raw mut hdutype, &raw mut status);
+                print!("{}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+                ffmrhd(fptr.as_mut_ptr(), -1, &raw mut hdutype, &raw mut status);
+                print!("{}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
                 if status > 0 {
                     break;
                 }
@@ -6049,9 +6155,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 binname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&binname),
@@ -6065,9 +6171,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 binname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&binname),
@@ -6081,9 +6187,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 binname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&binname),
@@ -6099,9 +6205,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 tblname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&tblname),
@@ -6117,9 +6223,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 tblname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&tblname),
@@ -6133,9 +6239,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 binname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             println!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&binname),
@@ -6149,9 +6255,9 @@ pub fn main() -> ExitCode {
                 ANY_HDU,
                 binname.as_ptr(),
                 extvers as c_int,
-                &mut status,
+                &raw mut status,
             );
-            ffghdn(fptr.as_mut_ptr(), &mut hdunum);
+            ffghdn(fptr.as_mut_ptr(), &raw mut hdunum);
             print!(
                 " {}, {} = hdu {}, {}",
                 byte_slice_to_str!(&binname),
@@ -6162,7 +6268,7 @@ pub fn main() -> ExitCode {
             println!(" (expect a 301 error status here)");
             status = 0;
 
-            ffthdu(fptr.as_mut_ptr(), &mut hdunum, &mut status);
+            ffthdu(fptr.as_mut_ptr(), &raw mut hdunum, &raw mut status);
             println!("Total number of HDUs in the file = {hdunum}");
             /*
               ########################
@@ -6170,21 +6276,21 @@ pub fn main() -> ExitCode {
               ########################
             */
             checksum = 1234567890;
-            ffesum(checksum, 0, asciisum.as_mut_ptr() as *mut [c_char; 17]);
+            ffesum(checksum, 0, asciisum.as_mut_ptr().cast::<[c_char; 17]>());
             print!(
                 "\nEncode checksum: {} -> {}\n",
                 checksum,
                 byte_slice_to_str!(&asciisum)
             );
             checksum = 0;
-            ffdsum(asciisum.as_ptr(), 0, &mut checksum);
+            ffdsum(asciisum.as_ptr(), 0, &raw mut checksum);
             println!(
                 "Decode checksum: {} -> {}",
                 byte_slice_to_str!(&asciisum),
                 checksum
             );
 
-            ffpcks(fptr.as_mut_ptr(), &mut status);
+            ffpcks(fptr.as_mut_ptr(), &raw mut status);
 
             /*
                don't print the CHECKSUM value because it is different every day
@@ -6198,41 +6304,46 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 c"DATASUM".as_ptr(),
                 card.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("{:.30}", byte_slice_to_str!(&card));
 
-            ffgcks(fptr.as_mut_ptr(), &mut datsum, &mut checksum, &mut status);
+            ffgcks(
+                fptr.as_mut_ptr(),
+                &raw mut datsum,
+                &raw mut checksum,
+                &raw mut status,
+            );
             println!("ffgcks data checksum, status = {datsum}, {status}");
 
             ffvcks(
                 fptr.as_mut_ptr(),
-                &mut datastatus,
-                &mut hdustatus,
-                &mut status,
+                &raw mut datastatus,
+                &raw mut hdustatus,
+                &raw mut status,
             );
             println!("ffvcks datastatus, hdustatus, status = {datastatus} {hdustatus} {status}");
 
             ffprec(
                 fptr.as_mut_ptr(),
                 c"new_key = 'written by fxprec' / to change checksum".as_ptr(),
-                &mut status,
+                &raw mut status,
             );
-            ffupck(fptr.as_mut_ptr(), &mut status);
+            ffupck(fptr.as_mut_ptr(), &raw mut status);
             println!("ffupck status = {status}");
 
             ffgcrd(
                 fptr.as_mut_ptr(),
                 c"DATASUM".as_ptr(),
                 card.as_mut_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("{:.30}", byte_slice_to_str!(&card));
             ffvcks(
                 fptr.as_mut_ptr(),
-                &mut datastatus,
-                &mut hdustatus,
-                &mut status,
+                &raw mut datastatus,
+                &raw mut hdustatus,
+                &raw mut status,
             );
             println!("ffvcks datastatus, hdustatus, status = {datastatus} {hdustatus} {status}");
 
@@ -6241,8 +6352,8 @@ pub fn main() -> ExitCode {
               the same, regardless of the date of when testprog is run.
             */
 
-            ffdkey(fptr.as_mut_ptr(), c"CHECKSUM".as_ptr(), &mut status);
-            ffdkey(fptr.as_mut_ptr(), c"DATASUM".as_ptr(), &mut status);
+            ffdkey(fptr.as_mut_ptr(), c"CHECKSUM".as_ptr(), &raw mut status);
+            ffdkey(fptr.as_mut_ptr(), c"DATASUM".as_ptr(), &raw mut status);
 
             break;
         }
@@ -6255,7 +6366,7 @@ pub fn main() -> ExitCode {
 
         // errstatus: Jump here on error or completion
         let f = fptr.take();
-        ffclos(f, &mut status);
+        ffclos(f, &raw mut status);
         println!("ffclos status = {status}");
 
         println!();
@@ -6282,19 +6393,19 @@ pub fn main() -> ExitCode {
 
         /* free the allocated memory */
         for item in inskey {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in ttype {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in tform {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in tunit {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
     }
 

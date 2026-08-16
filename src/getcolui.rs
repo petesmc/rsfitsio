@@ -1370,8 +1370,8 @@ pub(crate) fn ffgclui(
                 );
 
                 /* The raw values were read straight into the output array, so
-                   convert them in place rather than aliasing the same slice as
-                   both input and output. */
+                convert them in place rather than aliasing the same slice as
+                both input and output. */
                 fffi2u2_inplace(
                     &mut array[next..],
                     ntodo,

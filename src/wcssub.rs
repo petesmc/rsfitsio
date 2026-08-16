@@ -2134,7 +2134,7 @@ mod tests {
             assert!(hdr.contains("CRVAL1"));
             assert!(hdr.contains("CRVAL2"));
 
-            unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+            unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -2181,7 +2181,7 @@ mod tests {
             assert_ne!(status, 0, "ffgiwcs should fail on a table");
 
             if !header.is_null() {
-                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+                unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);
@@ -2319,7 +2319,7 @@ mod tests {
             assert!(hdr.contains("CRVAL1"));
             assert!(hdr.contains("END"));
 
-            unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+            unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             fits_close_file(f.take().unwrap(), &mut status);
         });
     }
@@ -2345,7 +2345,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail on an image");
 
             if !header.is_null() {
-                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+                unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);
@@ -2389,7 +2389,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail for col 0");
 
             if !header.is_null() {
-                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+                unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             }
             status = 0;
             header = ptr::null_mut();
@@ -2398,7 +2398,7 @@ mod tests {
             assert_ne!(status, 0, "ffgtwcs should fail for col 99");
 
             if !header.is_null() {
-                unsafe { fits_free_memory(header as *mut c_void, &mut status) };
+                unsafe { fits_free_memory(header.cast::<c_void>(), &mut status) };
             }
             status = 0;
             fits_close_file(f.take().unwrap(), &mut status);
@@ -2412,7 +2412,7 @@ mod tests {
         // takes a &mut fitsfile, so we exercise the FFI wrapper directly.
         let mut status: c_int = 0;
         #[allow(deprecated)]
-        let rc = unsafe { fits_read_wcstab(ptr::null_mut(), 0, ptr::null(), &mut status) };
+        let rc = unsafe { fits_read_wcstab(ptr::null_mut(), 0, ptr::null(), &raw mut status) };
         // With nwtb=0 the routine returns immediately before checking the file
         // pointer, mirroring the C implementation. The C test still expects a
         // nonzero status because it passes NULL with nwtb=0; see note below.
