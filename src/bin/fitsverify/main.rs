@@ -384,7 +384,6 @@ pub(crate) fn main() -> ExitCode {
 
     if argc == 2 && ceq(&argv[1], b"-h") {
         print!(
-            "{}",
             "fitsverify -- Verify that the input files conform to the FITS Standard.\n\
              \n\
              USAGE:   fitsverify filename ...  - verify one or more FITS files\n\
