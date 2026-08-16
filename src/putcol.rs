@@ -1482,9 +1482,15 @@ pub fn ffpcl_safe(
                 status,
             );
         }
+        // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
+        // as in the C, so it carries pointer alignment even though the
+        // signature types it as bytes (clippy's cast_ptr_alignment); assert
+        // that rather than assuming it.
         TSTRING => unsafe {
-            let array =
-                slice::from_raw_parts(array.as_ptr().cast::<*const c_char>(), nelem as usize);
+            #[allow(clippy::cast_ptr_alignment)]
+            let p = array.as_ptr().cast::<*const c_char>();
+            debug_assert!(p.is_aligned());
+            let array = slice::from_raw_parts(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = cast_slice(CStr::from_ptr(*item).to_bytes_with_nul());

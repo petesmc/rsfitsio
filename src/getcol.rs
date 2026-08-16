@@ -2778,8 +2778,13 @@ pub fn ffgcv_safe(
         // *mut to build a &mut slice is UB (miri reports a write through a
         // SharedReadOnly tag).
         unsafe {
-            let array =
-                slice::from_raw_parts_mut(array.as_mut_ptr().cast::<*mut c_char>(), nelem as usize);
+            // The signature types that buffer as bytes, so the pointer
+            // alignment it really has is invisible here (clippy's
+            // cast_ptr_alignment); assert it instead of assuming it.
+            #[allow(clippy::cast_ptr_alignment)]
+            let p = array.as_mut_ptr().cast::<*mut c_char>();
+            debug_assert!(p.is_aligned());
+            let array = slice::from_raw_parts_mut(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
@@ -3422,9 +3427,15 @@ pub fn ffgcf_safe(
             status,
         );
     } else if datatype == TSTRING {
+        // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
+        // as in the C, so it carries pointer alignment even though the
+        // signature types it as bytes (clippy's cast_ptr_alignment); assert
+        // that rather than assuming it.
         unsafe {
-            let array =
-                slice::from_raw_parts_mut(array.as_mut_ptr().cast::<*mut _>(), nelem as usize);
+            #[allow(clippy::cast_ptr_alignment)]
+            let p = array.as_mut_ptr().cast::<*mut c_char>();
+            debug_assert!(p.is_aligned());
+            let array = slice::from_raw_parts_mut(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);

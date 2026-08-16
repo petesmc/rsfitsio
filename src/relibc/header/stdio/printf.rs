@@ -1075,7 +1075,13 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
 
                         if intkind == IntKind::Long || intkind == IntKind::LongLong {
                             // Handle wchar_t
+                            // %ls promises a wchar_t*, so the vararg is already
+                            // wchar_t-aligned even though it arrives typed as
+                            // bytes (clippy's cast_ptr_alignment); assert it
+                            // rather than assuming it.
+                            #[allow(clippy::cast_ptr_alignment)]
                             let mut ptr = ptr.cast::<wchar_t>();
+                            debug_assert!(ptr.is_aligned());
                             let mut string = String::new();
 
                             while *ptr != 0 {
