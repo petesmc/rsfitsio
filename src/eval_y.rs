@@ -159,9 +159,10 @@ use crate::simplerng::{
     simplerng_getnorm, simplerng_getpoisson, simplerng_getuniform, simplerng_srand,
 };
 use crate::wcssub::ffgtcs_safe;
-use crate::wrappers::{strcat, strcmp, strcpy, strlen, strstr};
-use crate::wrappers::{strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe, strstr_safe};
-use crate::{atoi, cs, int_snprintf};
+use crate::wrappers::{
+    strcat_safe, strcmp_safe, strcpy_safe, strlen_safe, strncpy_safe, strstr_safe,
+};
+use crate::{atoi, bb, cs, int_snprintf};
 
 pub type yy_state_t = yytype_int16;
 pub type yytype_int16 = c_short;
@@ -9073,10 +9074,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                 0
                             });
                     } else if that_node.ntype == ValueSort::Bits {
-                        bitnot(
-                            (this_node).value.data.text_mut_ptr(),
-                            that_node.value.data.text_mut_ptr(),
-                        );
+                        let src = *that_node.value.data.text_mut();
+                        bitnot((this_node).value.data.text_mut(), &src);
                     }
                 }
                 _ => {}
@@ -9247,8 +9246,8 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 bitnot(
-                                    *((this_node).value.data.str_buf()).offset(elem as isize),
-                                    *(that_node.value.data.str_buf()).offset(elem as isize),
+                                    (this_node).value.str_row_mut(elem),
+                                    that_node.value.str_row(elem),
                                 );
                             }
                         }
@@ -9515,19 +9514,15 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 match (lParse.Nodes[this_node_idx]).ntype {
                     ValueSort::Bits => {
-                        strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.str_buf())
-                                .offset((elem + offset) as isize),
+                        strcpy_safe(
+                            (lParse.Nodes[this_node_idx]).value.str_row_mut(elem),
+                            (lParse.Nodes[col_idx]).value.str_row(elem + offset),
                         );
                     }
                     ValueSort::String => {
-                        strcpy(
-                            *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                .offset(elem as isize),
-                            *((lParse.Nodes[col_idx]).value.data.str_buf())
-                                .offset((elem + offset) as isize),
+                        strcpy_safe(
+                            (lParse.Nodes[this_node_idx]).value.str_row_mut(elem),
+                            (lParse.Nodes[col_idx]).value.str_row(elem + offset),
                         );
                     }
                     ValueSort::Boolean => {
@@ -9558,8 +9553,6 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
-        let mut sptr1: *mut c_char = ptr::null_mut();
-        let mut sptr2: *mut c_char = ptr::null_mut();
         let mut const1: c_int = 0;
         let mut const2: c_int = 0;
         let mut rows: c_long = 0;
@@ -9569,16 +9562,21 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
 
         const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
         const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
-        sptr1 = if const1 != 0 {
-            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
-        } else {
-            core::ptr::null_mut::<c_char>()
-        };
-        sptr2 = if const2 != 0 {
-            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
-        } else {
-            core::ptr::null_mut::<c_char>()
-        };
+
+        /* A constant operand is copied out of its node once, so that holding a
+        view of it does not keep `lParse.Nodes` borrowed while the destination
+        row is written. A non-constant operand is re-pointed at its row buffer
+        each iteration below; the empty default is never read before then. */
+        let mut const1_buf: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
+        let mut const2_buf: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
+        if const1 != 0 {
+            const1_buf = *(lParse.Nodes[that1_idx]).value.data.text_mut();
+        }
+        if const2 != 0 {
+            const2_buf = *(lParse.Nodes[that2_idx]).value.data.text_mut();
+        }
+        let mut sptr1: &[c_char] = &const1_buf;
+        let mut sptr2: &[c_char] = &const2_buf;
         if const1 != 0 && const2 != 0 {
             match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  BITSTR comparisons  */
@@ -9600,37 +9598,30 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                 /*  BITSTR AND/ORs ...  no UNDEFS in or out */
                 Operator::Pipe => {
                     bitor(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut(),
                         sptr1,
                         sptr2,
                     );
                 }
                 Operator::Ampersand => {
                     bitand(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
+                        (lParse.Nodes[this_node_idx]).value.data.text_mut(),
                         sptr1,
                         sptr2,
                     );
                 }
                 Operator::Plus => {
-                    strcpy(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                        sptr1,
-                    );
-                    strcat(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                        sptr2,
-                    );
+                    strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), sptr1);
+                    strcat_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), sptr2);
                 }
                 /* Accumulate 1 bits */
                 Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(0);
-                    while *sptr1 != 0 {
-                        if c_int::from(*sptr1) == '1' as i32 {
+                    for &c in &sptr1[..strlen_safe(sptr1)] {
+                        if c == bb(b'1') {
                             (lParse.Nodes[this_node_idx]).value.data =
                                 NodeValue::Long((lParse.Nodes[this_node_idx]).value.data.lng() + 1);
                         }
-                        sptr1 = sptr1.offset(1);
                     }
                 }
                 _ => {}
@@ -9653,12 +9644,10 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                .offset(rows as isize);
+                            sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                .offset(rows as isize);
+                            sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                         }
                         match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                             Operator::Ne => {
@@ -9686,36 +9675,30 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                             break;
                         }
                         if const1 == 0 {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                .offset(rows as isize);
+                            sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                         }
                         if const2 == 0 {
-                            sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                .offset(rows as isize);
+                            sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                         }
                         if (lParse.Nodes[this_node_idx]).operation == '|' as i32 {
                             bitor(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr1,
                                 sptr2,
                             );
                         } else if (lParse.Nodes[this_node_idx]).operation == '&' as i32 {
                             bitand(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr1,
                                 sptr2,
                             );
                         } else {
-                            strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                            strcpy_safe(
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr1,
                             );
-                            strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                            strcat_safe(
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr2,
                             );
                         }
@@ -9727,14 +9710,12 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
                         previous = (lParse.Nodes[that2_idx]).value.data.lng();
                         i = 0;
                         while i < rows {
-                            sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                .offset(i as isize);
+                            sptr1 = (lParse.Nodes[that1_idx]).value.str_row(i);
                             curr = 0;
-                            while *sptr1 != 0 {
-                                if c_int::from(*sptr1) == '1' as i32 {
+                            for &c in &sptr1[..strlen_safe(sptr1)] {
+                                if c == bb(b'1') {
                                     curr += 1;
                                 }
-                                sptr1 = sptr1.offset(1);
                             }
                             previous += curr;
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
@@ -9776,8 +9757,8 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
-        let mut sptr1: *mut c_char = ptr::null_mut();
-        let mut sptr2: *mut c_char = ptr::null_mut();
+        let mut const1_buf: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
+        let mut const2_buf: [c_char; MAX_STRLEN as usize] = [0; MAX_STRLEN as usize];
         let mut null1: c_char = 0;
         let mut null2: c_char = 0;
         let mut const1: c_int = 0;
@@ -9790,27 +9771,28 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
 
         const1 = c_int::from((lParse.Nodes[that1_idx]).is_const());
         const2 = c_int::from((lParse.Nodes[that2_idx]).is_const());
-        sptr1 = if const1 != 0 {
-            (lParse.Nodes[that1_idx]).value.data.text_mut_ptr()
-        } else {
-            core::ptr::null_mut::<c_char>()
-        };
-        sptr2 = if const2 != 0 {
-            (lParse.Nodes[that2_idx]).value.data.text_mut_ptr()
-        } else {
-            core::ptr::null_mut::<c_char>()
-        };
+        /* As in Do_BinOp_bit: copy a constant operand out of its node once so
+        that viewing it does not keep `lParse.Nodes` borrowed while a
+        destination row is written. */
+        if const1 != 0 {
+            const1_buf = *(lParse.Nodes[that1_idx]).value.data.text_mut();
+        }
+        if const2 != 0 {
+            const2_buf = *(lParse.Nodes[that2_idx]).value.data.text_mut();
+        }
+        let mut sptr1: &[c_char] = &const1_buf;
+        let mut sptr2: &[c_char] = &const2_buf;
         if const1 != 0 && const2 != 0 {
             match Operator::from_operation((lParse.Nodes[this_node_idx]).operation) {
                 /*  Compare Strings  */
                 Operator::Ne | Operator::Eq => {
                     val = c_int::from(
-                        (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                        (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                             -(1)
-                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                        } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                             1
                         } else {
-                            strcmp(sptr1, sptr2)
+                            strcmp_safe(sptr1, sptr2)
                         }) == 0,
                     );
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
@@ -9825,12 +9807,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 Operator::Gt => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
-                        if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                        if (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                             -(1)
-                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                        } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                             1
                         } else {
-                            strcmp(sptr1, sptr2)
+                            strcmp_safe(sptr1, sptr2)
                         }) > 0
                         {
                             1
@@ -9841,12 +9823,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 Operator::Lt => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
-                        if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                        if (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                             -(1)
-                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                        } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                             1
                         } else {
-                            strcmp(sptr1, sptr2)
+                            strcmp_safe(sptr1, sptr2)
                         }) < 0
                         {
                             1
@@ -9857,12 +9839,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 Operator::Gte => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
-                        if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                        if (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                             -(1)
-                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                        } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                             1
                         } else {
-                            strcmp(sptr1, sptr2)
+                            strcmp_safe(sptr1, sptr2)
                         }) >= 0
                         {
                             1
@@ -9873,12 +9855,12 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 Operator::Lte => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Logical(
-                        if (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                        if (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                             -(1)
-                        } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0)) {
+                        } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                             1
                         } else {
-                            strcmp(sptr1, sptr2)
+                            strcmp_safe(sptr1, sptr2)
                         }) <= 0
                         {
                             1
@@ -9889,14 +9871,8 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 /*  Concat Strings  */
                 Operator::Plus => {
-                    strcpy(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                        sptr1,
-                    );
-                    strcat(
-                        (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                        sptr2,
-                    );
+                    strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), sptr1);
+                    strcat_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), sptr2);
                 }
                 _ => {}
             }
@@ -9928,22 +9904,18 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                             }
                             val = c_int::from(
-                                (if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                                (if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                                     -(1)
-                                } else if c_int::from(*sptr1.offset(0))
-                                    > c_int::from(*sptr2.offset(0))
-                                {
+                                } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                                     1
                                 } else {
-                                    strcmp(sptr1, sptr2)
+                                    strcmp_safe(sptr1, sptr2)
                                 }) == 0,
                             );
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
@@ -9976,20 +9948,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                             }
-                            val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                            val = if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                                 -(1)
-                            } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0))
-                            {
+                            } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                                 1
                             } else {
-                                strcmp(sptr1, sptr2)
+                                strcmp_safe(sptr1, sptr2)
                             };
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
@@ -10021,20 +9990,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                             }
-                            val = if c_int::from(*sptr1.offset(0)) < c_int::from(*sptr2.offset(0)) {
+                            val = if c_int::from(sptr1[0]) < c_int::from(sptr2[0]) {
                                 -(1)
-                            } else if c_int::from(*sptr1.offset(0)) > c_int::from(*sptr2.offset(0))
-                            {
+                            } else if c_int::from(sptr1[0]) > c_int::from(sptr2[0]) {
                                 1
                             } else {
-                                strcmp(sptr1, sptr2)
+                                strcmp_safe(sptr1, sptr2)
                             };
                             *((lParse.Nodes[this_node_idx]).value.data.log_buf())
                                 .offset(rows as isize) = (if (lParse.Nodes[this_node_idx]).operation
@@ -10067,21 +10033,17 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
                             };
                         if *((lParse.Nodes[this_node_idx]).value.undef).offset(rows as isize) == 0 {
                             if const1 == 0 {
-                                sptr1 = *((lParse.Nodes[that1_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr1 = (lParse.Nodes[that1_idx]).value.str_row(rows);
                             }
                             if const2 == 0 {
-                                sptr2 = *((lParse.Nodes[that2_idx]).value.data.str_buf())
-                                    .offset(rows as isize);
+                                sptr2 = (lParse.Nodes[that2_idx]).value.str_row(rows);
                             }
-                            strcpy(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                            strcpy_safe(
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr1,
                             );
-                            strcat(
-                                *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                    .offset(rows as isize),
+                            strcat_safe(
+                                (lParse.Nodes[this_node_idx]).value.str_row_mut(rows),
                                 sptr2,
                             );
                         }
@@ -11186,10 +11148,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[theParams[0]]).ntype == ValueSort::Bits {
-                        strcpy(
-                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                            pVals[0].data.text_mut_ptr(),
-                        );
+                        let src = *pVals[0].data.text_mut();
+                        strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), &src);
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -11270,10 +11230,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Double(pVals[0].data.dbl());
                     } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
-                        strcpy(
-                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                            pVals[0].data.text_mut_ptr(),
-                        );
+                        let src = *pVals[0].data.text_mut();
+                        strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), &src);
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -11442,10 +11400,8 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         (lParse.Nodes[this_node_idx]).value.data =
                             NodeValue::Long(pVals[0].data.lng());
                     } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits {
-                        strcpy(
-                            (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                            pVals[0].data.text_mut_ptr(),
-                        );
+                        let src = *pVals[0].data.text_mut();
+                        strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), &src);
                     }
                     current_block_139 = 7627602990488000394;
                 }
@@ -11539,14 +11495,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 });
                         }
                         ValueSort::String => {
-                            strcpy(
-                                (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr(),
-                                if c_int::from(pVals[2].data.log()) != 0 {
-                                    pVals[0].data.text_mut_ptr()
-                                } else {
-                                    pVals[1].data.text_mut_ptr()
-                                },
-                            );
+                            let src = if c_int::from(pVals[2].data.log()) != 0 {
+                                *pVals[0].data.text_mut()
+                            } else {
+                                *pVals[1].data.text_mut()
+                            };
+                            strcpy_safe((lParse.Nodes[this_node_idx]).value.data.text_mut(), &src);
                         }
                         _ => {}
                     }
@@ -11554,16 +11508,20 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                 }
                 /* String functions */
                 funcOp::STRMID_FCT => {
-                    let dest_str = (lParse.Nodes[this_node_idx]).value.data.text_mut_ptr();
                     let dest_len = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
+                    /* the subject is staged in pVals, so copying it out keeps
+                    the destination the only live borrow of lParse */
+                    let src = *pVals[0].data.text_mut();
+                    let mut dest_str = *(lParse.Nodes[this_node_idx]).value.data.text_mut();
                     cstrmid(
                         lParse,
-                        dest_str,
+                        &mut dest_str,
                         dest_len,
-                        pVals[0].data.text_mut_ptr(),
+                        &src,
                         pVals[0].nelem as c_int,
                         pVals[1].data.lng() as c_int,
                     );
+                    *(lParse.Nodes[this_node_idx]).value.data.text_mut() = dest_str;
                     current_block_139 = 7627602990488000394;
                 }
                 funcOp::STRPOS_FCT => {
@@ -12600,31 +12558,26 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
-                                    strcpy(
-                                        pVals[i as usize].data.text_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .str_buf())
-                                        .offset(row as isize),
-                                    );
+                                    let src =
+                                        (lParse.Nodes[theParams[i as usize]]).value.str_row(row);
+                                    strcpy_safe(pVals[i as usize].data.text_mut(), src);
                                 }
                             }
                             if pNull[0] != 0 {
                                 *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
                                     pNull[1];
-                                strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                        .offset(row as isize),
-                                    pVals[1].data.text_mut_ptr(),
+                                let src = *pVals[1].data.text_mut();
+                                strcpy_safe(
+                                    (lParse.Nodes[this_node_idx]).value.str_row_mut(row),
+                                    &src,
                                 );
                             } else {
                                 *((lParse.Nodes[this_node_idx]).value.undef)
                                     .offset(elem as isize) = 0;
-                                strcpy(
-                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                        .offset(row as isize),
-                                    pVals[0].data.text_mut_ptr(),
+                                let src = *pVals[0].data.text_mut();
+                                strcpy_safe(
+                                    (lParse.Nodes[this_node_idx]).value.str_row_mut(row),
+                                    &src,
                                 );
                             }
                         },
@@ -14233,14 +14186,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     break;
                                 }
                                 if vector[i as usize] != 0 {
-                                    strcpy(
-                                        pVals[i as usize].data.text_mut_ptr(),
-                                        *((lParse.Nodes[theParams[i as usize]])
-                                            .value
-                                            .data
-                                            .str_buf())
-                                        .offset(row as isize),
-                                    );
+                                    let src =
+                                        (lParse.Nodes[theParams[i as usize]]).value.str_row(row);
+                                    strcpy_safe(pVals[i as usize].data.text_mut(), src);
                                     pNull[i as usize] =
                                         *((lParse.Nodes[theParams[i as usize]]).value.undef)
                                             .offset(row as isize);
@@ -14251,18 +14199,18 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *fresh195 = pNull[2];
                             if *fresh195 == 0 {
                                 if pVals[2].data.log() != 0 {
-                                    strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                            .offset(row as isize),
-                                        pVals[0].data.text_mut_ptr(),
+                                    let src = *pVals[0].data.text_mut();
+                                    strcpy_safe(
+                                        (lParse.Nodes[this_node_idx]).value.str_row_mut(row),
+                                        &src,
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[0];
                                 } else {
-                                    strcpy(
-                                        *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                            .offset(row as isize),
-                                        pVals[1].data.text_mut_ptr(),
+                                    let src = *pVals[1].data.text_mut();
+                                    strcpy_safe(
+                                        (lParse.Nodes[this_node_idx]).value.str_row_mut(row),
+                                        &src,
                                     );
                                     *((lParse.Nodes[this_node_idx]).value.undef)
                                         .offset(row as isize) = pNull[1];
@@ -14281,6 +14229,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                         let lenconst: c_int = c_int::from((lParse.Nodes[theParams[2]]).is_const());
                         let dest_len: c_int = (lParse.Nodes[this_node_idx]).value.nelem as c_int;
                         let mut src_len: c_int = (lParse.Nodes[theParams[0]]).value.nelem as c_int;
+                        /* A constant subject is the same for every row, so copy
+                        it out once rather than re-borrowing the node inside the
+                        loop while a destination row is being written. */
+                        let const_str: [c_char; MAX_STRLEN as usize] = if strconst != 0 {
+                            *(lParse.Nodes[theParams[0]]).value.data.text_mut()
+                        } else {
+                            [0; MAX_STRLEN as usize]
+                        };
                         loop {
                             let fresh196 = row;
                             row -= 1;
@@ -14289,7 +14245,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                             let mut pos: c_int = 0;
                             let mut len: c_int = 0;
-                            let mut str: *mut c_char = ptr::null_mut();
+                            let mut str: &[c_char] = &const_str;
                             let mut undef: c_int = 0;
                             if posconst != 0 {
                                 pos = (lParse.Nodes[theParams[1]]).value.data.lng() as c_int;
@@ -14304,13 +14260,12 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if strconst != 0 {
-                                str = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
+                                str = &const_str;
                                 if src_len == 0 {
-                                    src_len = strlen(str) as c_int;
+                                    src_len = strlen_safe(str) as c_int;
                                 }
                             } else {
-                                str = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
-                                    .offset(row as isize);
+                                str = (lParse.Nodes[theParams[0]]).value.str_row(row);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
                                 {
@@ -14329,17 +14284,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     undef = 1;
                                 }
                             }
-                            *(*((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                .offset(row as isize))
-                            .offset(0) = 0;
+                            (lParse.Nodes[this_node_idx]).value.str_row_mut(row)[0] = 0;
                             if pos == 0 {
                                 undef = 1;
                             }
                             if undef == 0
                                 && cstrmid(
                                     lParse,
-                                    *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                        .offset(row as isize),
+                                    (lParse.Nodes[this_node_idx]).value.str_row_mut(row),
                                     len,
                                     str,
                                     src_len,
@@ -14355,20 +14307,31 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                     funcOp::STRPOS_FCT => {
                         let const1: c_int = c_int::from((lParse.Nodes[theParams[0]]).is_const());
                         let const2: c_int = c_int::from((lParse.Nodes[theParams[1]]).is_const());
+                        /* constants are the same every row, so copy them out
+                        once instead of re-borrowing the nodes in the loop */
+                        let const1_buf: [c_char; MAX_STRLEN as usize] = if const1 != 0 {
+                            *(lParse.Nodes[theParams[0]]).value.data.text_mut()
+                        } else {
+                            [0; MAX_STRLEN as usize]
+                        };
+                        let const2_buf: [c_char; MAX_STRLEN as usize] = if const2 != 0 {
+                            *(lParse.Nodes[theParams[1]]).value.data.text_mut()
+                        } else {
+                            [0; MAX_STRLEN as usize]
+                        };
                         loop {
                             let fresh197 = row;
                             row -= 1;
                             if fresh197 == 0 {
                                 break;
                             }
-                            let mut str1: *mut c_char = ptr::null_mut();
-                            let mut str2: *mut c_char = ptr::null_mut();
+                            let mut str1: &[c_char] = &const1_buf;
+                            let mut str2: &[c_char] = &const2_buf;
                             let mut undef_0: c_int = 0;
                             if const1 != 0 {
-                                str1 = (lParse.Nodes[theParams[0]]).value.data.text_mut_ptr();
+                                str1 = &const1_buf;
                             } else {
-                                str1 = *((lParse.Nodes[theParams[0]]).value.data.str_buf())
-                                    .offset(row as isize);
+                                str1 = (lParse.Nodes[theParams[0]]).value.str_row(row);
                                 if *((lParse.Nodes[theParams[0]]).value.undef).offset(row as isize)
                                     != 0
                                 {
@@ -14376,10 +14339,9 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 }
                             }
                             if const2 != 0 {
-                                str2 = (lParse.Nodes[theParams[1]]).value.data.text_mut_ptr();
+                                str2 = &const2_buf;
                             } else {
-                                str2 = *((lParse.Nodes[theParams[1]]).value.data.str_buf())
-                                    .offset(row as isize);
+                                str2 = (lParse.Nodes[theParams[1]]).value.str_row(row);
                                 if *((lParse.Nodes[theParams[1]]).value.undef).offset(row as isize)
                                     != 0
                                 {
@@ -14389,15 +14351,16 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(row as isize) = 0;
                             if undef_0 == 0 {
-                                let res_0: *mut c_char = strstr(str1, str2);
-                                if res_0.is_null() {
-                                    undef_0 = 1;
-                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
-                                        .offset(row as isize) = 0;
-                                } else {
-                                    *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
-                                        .offset(row as isize) =
-                                        res_0.offset_from(str1) as c_long + 1;
+                                match strstr_safe(str1, str2) {
+                                    None => {
+                                        undef_0 = 1;
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(row as isize) = 0;
+                                    }
+                                    Some(at) => {
+                                        *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
+                                            .offset(row as isize) = at as c_long + 1;
+                                    }
                                 }
                             }
                             *((lParse.Nodes[this_node_idx]).value.undef).offset(row as isize) =
@@ -15667,433 +15630,141 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
 /*****************************************************************************/
 
 #[allow(clippy::collapsible_match, clippy::collapsible_if)]
-fn bitlgte(mut bits1: *mut c_char, oper: c_int, mut bits2: *mut c_char) -> c_char {
-    unsafe {
-        let mut val1: c_int = 0;
-        let mut val2: c_int = 0;
-        let mut nextbit: c_int = 0;
-        let mut result: c_char = 0;
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut length: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bits1) as c_int;
-        l2 = strlen(bits2) as c_int;
-        length = if l1 > l2 { l1 } else { l2 };
-        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
-        does not check this allocation, so there is no failure path to
-        replicate -- but there is also no null to dereference. */
-        let mut stream_vec: Vec<c_char> = vec![0; (length + 1) as usize];
-        stream = stream_vec.as_mut_ptr();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh218 = ldiff;
-                ldiff -= 1;
-                if fresh218 == 0 {
-                    break;
-                }
-                let fresh219 = i;
-                i += 1;
-                *stream.offset(fresh219 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh220 = l1;
-                l1 -= 1;
-                if fresh220 == 0 {
-                    break;
-                }
-                let fresh221 = bits1;
-                bits1 = bits1.offset(1);
-                let fresh222 = i;
-                i += 1;
-                *stream.offset(fresh222 as isize) = *fresh221;
-            }
-            *stream.offset(i as isize) = 0;
-            bits1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh223 = ldiff;
-                ldiff -= 1;
-                if fresh223 == 0 {
-                    break;
-                }
-                let fresh224 = i;
-                i += 1;
-                *stream.offset(fresh224 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh225 = l2;
-                l2 -= 1;
-                if fresh225 == 0 {
-                    break;
-                }
-                let fresh226 = bits2;
-                bits2 = bits2.offset(1);
-                let fresh227 = i;
-                i += 1;
-                *stream.offset(fresh227 as isize) = *fresh226;
-            }
-            *stream.offset(i as isize) = 0;
-            bits2 = stream;
+/// Left-pad the shorter of two bit strings with `'0'` so the two are the same
+/// length, the way the C did with its `stream` scratch buffer.
+///
+/// `pad` supplies the storage for whichever operand needs widening. The
+/// returned views are exactly `max(strlen(a), strlen(b))` characters long and
+/// carry no terminator, so the callers below can simply zip them.
+fn bit_align<'a>(
+    a: &'a [c_char],
+    b: &'a [c_char],
+    pad: &'a mut Vec<c_char>,
+) -> (&'a [c_char], &'a [c_char]) {
+    let l1 = strlen_safe(a);
+    let l2 = strlen_safe(b);
+    let n = cmp::max(l1, l2);
+
+    match l1.cmp(&l2) {
+        cmp::Ordering::Equal => (&a[..l1], &b[..l2]),
+        cmp::Ordering::Less => {
+            pad.clear();
+            pad.resize(n, bb(b'0'));
+            pad[n - l1..].copy_from_slice(&a[..l1]);
+            (&pad[..], &b[..l2])
         }
-        val2 = 0;
-        val1 = val2;
-        nextbit = 1;
-        loop {
-            let fresh228 = length;
-            length -= 1;
-            if fresh228 == 0 {
-                break;
-            }
-            chr1 = *bits1.offset(length as isize);
-            chr2 = *bits2.offset(length as isize);
-            if c_int::from(chr1) != 'x' as i32
-                && c_int::from(chr1) != 'X' as i32
-                && c_int::from(chr2) != 'x' as i32
-                && c_int::from(chr2) != 'X' as i32
-            {
-                if c_int::from(chr1) == '1' as i32 {
-                    val1 += nextbit;
-                }
-                if c_int::from(chr2) == '1' as i32 {
-                    val2 += nextbit;
-                }
-                nextbit *= 2;
-            }
+        cmp::Ordering::Greater => {
+            pad.clear();
+            pad.resize(n, bb(b'0'));
+            pad[n - l2..].copy_from_slice(&b[..l2]);
+            (&a[..l1], &pad[..])
         }
-        result = 0;
-        match oper {
-            282 => {
-                if val1 < val2 {
-                    result = 1;
-                }
-            }
-            283 => {
-                if val1 <= val2 {
-                    result = 1;
-                }
-            }
-            281 => {
-                if val1 > val2 {
-                    result = 1;
-                }
-            }
-            284 => {
-                if val1 >= val2 {
-                    result = 1;
-                }
-            }
-            _ => {}
-        }
-        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
-        result
-    }
-}
-fn bitand(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut c_char) {
-    unsafe {
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut largestStream: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bitstrm1) as c_int;
-        l2 = strlen(bitstrm2) as c_int;
-        largestStream = if l1 > l2 { l1 } else { l2 };
-        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
-        does not check this allocation, so there is no failure path to
-        replicate -- but there is also no null to dereference. */
-        let mut stream_vec: Vec<c_char> = vec![0; (largestStream + 1) as usize];
-        stream = stream_vec.as_mut_ptr();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh229 = ldiff;
-                ldiff -= 1;
-                if fresh229 == 0 {
-                    break;
-                }
-                let fresh230 = i;
-                i += 1;
-                *stream.offset(fresh230 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh231 = l1;
-                l1 -= 1;
-                if fresh231 == 0 {
-                    break;
-                }
-                let fresh232 = bitstrm1;
-                bitstrm1 = bitstrm1.offset(1);
-                let fresh233 = i;
-                i += 1;
-                *stream.offset(fresh233 as isize) = *fresh232;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh234 = ldiff;
-                ldiff -= 1;
-                if fresh234 == 0 {
-                    break;
-                }
-                let fresh235 = i;
-                i += 1;
-                *stream.offset(fresh235 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh236 = l2;
-                l2 -= 1;
-                if fresh236 == 0 {
-                    break;
-                }
-                let fresh237 = bitstrm2;
-                bitstrm2 = bitstrm2.offset(1);
-                let fresh238 = i;
-                i += 1;
-                *stream.offset(fresh238 as isize) = *fresh237;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm2 = stream;
-        }
-        loop {
-            let fresh239 = bitstrm1;
-            bitstrm1 = bitstrm1.offset(1);
-            chr1 = *fresh239;
-            if chr1 == 0 {
-                break;
-            }
-            let fresh240 = bitstrm2;
-            bitstrm2 = bitstrm2.offset(1);
-            chr2 = *fresh240;
-            if c_int::from(chr1) == 'x' as i32 || c_int::from(chr2) == 'x' as i32 {
-                *result = b'x' as c_char;
-            } else if c_int::from(chr1) == '1' as i32 && c_int::from(chr2) == '1' as i32 {
-                *result = b'1' as c_char;
-            } else {
-                *result = b'0' as c_char;
-            }
-            result = result.offset(1);
-        }
-        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
-        *result = 0;
-    }
-}
-fn bitor(mut result: *mut c_char, mut bitstrm1: *mut c_char, mut bitstrm2: *mut c_char) {
-    unsafe {
-        let mut i: c_int = 0;
-        let mut l1: c_int = 0;
-        let mut l2: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut largestStream: c_int = 0;
-        let mut stream: *mut c_char = ptr::null_mut();
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
-        l1 = strlen(bitstrm1) as c_int;
-        l2 = strlen(bitstrm2) as c_int;
-        largestStream = if l1 > l2 { l1 } else { l2 };
-        /* Same as bitcmp: an owned buffer rather than a raw malloc.  The C
-        does not check this allocation, so there is no failure path to
-        replicate -- but there is also no null to dereference. */
-        let mut stream_vec: Vec<c_char> = vec![0; (largestStream + 1) as usize];
-        stream = stream_vec.as_mut_ptr();
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-            loop {
-                let fresh241 = ldiff;
-                ldiff -= 1;
-                if fresh241 == 0 {
-                    break;
-                }
-                let fresh242 = i;
-                i += 1;
-                *stream.offset(fresh242 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh243 = l1;
-                l1 -= 1;
-                if fresh243 == 0 {
-                    break;
-                }
-                let fresh244 = bitstrm1;
-                bitstrm1 = bitstrm1.offset(1);
-                let fresh245 = i;
-                i += 1;
-                *stream.offset(fresh245 as isize) = *fresh244;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-            loop {
-                let fresh246 = ldiff;
-                ldiff -= 1;
-                if fresh246 == 0 {
-                    break;
-                }
-                let fresh247 = i;
-                i += 1;
-                *stream.offset(fresh247 as isize) = b'0' as c_char;
-            }
-            loop {
-                let fresh248 = l2;
-                l2 -= 1;
-                if fresh248 == 0 {
-                    break;
-                }
-                let fresh249 = bitstrm2;
-                bitstrm2 = bitstrm2.offset(1);
-                let fresh250 = i;
-                i += 1;
-                *stream.offset(fresh250 as isize) = *fresh249;
-            }
-            *stream.offset(i as isize) = 0;
-            bitstrm2 = stream;
-        }
-        loop {
-            let fresh251 = bitstrm1;
-            bitstrm1 = bitstrm1.offset(1);
-            chr1 = *fresh251;
-            if chr1 == 0 {
-                break;
-            }
-            let fresh252 = bitstrm2;
-            bitstrm2 = bitstrm2.offset(1);
-            chr2 = *fresh252;
-            if c_int::from(chr1) == '1' as i32 || c_int::from(chr2) == '1' as i32 {
-                *result = b'1' as c_char;
-            } else if c_int::from(chr1) == '0' as i32 || c_int::from(chr2) == '0' as i32 {
-                *result = b'0' as c_char;
-            } else {
-                *result = b'x' as c_char;
-            }
-            result = result.offset(1);
-        }
-        /* stream_vec owns the buffer; it is freed when it goes out of scope. */
-        *result = 0;
-    }
-}
-fn bitnot(mut result: *mut c_char, mut bits: *mut c_char) {
-    unsafe {
-        let mut length: c_int = 0;
-        let mut chr: c_char = 0;
-        length = strlen(bits) as c_int;
-        loop {
-            let fresh253 = length;
-            length -= 1;
-            if fresh253 == 0 {
-                break;
-            }
-            let fresh254 = bits;
-            bits = bits.offset(1);
-            chr = *fresh254;
-            let fresh255 = result;
-            result = result.offset(1);
-            *fresh255 = (if c_int::from(chr) == '1' as i32 {
-                '0' as i32
-            } else if c_int::from(chr) == '0' as i32 {
-                '1' as i32
-            } else {
-                c_int::from(chr)
-            }) as c_char;
-        }
-        *result = 0;
     }
 }
 
-fn bitcmp(bitstrm1: *mut c_char, bitstrm2: *mut c_char) -> c_char {
-    unsafe {
-        let mut i: c_int = 0;
-        let mut ldiff: c_int = 0;
-        let mut largestStream: c_int = 0;
-        let mut chr1: c_char = 0;
-        let mut chr2: c_char = 0;
+fn bitlgte(bits1: &[c_char], oper: c_int, bits2: &[c_char]) -> c_char {
+    let mut pad: Vec<c_char> = Vec::new();
+    let (bits1, bits2) = bit_align(bits1, bits2, &mut pad);
 
-        let mut l1 = strlen(bitstrm1) as c_int;
-        let mut l2 = strlen(bitstrm2) as c_int;
+    let mut val1: c_int = 0;
+    let mut val2: c_int = 0;
+    let mut nextbit: c_int = 1;
 
-        let mut bitstrm1 = core::slice::from_raw_parts_mut(bitstrm1, l1 as usize + 1);
-        let mut bitstrm2 = core::slice::from_raw_parts_mut(bitstrm2, l2 as usize + 1);
+    /* Least significant bit first. A position where either operand is
+    unknown ('x') contributes to neither value and does not advance the
+    bit weight, which is what the C's `nextbit *= 2` inside the test does.
 
-        largestStream = cmp::max(l1, l2);
-
-        let mut stream_vec: Vec<c_char> = vec![0; (largestStream + 1) as usize];
-        let stream = &mut stream_vec[..];
-
-        if l1 < l2 {
-            ldiff = l2 - l1;
-            i = 0;
-
-            while ldiff > 0 {
-                stream[i as usize] = b'0' as c_char;
-                i += 1;
-                ldiff -= 1;
+    NOTE (pre-existing): `nextbit` is a c_int, so a bit string longer than
+    31 known positions overflows it -- undefined behaviour in the C, a
+    debug-build panic here. Kept as-is rather than widened, so the two
+    agree; see the bitlgte entry in notes/. */
+    for (&chr1, &chr2) in bits1.iter().rev().zip(bits2.iter().rev()) {
+        if chr1 != bb(b'x') && chr1 != bb(b'X') && chr2 != bb(b'x') && chr2 != bb(b'X') {
+            if chr1 == bb(b'1') {
+                val1 += nextbit;
             }
-
-            while l1 > 0 {
-                stream[i as usize] = bitstrm1[0];
-                bitstrm1 = &mut bitstrm1[1..];
-                i += 1;
-                l1 -= 1;
+            if chr2 == bb(b'1') {
+                val2 += nextbit;
             }
-
-            stream[i as usize] = 0;
-            bitstrm1 = stream;
-        } else if l2 < l1 {
-            ldiff = l1 - l2;
-            i = 0;
-
-            while ldiff > 0 {
-                stream[i as usize] = b'0' as c_char;
-                i += 1;
-                ldiff -= 1;
-            }
-
-            while l2 > 0 {
-                stream[i as usize] = bitstrm2[0];
-                bitstrm2 = &mut bitstrm2[1..];
-                i += 1;
-                l2 -= 1;
-            }
-
-            stream[i as usize] = 0;
-            bitstrm2 = stream;
+            nextbit *= 2;
         }
-
-        loop {
-            chr1 = bitstrm1[0];
-            if chr1 == 0 {
-                break;
-            }
-            bitstrm1 = &mut bitstrm1[1..];
-
-            chr2 = bitstrm2[0];
-            bitstrm2 = &mut bitstrm2[1..];
-
-            if (chr1 == b'0' as c_char && chr2 == b'1' as c_char)
-                || (chr1 == b'1' as c_char && chr2 == b'0' as c_char)
-            {
-                return 0;
-            }
-        }
-        1
     }
+
+    let holds = match oper {
+        282 => val1 < val2,
+        283 => val1 <= val2,
+        281 => val1 > val2,
+        284 => val1 >= val2,
+        _ => false,
+    };
+
+    c_char::from(holds)
+}
+
+fn bitand(result: &mut [c_char], bitstrm1: &[c_char], bitstrm2: &[c_char]) {
+    let mut pad: Vec<c_char> = Vec::new();
+    let (bitstrm1, bitstrm2) = bit_align(bitstrm1, bitstrm2, &mut pad);
+
+    let mut i = 0;
+    for (&chr1, &chr2) in bitstrm1.iter().zip(bitstrm2.iter()) {
+        result[i] = if chr1 == bb(b'x') || chr2 == bb(b'x') {
+            bb(b'x')
+        } else if chr1 == bb(b'1') && chr2 == bb(b'1') {
+            bb(b'1')
+        } else {
+            bb(b'0')
+        };
+        i += 1;
+    }
+    result[i] = 0;
+}
+
+fn bitor(result: &mut [c_char], bitstrm1: &[c_char], bitstrm2: &[c_char]) {
+    let mut pad: Vec<c_char> = Vec::new();
+    let (bitstrm1, bitstrm2) = bit_align(bitstrm1, bitstrm2, &mut pad);
+
+    let mut i = 0;
+    for (&chr1, &chr2) in bitstrm1.iter().zip(bitstrm2.iter()) {
+        result[i] = if chr1 == bb(b'1') || chr2 == bb(b'1') {
+            bb(b'1')
+        } else if chr1 == bb(b'0') || chr2 == bb(b'0') {
+            bb(b'0')
+        } else {
+            bb(b'x')
+        };
+        i += 1;
+    }
+    result[i] = 0;
+}
+
+fn bitnot(result: &mut [c_char], bits: &[c_char]) {
+    let length = strlen_safe(bits);
+
+    for i in 0..length {
+        let chr = bits[i];
+        result[i] = if chr == bb(b'1') {
+            bb(b'0')
+        } else if chr == bb(b'0') {
+            bb(b'1')
+        } else {
+            chr
+        };
+    }
+    result[length] = 0;
+}
+
+fn bitcmp(bitstrm1: &[c_char], bitstrm2: &[c_char]) -> c_char {
+    let mut pad: Vec<c_char> = Vec::new();
+    let (bitstrm1, bitstrm2) = bit_align(bitstrm1, bitstrm2, &mut pad);
+
+    /* 'x' matches anything; only a hard 0/1 disagreement is a mismatch. */
+    for (&chr1, &chr2) in bitstrm1.iter().zip(bitstrm2.iter()) {
+        if (chr1 == bb(b'0') && chr2 == bb(b'1')) || (chr1 == bb(b'1') && chr2 == bb(b'0')) {
+            return 0;
+        }
+    }
+
+    1
 }
 
 fn bnear(x: c_double, y: c_double, tolerance: c_double) -> c_char {
@@ -16186,23 +15857,20 @@ fn ellipse(
  */
 fn cstrmid(
     lParse: &mut ParseData,
-    dest_str: *mut c_char,
+    dest_str: &mut [c_char],
     dest_len: c_int,
-    src_str: *const c_char,
+    src_str: &[c_char],
     src_len: c_int,
     pos: c_int,
 ) -> c_int {
-    let dest_str = unsafe { core::slice::from_raw_parts_mut(dest_str, (dest_len) as usize + 1) }; // +1 for null terminate
     let dest_len = dest_len as usize;
     let mut src_len = src_len as usize;
 
     let mut endpos: usize = 0;
 
     if src_len == 0 {
-        src_len = unsafe { CStr::from_ptr(src_str).to_bytes().len() };
+        src_len = strlen_safe(src_str);
     } /* .. if constant */
-
-    let src_str = unsafe { core::slice::from_raw_parts(src_str, src_len + 1) };
 
     if pos < 0 {
         fits_parser_yyerror(lParse, cs!(c"STRMID(S,P,N) P must be 0 or greater"));

@@ -2,14 +2,25 @@
 - [ ] Investigate all code with 'WARNING'
 - [ ] Investigate all code with 'TODO'
 - [ ] Remove use a malloc and free
-- [ ] Remove use of libc unsafe functions. The raw C string functions are gone
-      from every file except `eval_y.rs` (38 sites) and `eval_f.rs` (6). Those
-      are one connected knot: the `*mut *mut c_char` per-row string buffers
-      behind `NodeValue::Buffer`, the `sptr1`/`sptr2` aliases into them, and the
-      `bit*` helpers (`bitcmp`, `bitlgte`, `bitand`, `bitor`, `bitnot`) that take
-      raw pointers. Untangling needs the string-node storage reworked, not a
-      call-site swap. `strtok_r`, `strpbrk`, `strspn`, `strcspn`, `strncpy` and
-      `strchr` have been deleted outright as dead.
+- [X] Remove use of libc unsafe functions. Every raw C string function is gone:
+      the whole `strcpy`/`strncpy`/`strcmp`/`strncmp`/`strlen`/`strnlen`/
+      `strchr`/`strstr`/`strcat`/`strncat`/`strtok_r`/`strpbrk`/`strspn`/
+      `strcspn` family has been deleted from `wrappers.rs`, along with the
+      `cbitset` dependency it pulled in. The expression engine reaches its
+      per-row string buffers through `lval::str_row`/`str_row_mut` instead of a
+      `char **` row-pointer array, and `bitand`/`bitor`/`bitnot`/`bitcmp`/
+      `bitlgte`/`cstrmid` are now safe functions taking slices.
+      Remaining follow-up, none of it string-related: stage 3 of
+      `notes/EVAL_STRING_STORAGE.md` (own the row buffers in `ParseData` so the
+      two `str_row` accessors stop being `unsafe`), then stage 4 (the numeric
+      buffers and `value.undef`, ~660 sites, which would remove the last
+      `malloc`/`free` and raw pointer from `NodeValue`).
+- [ ] Fix the Stacked Borrows violation in the lexer's buffer stack. Miri
+      rejects `eval_l.rs:1522` vs `:1703` (`yy_buffer_stack`) on any test that
+      invokes the parser, so Miri cannot currently validate the eval engine.
+      Pre-existing and verified against a clean worktree at fed4b4f. A second,
+      separate one is in the `test_ffcalc_*` tests themselves, which alias
+      `&mut *fp_self` twice to pass one file as both input and output.
 - [ ] Clean up all warnings
 - [ ] Remove clippy allow(unused_assignments)
 - [ ] Remove clippy allow(unused_variables)

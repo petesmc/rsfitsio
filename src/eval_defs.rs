@@ -299,6 +299,43 @@ pub(crate) struct lval {
     pub data: NodeValue,
 }
 
+impl lval {
+    /// The raw start of row `row` of a String/Bits row buffer.
+    ///
+    /// # Safety
+    /// See [`lval::str_row`].
+    pub(crate) unsafe fn str_row_ptr(&self, row: c_long) -> *mut c_char {
+        unsafe { *self.data.str_buf().offset(row as isize) }
+    }
+
+    /// Row `row` of a String/Bits row buffer.
+    ///
+    /// `Allocate_Ptrs` reserves `nelem + 1` characters per row -- the string
+    /// and its terminator -- so that is the length of the slice. This is what
+    /// lets the `Do_*` routines reach a row with the `*_safe` string helpers
+    /// instead of an unbounded `strcpy` on a bare `*mut c_char`.
+    ///
+    /// # Safety
+    /// - The node must hold a live `Text` row buffer from `Allocate_Ptrs`, and
+    ///   `row` must be below the `nRows` it was allocated for.
+    /// - The returned lifetime is unbounded: the slice borrows the heap block,
+    ///   not `self`, which is what lets a caller hold a destination row and two
+    ///   operand rows at the same time. The caller must not create two
+    ///   overlapping `&mut` rows. In the engine the destination is always a
+    ///   freshly allocated node, so it cannot alias an operand.
+    pub(crate) unsafe fn str_row<'a>(&self, row: c_long) -> &'a [c_char] {
+        unsafe { core::slice::from_raw_parts(self.str_row_ptr(row), self.nelem as usize + 1) }
+    }
+
+    /// Row `row` of a String/Bits row buffer, writable.
+    ///
+    /// # Safety
+    /// See [`lval::str_row`].
+    pub(crate) unsafe fn str_row_mut<'a>(&self, row: c_long) -> &'a mut [c_char] {
+        unsafe { core::slice::from_raw_parts_mut(self.str_row_ptr(row), self.nelem as usize + 1) }
+    }
+}
+
 #[derive(Default, Debug, Copy, Clone)]
 pub(crate) struct Node {
     pub operation: c_int,

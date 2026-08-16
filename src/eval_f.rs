@@ -94,7 +94,7 @@ use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
 use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
-use crate::wrappers::{strcat_safe, strcpy, strcpy_safe, strlen_safe, strncpy_safe};
+use crate::wrappers::{strcat_safe, strcpy_safe, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
@@ -1621,6 +1621,23 @@ pub(crate) extern "C" fn fits_parser_workfn(
 /// Iterator work function which calls the parser and copies the results
 /// into either an OutputCol or a data pointer supplied in the userPtr
 /// structure.
+/// `strcpy` into one of the iterator's string elements, bounded by the source.
+///
+/// The element width of an iterator string column is not reachable from the
+/// work function: `ffiter` sets `iteratorCol::repeat` to 1 for string columns
+/// and `pv.datasize` is the size of a *pointer*, not of a string. So the
+/// destination slice is built to exactly the bytes a C `strcpy` would write,
+/// terminator included -- the copy is bounded and its length explicit, but the
+/// destination's own capacity still cannot be checked here.
+///
+/// # Safety
+/// `dst` must point at an iterator string element with room for `src` and its
+/// NUL, which is the contract the C `strcpy` already relied on.
+unsafe fn copy_str_elem(dst: *mut c_char, src: &[c_char]) {
+    let n = strlen_safe(src) + 1;
+    unsafe { core::slice::from_raw_parts_mut(dst, n) }.copy_from_slice(&src[..n]);
+}
+
 pub(crate) fn fits_parser_workfn_safe(
     totalrows: c_long,           /* I - Total rows to be processed     */
     offset: c_long,              /* I - Number of rows skipped at start*/
@@ -2107,21 +2124,22 @@ pub(crate) fn fits_parser_workfn_safe(
                         }
                         TSTRING => {
                             if constant != 0 {
+                                let src = *result.value.data.text();
                                 for jj in 0..ntodo {
-                                    strcpy(
+                                    copy_str_elem(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        result.value.data.text().as_ptr(),
+                                        &src,
                                     );
                                 }
                             } else {
                                 for jj in 0..ntodo {
-                                    strcpy(
+                                    copy_str_elem(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.str_buf().add(jj.try_into().unwrap())),
+                                        result.value.str_row(jj),
                                     );
                                 }
                             }
@@ -2141,28 +2159,33 @@ pub(crate) fn fits_parser_workfn_safe(
                 ValueSort::String => {
                     if (*(pv.userInfo)).datatype == TSTRING {
                         if constant != 0 {
+                            let src = *result.value.data.text();
                             for jj in 0..ntodo {
-                                strcpy(
+                                copy_str_elem(
                                     *(pv.Data.cast::<*mut c_char>().add(jj.try_into().unwrap())),
-                                    result.value.data.text().as_ptr(),
+                                    &src,
                                 );
                             }
                         } else {
                             for jj in 0..ntodo {
                                 if *(result.value.undef.add(jj.try_into().unwrap())) != 0 {
                                     anyNullThisTime = 1;
-                                    strcpy(
+                                    let nullstr: &[c_char] = cast_slice(
+                                        CStr::from_ptr(*pv.Null.cast::<*mut c_char>())
+                                            .to_bytes_with_nul(),
+                                    );
+                                    copy_str_elem(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *pv.Null.cast::<*mut c_char>(),
+                                        nullstr,
                                     );
                                 } else {
-                                    strcpy(
+                                    copy_str_elem(
                                         *(pv.Data
                                             .cast::<*mut c_char>()
                                             .add(jj.try_into().unwrap())),
-                                        *(result.value.data.str_buf().add(jj.try_into().unwrap())),
+                                        result.value.str_row(jj),
                                     );
                                 }
                             }
@@ -3693,10 +3716,11 @@ fn fits_uncompress_hkdata(
                         }
                         TSTRING => {
                             let str_array = col_data.array.cast::<*mut c_char>();
-                            strcpy(
-                                *str_array.wrapping_add(currelem as usize),
-                                *str_array.wrapping_add((currelem - 1) as usize),
+                            let prev: &[c_char] = cast_slice(
+                                CStr::from_ptr(*str_array.wrapping_add((currelem - 1) as usize))
+                                    .to_bytes_with_nul(),
                             );
+                            copy_str_elem(*str_array.wrapping_add(currelem as usize), prev);
                         }
                         _ => {}
                     }
