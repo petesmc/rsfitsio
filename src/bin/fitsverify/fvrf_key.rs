@@ -75,7 +75,7 @@ pub(crate) fn fits_parse_card(
     /* Whether the characters in keyword name are valid */
     while kname[p] != 0 {
         let c = kname[p] as u8;
-        if !(b'A'..=b'Z').contains(&c) && !(b'0'..=b'9').contains(&c) && c != b'-' && c != b'_' {
+        if !c.is_ascii_uppercase() && !c.is_ascii_digit() && c != b'-' && c != b'_' {
             spf!(errmes;
                 "Keyword #", kpos, ": Name \"", CS(kname), "\" contains char \"", CHR(kname[p]),
                 "\" which is not upper case letter, digit, \"-\", or \"_\".");
