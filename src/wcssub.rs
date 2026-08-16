@@ -2412,7 +2412,7 @@ mod tests {
         // takes a &mut fitsfile, so we exercise the FFI wrapper directly.
         let mut status: c_int = 0;
         #[allow(deprecated)]
-        let rc = unsafe { fits_read_wcstab(ptr::null_mut(), 0, ptr::null(), &mut status) };
+        let rc = unsafe { fits_read_wcstab(ptr::null_mut(), 0, ptr::null(), &raw mut status) };
         // With nwtb=0 the routine returns immediately before checking the file
         // pointer, mirroring the C implementation. The C test still expects a
         // nonzero status because it passes NULL with nwtb=0; see note below.

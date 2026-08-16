@@ -116,7 +116,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
         /* Initialize the decompression.  The argument (15+16) tells the
         decompressor that we are to use the gzip algorithm */
 
-        err = inflateInit2(&mut d_stream, 15 + 16);
+        err = inflateInit2(&raw mut d_stream, 15 + 16);
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -126,7 +126,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
         loop {
             let len = diskfile.read(&mut filebuff[..GZBUFSIZE]);
             if len.is_err() {
-                inflateEnd(&mut d_stream);
+                inflateEnd(&raw mut d_stream);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
@@ -142,7 +142,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
 
             loop {
                 /* uncompress as much of the input as will fit in the output */
-                err = inflate(&mut d_stream, Z_NO_FLUSH);
+                err = inflate(&raw mut d_stream, Z_NO_FLUSH);
 
                 if err == Z_STREAM_END {
                     /* We reached the end of the input */
@@ -170,7 +170,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
                         *buffptr =
                             mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
                         if (*buffptr).is_null() {
-                            inflateEnd(&mut d_stream);
+                            inflateEnd(&raw mut d_stream);
                             *status = DATA_DECOMPRESSION_ERR;
                             return *status; /* memory allocation failed */
                         }
@@ -180,13 +180,13 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
                         *buffsize += BUFFINCR;
                     } else {
                         /* error: no realloc function available */
-                        inflateEnd(&mut d_stream);
+                        inflateEnd(&raw mut d_stream);
                         *status = DATA_DECOMPRESSION_ERR;
                         return *status;
                     }
                 } else {
                     /* some other error */
-                    inflateEnd(&mut d_stream);
+                    inflateEnd(&raw mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
                     return *status;
                 }
@@ -213,7 +213,7 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
         /* Set the output file size to be the total output data */
         *filesize = d_stream.total_out as usize;
 
-        err = inflateEnd(&mut d_stream); /* End the decompression */
+        err = inflateEnd(&raw mut d_stream); /* End the decompression */
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -269,7 +269,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 
         /* Initialize the decompression.  The argument (15+16) tells the
         decompressor that we are to use the gzip algorithm */
-        err = inflateInit2(&mut d_stream, 15 + 16);
+        err = inflateInit2(&raw mut d_stream, 15 + 16);
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -282,7 +282,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
         d_stream.avail_out = *buffsize as uInt;
 
         /* uncompress as much of the input as will fit in the output */
-        err = inflate(&mut d_stream, Z_NO_FLUSH);
+        err = inflate(&raw mut d_stream, Z_NO_FLUSH);
 
         if err == Z_STREAM_END {
             /* We reached the end of the input */
@@ -295,7 +295,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
                 panic!("Realloc function not implemented for uncompress2mem_from_mem");
                 *buffptr = mem_realloc((*buffptr).cast::<c_void>(), *buffsize + BUFFINCR).cast();
                 if (*buffptr).is_null() {
-                    inflateEnd(&mut d_stream);
+                    inflateEnd(&raw mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
                     return *status; /* memory allocation failed */
                 }
@@ -305,7 +305,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
                 *buffsize += BUFFINCR;
             } else {
                 /* error: no realloc function available */
-                inflateEnd(&mut d_stream);
+                inflateEnd(&raw mut d_stream);
                 if let Some(filesize) = filesize {
                     *filesize = d_stream.total_out as usize;
                 }
@@ -314,7 +314,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
             }
         } else {
             /* some other error */
-            inflateEnd(&mut d_stream);
+            inflateEnd(&raw mut d_stream);
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
         }
@@ -325,7 +325,7 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
         }
 
         /* End the decompression */
-        err = inflateEnd(&mut d_stream);
+        err = inflateEnd(&raw mut d_stream);
 
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
@@ -396,7 +396,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
         /* Initialize the decompression.  The argument (15+16) tells the
         decompressor that we are to use the gzip algorithm */
 
-        err = inflateInit2(&mut d_stream, 15 + 16);
+        err = inflateInit2(&raw mut d_stream, 15 + 16);
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -411,7 +411,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
             let len = indiskfile.read(&mut infilebuff[..GZBUFSIZE]);
 
             if len.is_err() {
-                inflateEnd(&mut d_stream);
+                inflateEnd(&raw mut d_stream);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
@@ -427,7 +427,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
 
             loop {
                 /* uncompress as much of the input as will fit in the output */
-                err = inflate(&mut d_stream, Z_NO_FLUSH);
+                err = inflate(&raw mut d_stream, Z_NO_FLUSH);
 
                 if err == Z_STREAM_END {
                     /* We reached the end of the input */
@@ -442,7 +442,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
                     /* flush out the full output buffer */
                     let out_len = outdiskfile.write(&outfilebuff[..GZBUFSIZE]);
                     if out_len.is_err() {
-                        inflateEnd(&mut d_stream);
+                        inflateEnd(&raw mut d_stream);
                         *status = DATA_DECOMPRESSION_ERR;
                         return *status;
                     }
@@ -450,7 +450,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
                     last_read_len = out_len.unwrap();
 
                     if last_read_len != GZBUFSIZE {
-                        inflateEnd(&mut d_stream);
+                        inflateEnd(&raw mut d_stream);
                         *status = DATA_DECOMPRESSION_ERR;
                         return *status;
                     }
@@ -460,7 +460,7 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
                     d_stream.avail_out = GZBUFSIZE as _;
                 } else {
                     /* some other error */
-                    inflateEnd(&mut d_stream);
+                    inflateEnd(&raw mut d_stream);
                     *status = DATA_DECOMPRESSION_ERR;
                     return *status;
                 }
@@ -479,19 +479,19 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
                 outdiskfile.write(&outfilebuff[..(d_stream.total_out - bytes_out) as usize]);
 
             if out_len.is_err() {
-                inflateEnd(&mut d_stream);
+                inflateEnd(&raw mut d_stream);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
 
             if out_len.unwrap() != (d_stream.total_out - bytes_out) as usize {
-                inflateEnd(&mut d_stream);
+                inflateEnd(&raw mut d_stream);
                 *status = DATA_DECOMPRESSION_ERR;
                 return *status;
             }
         }
 
-        err = inflateEnd(&mut d_stream); /* End the decompression */
+        err = inflateEnd(&raw mut d_stream); /* End the decompression */
         if err != Z_OK {
             *status = DATA_DECOMPRESSION_ERR;
             return *status;
@@ -556,7 +556,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
         Also use Z_BEST_SPEED for maximum speed with very minor loss
         in compression factor. */
         err = deflateInit2(
-            &mut c_stream,
+            &raw mut c_stream,
             Z_BEST_SPEED,
             Z_DEFLATED,
             15 + 16,
@@ -577,7 +577,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
 
         loop {
             /* compress as much of the input as will fit in the output */
-            err = deflate(&mut c_stream, Z_FINISH);
+            err = deflate(&raw mut c_stream, Z_FINISH);
 
             if err == Z_STREAM_END {
                 /* We reached the end of the input */
@@ -593,7 +593,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
                 c_stream.avail_out = (outbuf.len() - written) as uInt;
             } else {
                 /* some other error */
-                deflateEnd(&mut c_stream);
+                deflateEnd(&raw mut c_stream);
                 *status = DATA_COMPRESSION_ERR;
                 return *status;
             }
@@ -605,7 +605,7 @@ pub(crate) unsafe fn compress2mem_from_mem(
         }
 
         /* End the compression */
-        err = deflateEnd(&mut c_stream);
+        err = deflateEnd(&raw mut c_stream);
 
         if err != Z_OK {
             *status = DATA_COMPRESSION_ERR;
@@ -675,7 +675,7 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
         Also use Z_BEST_SPEED for maximum speed with very minor loss
         in compression factor. */
         err = deflateInit2(
-            &mut c_stream,
+            &raw mut c_stream,
             Z_BEST_SPEED,
             Z_DEFLATED,
             15 + 16,
@@ -750,10 +750,10 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
                 c_stream.avail_out = GZBUFSIZE as uInt;
 
                 /* compress as much of the input as will fit in the output */
-                err = deflate(&mut c_stream, flushflag);
+                err = deflate(&raw mut c_stream, flushflag);
 
                 if err == Z_STREAM_ERROR {
-                    deflateEnd(&mut c_stream);
+                    deflateEnd(&raw mut c_stream);
                     *status = DATA_COMPRESSION_ERR;
                     return *status;
                 } else {
@@ -766,13 +766,13 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
                     if nBytesToFile != 0 {
                         let out_len = outdiskfile.write(&outfilebuff[..nBytesToFile as usize]);
                         if out_len.is_err() {
-                            deflateEnd(&mut c_stream);
+                            deflateEnd(&raw mut c_stream);
                             *status = DATA_COMPRESSION_ERR;
                             return *status;
                         }
 
                         if out_len.unwrap() != nBytesToFile as usize {
-                            deflateEnd(&mut c_stream);
+                            deflateEnd(&raw mut c_stream);
                             *status = DATA_COMPRESSION_ERR;
                             return *status; /* write error */
                         }
@@ -790,7 +790,7 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
         }
 
         /* End the compression */
-        err = deflateEnd(&mut c_stream);
+        err = deflateEnd(&raw mut c_stream);
 
         if err != Z_OK {
             *status = DATA_COMPRESSION_ERR;

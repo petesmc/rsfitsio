@@ -47,7 +47,7 @@ pub fn main() -> ExitCode {
     let _ = remove_file(filename.to_str().unwrap()); /* delete previous version of the file if it exists */
 
     /* create new output image */
-    if unsafe { fits_create_file(&mut fptr, filename.as_ptr(), &mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut fptr, filename.as_ptr(), &raw mut status) } != 0 {
         printerror(status);
     }
 
@@ -59,7 +59,7 @@ pub fn main() -> ExitCode {
                 LONG_IMG,
                 2,
                 naxes.as_ptr().cast_mut(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -71,7 +71,7 @@ pub fn main() -> ExitCode {
         let empty_name = c" ";
         unsafe {
             fits_iter_set_by_name(
-                &mut cols[0],
+                &raw mut cols[0],
                 fptr_box.as_mut(),
                 empty_name.as_ptr(),
                 TLONG,
@@ -91,13 +91,13 @@ pub fn main() -> ExitCode {
             n_per_loop,
             writehisto,
             ptr::null_mut(),
-            &mut status,
+            &raw mut status,
         );
     }
 
     /* all done; close the file */
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -155,10 +155,10 @@ extern "C" fn writehisto(
         /* open the file and move to the table containing the X and Y columns */
 
         if fits_open_file(
-            &mut tblptr,
+            &raw mut tblptr,
             CString::new(filename).unwrap().as_ptr(),
             READONLY,
-            &mut status,
+            &raw mut status,
         ) != 0
         {
             return status;
@@ -171,7 +171,7 @@ extern "C" fn writehisto(
                 BINARY_TBL,
                 extname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             ) != 0
             {
                 return status;
@@ -184,14 +184,14 @@ extern "C" fn writehisto(
             let y_name = c"Y";
 
             fits_iter_set_by_name(
-                &mut cols[0],
+                &raw mut cols[0],
                 tblptr_box.as_mut(),
                 x_name.as_ptr(),
                 TLONG,
                 INPUT_COL as c_int,
             );
             fits_iter_set_by_name(
-                &mut cols[1],
+                &raw mut cols[1],
                 tblptr_box.as_mut(),
                 y_name.as_ptr(),
                 TLONG,
@@ -209,12 +209,12 @@ extern "C" fn writehisto(
             rows_per_loop,
             calchisto,
             histogram.cast::<std::os::raw::c_void>(),
-            &mut status,
+            &raw mut status,
         );
 
         /* all done */
         if let Some(tblptr_box) = tblptr {
-            let _ = fits_close_file(Some(tblptr_box), &mut status);
+            let _ = fits_close_file(Some(tblptr_box), &raw mut status);
         }
     }
 
@@ -249,15 +249,15 @@ extern "C" fn calchisto(
                 return -3; /* number of arrays is incorrect */
             }
 
-            if fits_iter_get_datatype(&mut cols[0]) != TLONG
-                || fits_iter_get_datatype(&mut cols[1]) != TLONG
+            if fits_iter_get_datatype(&raw mut cols[0]) != TLONG
+                || fits_iter_get_datatype(&raw mut cols[1]) != TLONG
             {
                 return -4; /* wrong datatypes */
             }
 
             /* assign the input array pointers to the X and Y arrays */
-            XCOL = fits_iter_get_array(&mut cols[0]) as *mut c_long;
-            YCOL = fits_iter_get_array(&mut cols[1]) as *mut c_long;
+            XCOL = fits_iter_get_array(&raw mut cols[0]) as *mut c_long;
+            YCOL = fits_iter_get_array(&raw mut cols[1]) as *mut c_long;
             HISTOGRAM = user_pointer.cast::<c_long>();
 
             /* initialize the histogram image pixels = 0 */

@@ -4732,7 +4732,7 @@ fn fits_get_expr_minmax(
         return *status;
     }
 
-    Info.parseData = &mut lParse;
+    Info.parseData = &raw mut lParse;
 
     /* Add a temporary column which contains the expression value */
     if fits_parser_set_temporary_col(
@@ -4748,7 +4748,7 @@ fn fits_get_expr_minmax(
     }
 
     /* Initialize the work function computing min/max */
-    minmaxWorkFn.Info = &mut Info;
+    minmaxWorkFn.Info = &raw mut Info;
     minmaxWorkFn.datamax = DOUBLENULLVALUE;
     minmaxWorkFn.datamin = DOUBLENULLVALUE;
     minmaxWorkFn.ngood = 0;

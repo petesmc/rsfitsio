@@ -1584,9 +1584,9 @@ pub(crate) unsafe fn bzip2uncompress2mem(
     *status = 0;
 
     unsafe {
-        b = BZ2_bzReadOpen(&mut bzerror, diskfile, 0, 0, ptr::null_mut(), 0);
+        b = BZ2_bzReadOpen(&raw mut bzerror, diskfile, 0, 0, ptr::null_mut(), 0);
         if bzerror != BZ_OK {
-            BZ2_bzReadClose(&mut bzerror, b);
+            BZ2_bzReadClose(&raw mut bzerror, b);
             if bzerror == BZ_MEM_ERROR {
                 ffpmsg_str("failed to open a bzip2 file: out of memory\n");
             } else if bzerror == BZ_CONFIG_ERROR {
@@ -1603,7 +1603,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
         while bzerror == BZ_OK {
             let mut nread = 0;
             nread = BZ2_bzRead(
-                &mut bzerror,
+                &raw mut bzerror,
                 b,
                 buf.as_ptr() as *mut c_void,
                 mem::size_of_val(&buf) as c_int,
@@ -1611,7 +1611,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
             if bzerror == BZ_OK || bzerror == BZ_STREAM_END {
                 *status = mem_write_unsafe(hdl, cast_slice(&buf), nread as usize);
                 if *status != 0 {
-                    BZ2_bzReadClose(&mut bzerror, b);
+                    BZ2_bzReadClose(&raw mut bzerror, b);
                     if *status == MEMORY_ALLOCATION {
                         ffpmsg_str("Failed to reallocate memory while uncompressing bzip2 file");
                     }
@@ -1637,7 +1637,7 @@ pub(crate) unsafe fn bzip2uncompress2mem(
                 );
             }
         }
-        BZ2_bzReadClose(&mut bzerror, b);
+        BZ2_bzReadClose(&raw mut bzerror, b);
         if bzerror != BZ_OK {
             if errormsg[0] != 0 {
                 ffpmsg_slice(&errormsg);

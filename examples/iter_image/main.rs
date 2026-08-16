@@ -28,16 +28,16 @@ pub fn main() -> ExitCode {
     let filename = c"iter_image.fit"; /* name of image FITS file */
 
     /* open file */
-    if unsafe { fits_open_file(&mut fptr, filename.as_ptr(), READWRITE, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) } != 0 {
         printerror(status);
     }
 
     /* define input column structure members for the iterator function */
     if let Some(ref mut fptr_box) = fptr {
         unsafe {
-            fits_iter_set_file(&mut cols[0], fptr_box.as_mut());
-            fits_iter_set_iotype(&mut cols[0], INPUT_OUTPUT_COL as c_int);
-            fits_iter_set_datatype(&mut cols[0], 0);
+            fits_iter_set_file(&raw mut cols[0], fptr_box.as_mut());
+            fits_iter_set_iotype(&raw mut cols[0], INPUT_OUTPUT_COL as c_int);
+            fits_iter_set_datatype(&raw mut cols[0], 0);
         }
     }
 
@@ -52,13 +52,13 @@ pub fn main() -> ExitCode {
             rows_per_loop,
             div_image,
             ptr::null_mut(),
-            &mut status,
+            &raw mut status,
         );
     }
 
     /* all done */
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }

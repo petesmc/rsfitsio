@@ -1913,19 +1913,19 @@ mod tests {
             status = 1;
             unsafe {
                 #[allow(deprecated)]
-                ffcopy(fp, fp, 0, &mut status);
+                ffcopy(fp, fp, 0, &raw mut status);
             }
             assert_eq!(status, 1);
 
             unsafe {
                 #[allow(deprecated)]
-                ffcphd(fp, fp, &mut status);
+                ffcphd(fp, fp, &raw mut status);
             }
             assert_eq!(status, 1);
 
             unsafe {
                 #[allow(deprecated)]
-                ffcpdt(fp, fp, &mut status);
+                ffcpdt(fp, fp, &raw mut status);
             }
             assert_eq!(status, 1);
 
@@ -1992,21 +1992,21 @@ mod tests {
             let fp: *mut fitsfile = f.as_deref_mut().unwrap();
             unsafe {
                 #[allow(deprecated)]
-                ffcopy(fp, fp, 0, &mut status);
+                ffcopy(fp, fp, 0, &raw mut status);
             }
             assert_eq!(status, SAME_FILE);
             status = 0;
 
             unsafe {
                 #[allow(deprecated)]
-                ffcphd(fp, fp, &mut status);
+                ffcphd(fp, fp, &raw mut status);
             }
             assert_eq!(status, SAME_FILE);
             status = 0;
 
             unsafe {
                 #[allow(deprecated)]
-                ffcpdt(fp, fp, &mut status);
+                ffcpdt(fp, fp, &raw mut status);
             }
             assert_eq!(status, SAME_FILE);
             status = 0;
@@ -2726,7 +2726,7 @@ mod tests {
             let fp: *mut fitsfile = f.as_deref_mut().unwrap();
             unsafe {
                 #[allow(deprecated)]
-                ffcpfl(fp, fp, 1, 1, 1, &mut status);
+                ffcpfl(fp, fp, 1, 1, 1, &raw mut status);
             }
             assert_eq!(status, SAME_FILE);
             status = 0;
@@ -2751,7 +2751,7 @@ mod tests {
             status = 1;
             unsafe {
                 #[allow(deprecated)]
-                ffcpfl(fp, fp, 1, 1, 1, &mut status);
+                ffcpfl(fp, fp, 1, 1, 1, &raw mut status);
             }
             assert_eq!(status, 1);
             status = 0;

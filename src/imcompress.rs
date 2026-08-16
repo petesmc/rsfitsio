@@ -2911,7 +2911,7 @@ fn imcomp_compress_tile(
                 if unsafe {
                     BZ2_bzBuffToBuffCompress(
                         cbuf.as_ptr() as *mut c_char,
-                        &mut bzlen,
+                        &raw mut bzlen,
                         tiledata.as_ptr() as *mut _,
                         (tilelen * c_long::from(intlength)) as c_uint,
                         9,

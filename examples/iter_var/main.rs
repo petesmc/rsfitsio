@@ -29,7 +29,7 @@ pub fn main() -> ExitCode {
     let filename = c"vari.fits"; /* name of rate FITS file */
 
     /* open file */
-    if unsafe { fits_open_file(&mut fptr, filename.as_ptr(), READWRITE, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) } != 0 {
         printerror(status);
     }
 
@@ -42,7 +42,7 @@ pub fn main() -> ExitCode {
                 BINARY_TBL,
                 extname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             )
         } != 0
         {
@@ -56,7 +56,7 @@ pub fn main() -> ExitCode {
 
         unsafe {
             fits_iter_set_by_name(
-                &mut cols[0],
+                &raw mut cols[0],
                 fptr_box.as_mut(),
                 compressed_data_name.as_ptr(),
                 0,
@@ -76,13 +76,13 @@ pub fn main() -> ExitCode {
             rows_per_loop,
             flux_rate,
             ptr::null_mut(),
-            &mut status,
+            &raw mut status,
         );
     }
 
     /* all done */
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }

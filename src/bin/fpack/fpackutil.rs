@@ -102,7 +102,7 @@ fn cpu_seconds() -> f64 {
     };
     // SAFETY: `ts` is a fully initialised timespec that outlives the call.
     unsafe {
-        libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &mut ts);
+        libc::clock_gettime(libc::CLOCK_PROCESS_CPUTIME_ID, &raw mut ts);
     }
     ts.tv_sec as f64 + ts.tv_nsec as f64 / 1e9
 }

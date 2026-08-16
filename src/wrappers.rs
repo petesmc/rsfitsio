@@ -409,7 +409,7 @@ mod tests {
         let s: &[c_char] = bytemuck::cast_slice(b"12345 XC");
         let mut endpu: *mut c_char = core::ptr::null_mut();
 
-        let ru = unsafe { libc::strtol(s.as_ptr(), &mut endpu, 10) };
+        let ru = unsafe { libc::strtol(s.as_ptr(), &raw mut endpu, 10) };
         let (rs, endps): (c_longlong, usize) = strtol_safe(s).unwrap();
 
         assert_eq!(ru, 12345);
@@ -426,7 +426,7 @@ mod tests {
         // Test with leadng whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   12345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 spaces + 5 digits
@@ -436,7 +436,7 @@ mod tests {
         // Test with leading zeros
         let s: &[c_char] = bytemuck::cast_slice(b"00012345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 zeros + 5 digits
@@ -446,7 +446,7 @@ mod tests {
         // Test with negative number
         let s: &[c_char] = bytemuck::cast_slice(b"-12345 XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
         assert_eq!(endp, 6); // 1 minus + 5 digits
@@ -456,7 +456,7 @@ mod tests {
         // Test with invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 5); // 5 digits
@@ -466,7 +466,7 @@ mod tests {
         // Test with empty string
         let s: &[c_char] = bytemuck::cast_slice(b"\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -475,7 +475,7 @@ mod tests {
         // Test with only whitespace
         let s: &[c_char] = bytemuck::cast_slice(b"   \0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -484,7 +484,7 @@ mod tests {
         // Test with only invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"abcde\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let _rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let _rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let r = strtol_safe::<c_longlong>(s);
         let endp = 0;
         assert!(r.is_err());
@@ -493,7 +493,7 @@ mod tests {
         // Test with leading zeros and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"00012345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 zeros + 5 digits
@@ -503,7 +503,7 @@ mod tests {
         // Test with negative number and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"-12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, -12345);
         assert_eq!(endp, 6); // 1 minus + 5 digits
@@ -513,7 +513,7 @@ mod tests {
         // Test with leading whitespace and invalid characters
         let s: &[c_char] = bytemuck::cast_slice(b"   12345a XC\0");
         let mut endps: *mut c_char = core::ptr::null_mut();
-        let rs = unsafe { libc::strtol(s.as_ptr(), &mut endps, 10) };
+        let rs = unsafe { libc::strtol(s.as_ptr(), &raw mut endps, 10) };
         let (ru, endp) = strtol_safe(s).unwrap();
         assert_eq!(ru, 12345);
         assert_eq!(endp, 8); // 3 spaces + 5 digits

@@ -39,10 +39,10 @@ pub fn main() -> ExitCode {
     /* open file */
     unsafe {
         fits_open_file(
-            &mut fptr,
+            &raw mut fptr,
             CString::new(filename).unwrap().as_ptr(),
             READWRITE,
-            &mut status,
+            &raw mut status,
         );
     }
 
@@ -55,7 +55,7 @@ pub fn main() -> ExitCode {
                 BINARY_TBL,
                 extname.as_ptr(),
                 0,
-                &mut status,
+                &raw mut status,
             )
         } != 0
         {
@@ -71,21 +71,21 @@ pub fn main() -> ExitCode {
 
         unsafe {
             fits_iter_set_by_name(
-                &mut cols[0],
+                &raw mut cols[0],
                 fptr_box.as_mut(),
                 counts_name.as_ptr(),
                 TLONG,
                 INPUT_COL as c_int,
             );
             fits_iter_set_by_name(
-                &mut cols[1],
+                &raw mut cols[1],
                 fptr_box.as_mut(),
                 time_name.as_ptr(),
                 TFLOAT,
                 INPUT_COL as c_int,
             );
             fits_iter_set_by_name(
-                &mut cols[2],
+                &raw mut cols[2],
                 fptr_box.as_mut(),
                 rate_name.as_ptr(),
                 TFLOAT,
@@ -105,14 +105,14 @@ pub fn main() -> ExitCode {
             rows_per_loop,
             flux_rate,
             ptr::null_mut(),
-            &mut status,
+            &raw mut status,
         );
     }
 
     /* all done */
     if let Some(fptr_box) = fptr {
         unsafe {
-            fits_close_file(Some(fptr_box), &mut status);
+            fits_close_file(Some(fptr_box), &raw mut status);
         }
     }
 
@@ -158,17 +158,17 @@ extern "C" fn flux_rate(
                 return -1; /* number of columns incorrect */
             }
 
-            if fits_iter_get_datatype(&mut cols[0]) != TLONG
-                || fits_iter_get_datatype(&mut cols[1]) != TFLOAT
-                || fits_iter_get_datatype(&mut cols[2]) != TFLOAT
+            if fits_iter_get_datatype(&raw mut cols[0]) != TLONG
+                || fits_iter_get_datatype(&raw mut cols[1]) != TFLOAT
+                || fits_iter_get_datatype(&raw mut cols[2]) != TFLOAT
             {
                 return -2; /* bad data type */
             }
 
             /* assign the input pointers to the appropriate arrays */
-            COUNTS = fits_iter_get_array(&mut cols[0]) as *mut c_long;
-            INTERVAL = fits_iter_get_array(&mut cols[1]) as *mut c_float;
-            RATE = fits_iter_get_array(&mut cols[2]) as *mut c_float;
+            COUNTS = fits_iter_get_array(&raw mut cols[0]) as *mut c_long;
+            INTERVAL = fits_iter_get_array(&raw mut cols[1]) as *mut c_float;
+            RATE = fits_iter_get_array(&raw mut cols[2]) as *mut c_float;
 
             LIVETIME = 0.0; /* initialize the total integration time */
 
@@ -182,7 +182,7 @@ extern "C" fn flux_rate(
                 deadtime_key.as_ptr(),
                 (&raw mut DEADTIME).cast::<std::os::raw::c_void>(),
                 null_comment.as_mut_ptr().cast::<libc::c_char>(),
-                &mut status,
+                &raw mut status,
             );
 
             if read_status != 0 {
@@ -236,7 +236,7 @@ extern "C" fn flux_rate(
                 livetime_key.as_ptr(),
                 (&raw const LIVETIME).cast::<std::os::raw::c_void>(),
                 livetime_comment.as_ptr(),
-                &mut status,
+                &raw mut status,
             );
             println!("livetime = {:.6}", ptr::read(&raw const LIVETIME));
         }

@@ -1051,9 +1051,9 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                         == sscanf_lg_lg_n(
                             str_slice,
                             cs!(c"(%lg,%lg)%n"),
-                            &mut (parser_state.NGP_LINKEY.value.c.re),
-                            &mut (parser_state.NGP_LINKEY.value.c.im),
-                            &mut nc,
+                            &raw mut (parser_state.NGP_LINKEY.value.c.re),
+                            &raw mut (parser_state.NGP_LINKEY.value.c.im),
+                            &raw mut nc,
                         )
                         && ((bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
                             || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
@@ -1078,8 +1078,8 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                             == sscanf_lg_n(
                                 str_slice,
                                 cs!(c"%lg%n"),
-                                &mut (parser_state.NGP_LINKEY.value.d),
-                                &mut nc,
+                                &raw mut (parser_state.NGP_LINKEY.value.d),
+                                &raw mut nc,
                             ))
                 {
                     if bb(b'D') == parser_state.NGP_CURLINE.line[value_idx + nc as usize] {
@@ -1095,8 +1095,8 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                         sscanf_lg_n(
                             str_slice,
                             cs!(c"%lg%n"),
-                            &mut (parser_state.NGP_LINKEY.value.d),
-                            &mut nc,
+                            &raw mut (parser_state.NGP_LINKEY.value.d),
+                            &raw mut nc,
                         );
                         if (bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
                             || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
@@ -1128,8 +1128,8 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                         == sscanf_d_n(
                             str_slice,
                             cs!(c"%d%n"),
-                            &mut parser_state.NGP_LINKEY.value.i,
-                            &mut nc,
+                            &raw mut parser_state.NGP_LINKEY.value.i,
+                            &raw mut nc,
                         )
                         && ((bb(b' ') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
                             || (bb(b'\t') == parser_state.NGP_CURLINE.line[value_idx + nc as usize])
@@ -1458,12 +1458,12 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
             i = 0;
             loop {
                 let token = &ngph.tok[i as usize];
-                if 1 == sscanf_d_c(&token.name, cs!(c"TFORM%d%c"), &mut ngph_i, &mut ngph_ctmp) {
+                if 1 == sscanf_d_c(&token.name, cs!(c"TFORM%d%c"), &raw mut ngph_i, &raw mut ngph_ctmp) {
                     if (NGP_TTYPE_STRING == token.type_) && (ngph_i == (j + 1)) {
                         my_tform = token.value.s;
                     }
                 } else if 1
-                    == sscanf_d_c(&token.name, cs!(c"TTYPE%d%c"), &mut ngph_i, &mut ngph_ctmp)
+                    == sscanf_d_c(&token.name, cs!(c"TTYPE%d%c"), &raw mut ngph_i, &raw mut ngph_ctmp)
                     && (NGP_TTYPE_STRING == token.type_)
                     && (ngph_i == (j + 1))
                 {
@@ -1664,7 +1664,7 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         ngph_extname = token.value.s;
                     }
-                } else if 1 == sscanf_d_c(&token.name, cs!(c"NAXIS%d%c"), &mut j, &mut ngph_ctmp)
+                } else if 1 == sscanf_d_c(&token.name, cs!(c"NAXIS%d%c"), &raw mut j, &raw mut ngph_ctmp)
                     && NGP_TTYPE_INT == token.type_
                     && (j >= 1)
                     && (j <= NGP_MAX_ARRAY_DIM as c_int)

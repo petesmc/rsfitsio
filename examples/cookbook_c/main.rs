@@ -65,7 +65,7 @@ fn writeimage() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_create_file(&mut fptr, filename_cstr.as_ptr(), &mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut fptr, filename_cstr.as_ptr(), &raw mut status) } != 0 {
         printerror(status); /* call printerror if error occurs */
     }
 
@@ -84,7 +84,7 @@ fn writeimage() {
                 bitpix,
                 naxis as c_int,
                 naxes.as_ptr().cast_mut(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -108,7 +108,7 @@ fn writeimage() {
                 fpixel as LONGLONG,
                 nelements as LONGLONG,
                 array.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -128,7 +128,7 @@ fn writeimage() {
                 exposure_key.as_ptr(),
                 core::ptr::from_ref::<c_long>(&exposure).cast(),
                 exposure_comment.as_ptr(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
         {
@@ -137,7 +137,7 @@ fn writeimage() {
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         /* close the file */
         printerror(status);
@@ -196,7 +196,7 @@ fn writeascii() {
     let extname_cstr = CString::new(extname).unwrap();
 
     /* open with write access the FITS file containing a primary array */
-    if unsafe { fits_open_file(&mut fptr, filename_cstr.as_ptr(), READWRITE, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READWRITE, &raw mut status) } != 0 {
         printerror(status);
     }
 
@@ -212,7 +212,7 @@ fn writeascii() {
                 tform.as_ptr(),
                 tunit.as_ptr(),
                 extname_cstr.as_ptr(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -233,7 +233,7 @@ fn writeascii() {
                 firstelem,
                 nrows,
                 planet.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
             fits_write_col(
                 fptr_box.as_mut(),
@@ -243,7 +243,7 @@ fn writeascii() {
                 firstelem,
                 nrows,
                 diameter.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
             fits_write_col(
                 fptr_box.as_mut(),
@@ -253,13 +253,13 @@ fn writeascii() {
                 firstelem,
                 nrows,
                 density.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
         }
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         /* close the FITS file */
         printerror(status);
@@ -319,12 +319,12 @@ fn writebintable() {
     let extname_cstr = CString::new(extname).unwrap();
 
     /* open the FITS file containing a primary array and an ASCII table */
-    if unsafe { fits_open_file(&mut fptr, filename_cstr.as_ptr(), READWRITE, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READWRITE, &raw mut status) } != 0 {
         printerror(status);
     }
 
     if let Some(ref mut fptr_box) = fptr
-        && unsafe { fits_movabs_hdu(fptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0
+        && unsafe { fits_movabs_hdu(fptr_box.as_mut(), 2, &raw mut hdutype, &raw mut status) } != 0
     {
         /* move to 2nd HDU */
         printerror(status);
@@ -342,7 +342,7 @@ fn writebintable() {
                 tform.as_ptr(),
                 tunit.as_ptr(),
                 extname_cstr.as_ptr(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -363,7 +363,7 @@ fn writebintable() {
                 firstelem,
                 nrows,
                 planet.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
             fits_write_col(
                 fptr_box.as_mut(),
@@ -373,7 +373,7 @@ fn writebintable() {
                 firstelem,
                 nrows,
                 diameter.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
             fits_write_col(
                 fptr_box.as_mut(),
@@ -383,13 +383,13 @@ fn writebintable() {
                 firstelem,
                 nrows,
                 density.as_ptr().cast(),
-                &mut status,
+                &raw mut status,
             );
         }
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         /* close the FITS file */
         printerror(status);
@@ -415,12 +415,12 @@ fn copyhdu() {
     let outfilename_cstr = CString::new(outfilename).unwrap();
 
     /* open the existing FITS file */
-    if unsafe { fits_open_file(&mut infptr, infilename_cstr.as_ptr(), READONLY, &mut status) } != 0
+    if unsafe { fits_open_file(&raw mut infptr, infilename_cstr.as_ptr(), READONLY, &raw mut status) } != 0
     {
         printerror(status);
     }
 
-    if unsafe { fits_create_file(&mut outfptr, outfilename_cstr.as_ptr(), &mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut outfptr, outfilename_cstr.as_ptr(), &raw mut status) } != 0 {
         /*create FITS file*/
         printerror(status); /* call printerror if error occurs */
     }
@@ -432,7 +432,7 @@ fn copyhdu() {
                 infptr_box.as_mut(),
                 outfptr_box.as_mut(),
                 morekeys,
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -441,7 +441,7 @@ fn copyhdu() {
 
     /* move to the 3rd HDU in the input file */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -453,7 +453,7 @@ fn copyhdu() {
                 infptr_box.as_mut(),
                 outfptr_box.as_mut(),
                 morekeys,
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -462,12 +462,12 @@ fn copyhdu() {
 
     let mut close_status = 0;
     if let Some(outfptr_box) = outfptr
-        && unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0
+        && unsafe { fits_close_file(Some(outfptr_box), &raw mut close_status) } != 0
     {
         printerror(close_status);
     }
     if let Some(infptr_box) = infptr
-        && unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(infptr_box), &raw mut status) } != 0
     {
         /* close files */
         printerror(status);
@@ -502,13 +502,13 @@ fn selectrows() {
     let outfilename_cstr = CString::new(outfilename).unwrap();
 
     /* open the existing FITS files */
-    if unsafe { fits_open_file(&mut infptr, infilename_cstr.as_ptr(), READONLY, &mut status) } != 0
+    if unsafe { fits_open_file(&raw mut infptr, infilename_cstr.as_ptr(), READONLY, &raw mut status) } != 0
         || unsafe {
             fits_open_file(
-                &mut outfptr,
+                &raw mut outfptr,
                 outfilename_cstr.as_ptr(),
                 READWRITE,
-                &mut status,
+                &raw mut status,
             )
         } != 0
     {
@@ -517,7 +517,7 @@ fn selectrows() {
 
     /* move to the 3rd HDU in the input file (a binary table in this case) */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &mut hdutype, &mut status) } != 0
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -529,21 +529,21 @@ fn selectrows() {
 
     /* move to the last (2rd) HDU in the output file */
     if let Some(ref mut outfptr_box) = outfptr
-        && unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &mut hdutype, &mut status) } != 0
+        && unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &raw mut hdutype, &raw mut status) } != 0
     {
         printerror(status);
     }
 
     /* create new extension in the output file */
     if let Some(ref mut outfptr_box) = outfptr
-        && unsafe { fits_create_hdu(outfptr_box.as_mut(), &mut status) } != 0
+        && unsafe { fits_create_hdu(outfptr_box.as_mut(), &raw mut status) } != 0
     {
         printerror(status);
     }
 
     /* get number of keywords */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_get_hdrpos(infptr_box.as_mut(), &mut nkeys, &mut keypos, &mut status) }
+        && unsafe { fits_get_hdrpos(infptr_box.as_mut(), &raw mut nkeys, &raw mut keypos, &raw mut status) }
             != 0
     {
         printerror(status);
@@ -557,12 +557,12 @@ fn selectrows() {
                     infptr_box.as_mut(),
                     ii,
                     card.as_mut_ptr().cast::<c_char>(),
-                    &mut status,
+                    &raw mut status,
                 );
                 fits_write_record(
                     outfptr_box.as_mut(),
                     card.as_ptr().cast::<c_char>(),
-                    &mut status,
+                    &raw mut status,
                 );
             }
         }
@@ -578,8 +578,8 @@ fn selectrows() {
                 1,
                 2,
                 naxes.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             )
         } != 0
         {
@@ -595,8 +595,8 @@ fn selectrows() {
                 infptr_box.as_mut(),
                 CASEINSEN as c_int,
                 density_key.as_ptr(),
-                &mut colnum,
-                &mut status,
+                &raw mut colnum,
+                &raw mut status,
             )
         } != 0
         {
@@ -616,8 +616,8 @@ fn selectrows() {
                 naxes[1] as LONGLONG,
                 core::ptr::from_ref::<c_float>(&nullval).cast(),
                 density.as_mut_ptr().cast(),
-                &mut anynulls,
-                &mut status,
+                &raw mut anynulls,
+                &raw mut status,
             )
         } != 0
     {
@@ -640,7 +640,7 @@ fn selectrows() {
                         1,
                         naxes[0] as LONGLONG,
                         buffer,
-                        &mut status,
+                        &raw mut status,
                     );
                     fits_write_tblbytes(
                         outfptr_box.as_mut(),
@@ -648,7 +648,7 @@ fn selectrows() {
                         1,
                         naxes[0] as LONGLONG,
                         buffer,
-                        &mut status,
+                        &raw mut status,
                     );
                 }
             }
@@ -665,7 +665,7 @@ fn selectrows() {
                 naxis2_key.as_ptr(),
                 core::ptr::from_ref::<c_long>(&(noutrows as c_long)).cast(),
                 ptr::null(),
-                &mut status,
+                &raw mut status,
             )
         } != 0
         {
@@ -677,12 +677,12 @@ fn selectrows() {
 
     let mut close_status = 0;
     if let Some(outfptr_box) = outfptr
-        && unsafe { fits_close_file(Some(outfptr_box), &mut close_status) } != 0
+        && unsafe { fits_close_file(Some(outfptr_box), &raw mut close_status) } != 0
     {
         printerror(close_status);
     }
     if let Some(infptr_box) = infptr
-        && unsafe { fits_close_file(Some(infptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(infptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -703,19 +703,19 @@ fn readheader() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&mut fptr, filename_cstr.as_ptr(), READONLY, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
         printerror(status);
     }
 
     /* attempt to move to next HDU, until we get an EOF error */
     ii = 1;
     while let Some(ref mut fptr_box) = fptr {
-        if unsafe { fits_movabs_hdu(fptr_box.as_mut(), ii, &mut hdutype, &mut status) } != 0 {
+        if unsafe { fits_movabs_hdu(fptr_box.as_mut(), ii, &raw mut hdutype, &raw mut status) } != 0 {
             break;
         }
 
         /* get no. of keywords */
-        if unsafe { fits_get_hdrpos(fptr_box.as_mut(), &mut nkeys, &mut keypos, &mut status) } != 0
+        if unsafe { fits_get_hdrpos(fptr_box.as_mut(), &raw mut nkeys, &raw mut keypos, &raw mut status) } != 0
         {
             printerror(status);
         }
@@ -727,7 +727,7 @@ fn readheader() {
                     fptr_box.as_mut(),
                     jj,
                     card.as_mut_ptr().cast::<c_char>(),
-                    &mut status,
+                    &raw mut status,
                 )
             } != 0
             {
@@ -749,7 +749,7 @@ fn readheader() {
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -776,7 +776,7 @@ fn readimage() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&mut fptr, filename_cstr.as_ptr(), READONLY, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
         printerror(status);
     }
 
@@ -790,8 +790,8 @@ fn readimage() {
                 1,
                 2,
                 naxes.as_mut_ptr(),
-                &mut nfound,
-                &mut status,
+                &raw mut nfound,
+                &raw mut status,
             )
         } != 0
         {
@@ -823,8 +823,8 @@ fn readimage() {
                     nbuffer,
                     core::ptr::from_ref::<c_float>(&nullval).cast(),
                     buffer.as_mut_ptr().cast(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 )
             } != 0
         {
@@ -847,7 +847,7 @@ fn readimage() {
     println!("\nMin and max image pixels =  {datamin:.0}, {datamax:.0}");
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -874,7 +874,7 @@ fn readtable() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&mut fptr, filename_cstr.as_ptr(), READONLY, &mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
         printerror(status);
     }
 
@@ -896,7 +896,7 @@ fn readtable() {
         /*read ASCII, then binary table */
         /* move to the HDU */
         if let Some(ref mut fptr_box) = fptr
-            && unsafe { fits_movabs_hdu(fptr_box.as_mut(), hdunum, &mut hdutype, &mut status) } != 0
+            && unsafe { fits_movabs_hdu(fptr_box.as_mut(), hdunum, &raw mut hdutype, &raw mut status) } != 0
         {
             printerror(status);
         }
@@ -920,8 +920,8 @@ fn readtable() {
                     1,
                     3,
                     ttype_ptrs.as_mut_ptr(),
-                    &mut nfound,
-                    &mut status,
+                    &raw mut nfound,
+                    &raw mut status,
                 );
             }
         }
@@ -943,8 +943,8 @@ fn readtable() {
                     nelem,
                     strnull.as_ptr().cast(),
                     name_ptrs.as_mut_ptr().cast(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 fits_read_col(
                     fptr_box.as_mut(),
@@ -955,8 +955,8 @@ fn readtable() {
                     nelem,
                     core::ptr::from_ref::<c_long>(&longnull).cast(),
                     dia.as_mut_ptr().cast(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
                 fits_read_col(
                     fptr_box.as_mut(),
@@ -967,8 +967,8 @@ fn readtable() {
                     nelem,
                     core::ptr::from_ref::<c_float>(&floatnull).cast(),
                     den.as_mut_ptr().cast(),
-                    &mut anynull,
-                    &mut status,
+                    &raw mut anynull,
+                    &raw mut status,
                 );
             }
         }
@@ -996,7 +996,7 @@ fn readtable() {
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }

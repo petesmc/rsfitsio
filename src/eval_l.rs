@@ -1440,7 +1440,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             YY_END_OF_BUFFER_CHAR;
         (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] =
             YY_END_OF_BUFFER_CHAR;
-        yyscanner.yytext_r = &mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
+        yyscanner.yytext_r = &raw mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         ret_val
     }
 }

@@ -114,7 +114,7 @@ pub fn main() -> ExitCode {
     status = 0;
 
     let filename_cstr = CString::new(filename).unwrap();
-    if unsafe { fits_create_file(&mut fptr, filename_cstr.as_ptr(), &mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut fptr, filename_cstr.as_ptr(), &raw mut status) } != 0 {
         /* create new FITS file */
         printerror(status);
     }
@@ -126,7 +126,7 @@ pub fn main() -> ExitCode {
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -134,7 +134,7 @@ pub fn main() -> ExitCode {
     let _ = remove_file(filename); /* Delete old file if it already exists */
     fptr = None;
 
-    if unsafe { fits_create_file(&mut fptr, filename_cstr.as_ptr(), &mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut fptr, filename_cstr.as_ptr(), &raw mut status) } != 0 {
         /* create new FITS file */
         printerror(status);
     }
@@ -176,7 +176,7 @@ pub fn main() -> ExitCode {
     }
 
     if let Some(fptr_box) = fptr
-        && unsafe { fits_close_file(Some(fptr_box), &mut status) } != 0
+        && unsafe { fits_close_file(Some(fptr_box), &raw mut status) } != 0
     {
         printerror(status);
     }
@@ -344,7 +344,7 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     }
 
     /* get table row size and optimum number of rows to write per loop */
-    unsafe { fits_get_rowsize(fptr, &mut nrows, status) };
+    unsafe { fits_get_rowsize(fptr, &raw mut nrows, status) };
     nrows = minvalue(nrows, SHTSIZE as c_long);
     nremain = BROWS as c_long;
 
@@ -436,7 +436,7 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     }
 
     /* get table row size and optimum number of rows to write per loop */
-    unsafe { fits_get_rowsize(fptr, &mut nrows, status) };
+    unsafe { fits_get_rowsize(fptr, &raw mut nrows, status) };
     nrows = minvalue(nrows, SHTSIZE as c_long);
     nremain = AROWS as c_long;
 
@@ -495,7 +495,7 @@ fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> 
     let mut elapse: f64 = 0.0;
 
     /* move to the primary array */
-    if unsafe { fits_movabs_hdu(fptr, 1, &mut hdutype, status) } != 0 {
+    if unsafe { fits_movabs_hdu(fptr, 1, &raw mut hdutype, status) } != 0 {
         printerror(*status);
     }
 
@@ -513,7 +513,7 @@ fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> 
                 SHTSIZE as LONGLONG,
                 longnull,
                 sarray.as_mut_ptr(),
-                &mut anynull,
+                &raw mut anynull,
                 status,
             );
         }
@@ -547,12 +547,12 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     let mut elapse: f64 = 0.0;
 
     /* move to the table */
-    if unsafe { fits_movrel_hdu(fptr, 1, &mut hdutype, status) } != 0 {
+    if unsafe { fits_movrel_hdu(fptr, 1, &raw mut hdutype, status) } != 0 {
         printerror(*status);
     }
 
     /* get table row size and optimum number of rows to read per loop */
-    unsafe { fits_get_rowsize(fptr, &mut nrows, status) };
+    unsafe { fits_get_rowsize(fptr, &raw mut nrows, status) };
     nrows = minvalue(nrows, SHTSIZE as c_long);
 
     /*  read the columns */
@@ -572,7 +572,7 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
                 ntodo as LONGLONG,
                 lnull,
                 sarray.as_mut_ptr(),
-                &mut anynull,
+                &raw mut anynull,
                 status,
             );
             fits_read_col_lng(
@@ -583,7 +583,7 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
                 ntodo as LONGLONG,
                 lnull,
                 sarray.as_mut_ptr(),
-                &mut anynull,
+                &raw mut anynull,
                 status,
             );
         }
@@ -618,12 +618,12 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     let mut elapse: f64 = 0.0;
 
     /* move to the table */
-    if unsafe { fits_movrel_hdu(fptr, 1, &mut hdutype, status) } != 0 {
+    if unsafe { fits_movrel_hdu(fptr, 1, &raw mut hdutype, status) } != 0 {
         printerror(*status);
     }
 
     /* get table row size and optimum number of rows to read per loop */
-    unsafe { fits_get_rowsize(fptr, &mut nrows, status) };
+    unsafe { fits_get_rowsize(fptr, &raw mut nrows, status) };
     nrows = minvalue(nrows, SHTSIZE as c_long);
 
     /*  read the columns */
@@ -643,7 +643,7 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
                 ntodo as LONGLONG,
                 lnull,
                 sarray.as_mut_ptr(),
-                &mut anynull,
+                &raw mut anynull,
                 status,
             );
             fits_read_col_lng(
@@ -654,7 +654,7 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
                 ntodo as LONGLONG,
                 lnull,
                 sarray.as_mut_ptr(),
-                &mut anynull,
+                &raw mut anynull,
                 status,
             );
         }

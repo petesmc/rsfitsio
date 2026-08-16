@@ -1522,7 +1522,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         .wrapping_mul(::core::mem::size_of::<yy_state_t>() as c_ulong)
                         as libc::size_t,
                 );
-                yyss = slice::from_raw_parts_mut(&mut (*yyptr).yyss_alloc, yystacksize as usize);
+                yyss = slice::from_raw_parts_mut(&raw mut (*yyptr).yyss_alloc, yystacksize as usize);
                 yynewbytes = yystacksize
                     * ::core::mem::size_of::<yy_state_t>() as c_ulong as c_long
                     + (::core::mem::size_of::<yyalloc>() as c_ulong as c_long - 1);
@@ -1537,7 +1537,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         .wrapping_mul(::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong)
                         as libc::size_t,
                 );
-                yyvs = slice::from_raw_parts_mut(&mut (*yyptr).yyvs_alloc, yystacksize as usize);
+                yyvs = slice::from_raw_parts_mut(&raw mut (*yyptr).yyvs_alloc, yystacksize as usize);
                 yynewbytes_0 = yystacksize
                     * ::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong as c_long
                     + (::core::mem::size_of::<yyalloc>() as c_ulong as c_long - 1);
@@ -1603,7 +1603,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         } else {
                             YYSYMBOL_YYUNDEF as c_int
                         }) as yysymbol_kind_t;
-                        YY_SYMBOL_PRINT!("Next token is", yytoken, &yylval, scanner, lParse);
+                        YY_SYMBOL_PRINT!("Next token is", yytoken, &raw const yylval, scanner, lParse);
                         current_block = 1924505913685386279;
                     }
                     match current_block {
@@ -1625,7 +1625,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     if yyerrstatus != 0 {
                                         yyerrstatus -= 1;
                                     } /* Shift the lookahead token.  */
-                                    YY_SYMBOL_PRINT!("Shifting", yytoken, &yylval, scanner, lParse);
+                                    YY_SYMBOL_PRINT!("Shifting", yytoken, &raw const yylval, scanner, lParse);
                                     yystate = yyn;
                                     yyvsp += 1;
                                     yyvs[yyvsp] = yylval;
@@ -1667,7 +1667,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yydestruct(
                                     c"Error: discarding".as_ptr(),
                                     yytoken,
-                                    &mut yylval,
+                                    &raw mut yylval,
                                     scanner,
                                     lParse,
                                 );
@@ -1698,7 +1698,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                     yyval = yyvs[yyvsp + 1 - yylen as usize];
 
                     if YYDEBUG {
-                        yy_reduce_print(&yyss[yyssp], &yyvs[yyvsp], yyn, scanner, lParse);
+                        yy_reduce_print(&raw const yyss[yyssp], &raw const yyvs[yyvsp], yyn, scanner, lParse);
                     }
 
                     match yyn {
@@ -7449,7 +7449,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                     YY_SYMBOL_PRINT!(
                         "-> $$ =",
                         yysymbol_kind_t::from(YYR1[yyn as usize]),
-                        &yyval,
+                        &raw const yyval,
                         scanner,
                         lParse
                     );
@@ -7513,7 +7513,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         yydestruct(
                             c"Error: popping".as_ptr(),
                             yysymbol_kind_t::from(YYSTOS[yystate as usize]),
-                            &mut yyvs[yyvsp],
+                            &raw mut yyvs[yyvsp],
                             scanner,
                             lParse,
                         );
@@ -7553,7 +7553,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
             yydestruct(
                 c"Cleanup: discarding lookahead".as_ptr(),
                 yytoken,
-                &mut yylval,
+                &raw mut yylval,
                 scanner,
                 lParse,
             );
@@ -7564,7 +7564,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
             yydestruct(
                 c"Cleanup: popping".as_ptr(),
                 yysymbol_kind_t::from(YYSTOS[yyss[yyssp] as usize]),
-                &mut yyvs[yyvsp],
+                &raw mut yyvs[yyvsp],
                 scanner,
                 lParse,
             );
@@ -14937,7 +14937,7 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                 nGTI,
                 gtiStart,
                 gtiStop,
-                &mut gti,
+                &raw mut gti,
             ));
             (lParse.Nodes[this_node_idx]).operation = CONST_OP;
         } else {
@@ -14996,7 +14996,7 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
                             || uStop > *gtiStop.offset(gti as isize)
                         {
                             /* Nope, need to recalculate */
-                            toverlap = GTI_Over(uStart, uStop, nGTI, gtiStart, gtiStop, &mut gti);
+                            toverlap = GTI_Over(uStart, uStop, nGTI, gtiStart, gtiStop, &raw mut gti);
                         } else {
                             /* We are in same GTI, the overlap is just stop-start of user range */
                             toverlap = uStop - uStart;
@@ -15053,8 +15053,8 @@ fn GTI_Over(
         }
 
         /* Locate adjacent GTIs for evtStart and evtStop */
-        gti1 = Search_GTI(evtStart, nGTI, start, stop, 1, &mut nextGTI1);
-        gti2 = Search_GTI(evtStop, nGTI, start, stop, 1, &mut nextGTI2);
+        gti1 = Search_GTI(evtStart, nGTI, start, stop, 1, &raw mut nextGTI1);
+        gti2 = Search_GTI(evtStop, nGTI, start, stop, 1, &raw mut nextGTI2);
 
         /* evtStart is in gti1, we return that for future processing */
         if gti1 >= 0 {

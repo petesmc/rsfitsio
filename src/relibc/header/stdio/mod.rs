@@ -228,7 +228,7 @@ mod tests {
         let result = sscanf_d(
             cast_slice(input.to_bytes_with_nul()),
             cast_slice(format.to_bytes_with_nul()),
-            &mut value,
+            &raw mut value,
         );
         assert_eq!(result, 1);
         assert_eq!(value, 42);
@@ -240,7 +240,7 @@ mod tests {
         let result = sscanf_ld(
             cast_slice(input.to_bytes_with_nul()),
             cast_slice(format.to_bytes_with_nul()),
-            &mut value,
+            &raw mut value,
         );
         assert_eq!(result, 1);
         assert_eq!(value, 123456789);
@@ -252,7 +252,7 @@ mod tests {
         let result = sscanf_u(
             cast_slice(input.to_bytes_with_nul()),
             cast_slice(format.to_bytes_with_nul()),
-            &mut value,
+            &raw mut value,
         );
         assert_eq!(result, 1);
         assert_eq!(value, 4294967295);
@@ -264,7 +264,7 @@ mod tests {
         let result = sscanf_lf(
             cast_slice(input.to_bytes_with_nul()),
             cast_slice(format.to_bytes_with_nul()),
-            &mut value,
+            &raw mut value,
         );
         assert_eq!(result, 1);
         assert!((value - 3.24159).abs() < 0.00001);
