@@ -12582,9 +12582,9 @@ mod tests {
     #[test]
     fn test_stored_entry_always_fits_the_reader_buffer() {
         /* ffgmsg copies at most FLEN_ERRMSG - 1 bytes, so keeping the chunk
-        size at or below that means no stored entry can ever be truncated on
-        the way out. */
-        assert!(ERRMSG_CHUNK <= FLEN_ERRMSG - 1);
+        size below FLEN_ERRMSG means no stored entry can ever be truncated on
+        the way out.  Both are consts, so check it at compile time. */
+        const { assert!(ERRMSG_CHUNK < FLEN_ERRMSG) };
     }
 
     #[test]
