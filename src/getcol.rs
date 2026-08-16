@@ -5823,20 +5823,18 @@ mod tests {
             ];
             let mut anynul = [0 as c_int; 3];
 
-            unsafe {
-                fits_read_cols(
-                    f.as_deref_mut().unwrap(),
-                    3,
-                    &datatypes,
-                    &colnums,
-                    1,
-                    3,
-                    &nulvals,
-                    &mut arrays,
-                    Some(&mut anynul),
-                    &mut status,
-                );
-            }
+            fits_read_cols(
+                f.as_deref_mut().unwrap(),
+                3,
+                &datatypes,
+                &colnums,
+                1,
+                3,
+                &nulvals,
+                &mut arrays,
+                Some(&mut anynul),
+                &mut status,
+            );
             assert_eq!(status, 0);
             assert_eq!(col1_result[0], 100);
             assert_eq!(col1_result[2], 300);
