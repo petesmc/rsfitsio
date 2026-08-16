@@ -1369,31 +1369,25 @@ pub(crate) fn ffgclui(
                     status,
                 );
 
-                let len = array.len();
-
-                // DANGER using this to allow using same buffer and mutable and immutable
-                // TODO find a better way to do this
-                unsafe {
-                    let ushortBuffer: &[c_ushort] = slice::from_raw_parts(array.as_ptr(), len);
-
-                    fffi2u2(
-                        cast_slice(&ushortBuffer[next..]),
-                        ntodo,
-                        scale,
-                        zero,
-                        nulcheck,
-                        tnull as c_short,
-                        nulval,
-                        if nulcheck == NullCheckType::SetNullArray {
-                            &mut nularray[next..]
-                        } else {
-                            nularray
-                        }, // WARNING: THIS IS A HACK. Should use Options instead
-                        anynul.as_deref_mut(),
-                        &mut array[next..],
-                        status,
-                    );
-                }
+                /* The raw values were read straight into the output array, so
+                   convert them in place rather than aliasing the same slice as
+                   both input and output. */
+                fffi2u2_inplace(
+                    &mut array[next..],
+                    ntodo,
+                    scale,
+                    zero,
+                    nulcheck,
+                    tnull as c_short,
+                    nulval,
+                    if nulcheck == NullCheckType::SetNullArray {
+                        &mut nularray[next..]
+                    } else {
+                        nularray
+                    }, // WARNING: THIS IS A HACK. Should use Options instead
+                    anynul.as_deref_mut(),
+                    status,
+                );
             }
             TLONG => {
                 ffgi4b(
@@ -1825,6 +1819,131 @@ pub(crate) fn fffi2u2(
                         output[ii] = c_ushort::MAX;
                     } else {
                         output[ii] = dvalue as _;
+                    }
+                }
+            }
+        }
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// In-place version of `fffi2u2`, for when the raw c_short values were read
+/// directly into the output array (the TSHORT special case in `ffgclui`,
+/// where no temporary buffer is used because the input and output are the
+/// same width).  Aliasing the same slice as both `&[c_short]` input and
+/// `&mut [c_ushort]` output is UB, so read each element as a c_short and
+/// write the converted value back over it.
+///
+/// Mirrors `fffi2i2_inplace` in getcoli.rs and the other `_inplace` variants.
+pub(crate) fn fffi2u2_inplace(
+    inout: &mut [c_ushort],   /* IO - array of values to be converted    */
+    ntodo: c_long,            /* I - number of elements in the array     */
+    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
+    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
+    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    /*     1:set null pixels = nullval         */
+    /*     2: if null pixel, set nullarray = 1 */
+    tnull: c_short,              /* I - value of FITS TNULLn keyword if any */
+    nullval: c_ushort,           /* I - set null pixels, if nullcheck = 1   */
+    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
+    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
+    status: &mut c_int,          /* IO - error status                       */
+) -> c_int {
+    let mut dvalue: f64 = 0.0;
+
+    if nullcheck == NullCheckType::None {
+        /* no null checking required */
+
+        if scale == 1.0 && zero == 32768. {
+            /* Instead of adding 32768, it is more efficient */
+            /* to just flip the sign bit with the XOR operator */
+
+            for ii in 0..(ntodo as usize) {
+                inout[ii] ^= 0x8000;
+            }
+        } else if scale == 1.0 && zero == 0.0 {
+            /* no scaling */
+            for ii in 0..(ntodo as usize) {
+                if (inout[ii] as c_short) < 0 {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = 0;
+                }
+                /* else: the value is already in place */
+            }
+        } else {
+            /* must scale the data */
+            for ii in 0..(ntodo as usize) {
+                dvalue = f64::from(inout[ii] as c_short) * scale + zero;
+
+                if dvalue < DUSHRT_MIN {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = c_ushort::MIN;
+                } else if dvalue > DUSHRT_MAX {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = c_ushort::MAX;
+                } else {
+                    inout[ii] = dvalue as _;
+                }
+            }
+        }
+    } else {
+        /* must check for null values */
+        let anynull = anynull.unwrap();
+
+        if scale == 1.0 && zero == 32768.
+        /* no scaling */
+        {
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] as c_short == tnull {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else {
+                    inout[ii] ^= 0x8000;
+                }
+            }
+        } else if scale == 1.0 && zero == 0.0 {
+            /* no scaling */
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] as c_short == tnull {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else if (inout[ii] as c_short) < 0 {
+                    *status = OVERFLOW_ERR;
+                    inout[ii] = 0;
+                }
+                /* else: the value is already in place */
+            }
+        } else {
+            /* must scale the data */
+
+            for ii in 0..(ntodo as usize) {
+                if inout[ii] as c_short == tnull {
+                    *anynull = 1;
+                    if nullcheck == NullCheckType::SetPixel {
+                        inout[ii] = nullval;
+                    } else {
+                        nullarray[ii] = 1;
+                    }
+                } else {
+                    dvalue = f64::from(inout[ii] as c_short) * scale + zero;
+
+                    if dvalue < DUSHRT_MIN {
+                        *status = OVERFLOW_ERR;
+                        inout[ii] = c_ushort::MIN;
+                    } else if dvalue > DUSHRT_MAX {
+                        *status = OVERFLOW_ERR;
+                        inout[ii] = c_ushort::MAX;
+                    } else {
+                        inout[ii] = dvalue as _;
                     }
                 }
             }
