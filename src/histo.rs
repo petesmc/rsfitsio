@@ -2292,7 +2292,7 @@ pub fn ffhist_safe(
             offset,
             n_per_loop,
             ffwritehisto,
-            ((&mut histData) as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(&mut histData).cast::<c_void>(),
             status,
         ) != 0
         {
@@ -4177,7 +4177,7 @@ pub(crate) fn fits_make_histde(
                     &mut (parsers[ii]),
                     &mut (infos[ii]),
                     nrows,
-                    (&mut (double_nulval) as *mut f64).cast::<c_void>(),
+                    core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
                     status,
                 ) != 0
                 {
@@ -4262,7 +4262,7 @@ pub(crate) fn fits_make_histde(
                 &mut (parsers[4]),
                 &mut (infos[4]),
                 nrows,
-                (&mut (double_nulval) as *mut f64).cast::<c_void>(),
+                core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
                 status,
             ) != 0
             {
@@ -4384,7 +4384,7 @@ pub(crate) fn fits_make_histde(
             offset,
             n_per_loop,
             ffwritehisto,
-            (&mut histData as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(&mut histData).cast::<c_void>(),
             status,
         );
 
@@ -4741,7 +4741,7 @@ fn fits_get_expr_minmax(
         &mut lParse,
         &mut Info,
         nrows,
-        (&mut double_nulval as *mut f64).cast::<c_void>(),
+        core::ptr::from_mut::<f64>(&mut double_nulval).cast::<c_void>(),
         status,
     ) != 0
     {
@@ -4771,7 +4771,7 @@ fn fits_get_expr_minmax(
                 *mut iteratorCol,
                 *mut c_void,
             ) -> c_int,
-        (&mut minmaxWorkFn as *mut histo_minmax_workfn_struct).cast::<c_void>(),
+        core::ptr::from_mut::<histo_minmax_workfn_struct>(&mut minmaxWorkFn).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -4892,7 +4892,7 @@ fn ffwritehisto_safe(
                     *mut iteratorCol,
                     *mut c_void,
                 ) -> c_int,
-            (histData as *mut HistType).cast::<c_void>(),
+            core::ptr::from_mut::<HistType>(histData).cast::<c_void>(),
             &mut status,
         );
     }
@@ -4956,7 +4956,7 @@ extern "C" fn ffcalchist(
                 nrows,
                 nCols,
                 colData_slice,
-                ((&mut (histData.infos[ii])) as *mut parseInfo).cast::<c_void>(),
+                core::ptr::from_mut::<parseInfo>(&mut (histData.infos[ii])).cast::<c_void>(),
             );
             if status != 0 {
                 return status;

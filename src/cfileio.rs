@@ -1851,7 +1851,7 @@ pub fn ffreopen_safer(
     // HEAP ALLOCATION
     let mut n = Box::new(fitsfile {
         HDUposition: 0, /* set initial position to primary array */
-        Fptr: unsafe { Box::from_raw(&mut *openfptr.Fptr as *mut FITSfile) }, /* both point to the same structure */ // TODO this is very unsafe!
+        Fptr: unsafe { Box::from_raw(core::ptr::from_mut::<FITSfile>(&mut *openfptr.Fptr)) }, /* both point to the same structure */ // TODO this is very unsafe!
     });
 
     n.Fptr.open_count += 1; /* increment the file usage counter */
@@ -3259,7 +3259,7 @@ pub(crate) fn ffedit_columns(
 
                     // WARNING / SAFETY / TODO:  This is really ugly, but we need to
                     // pass a mutable reference to fptr into ffcalc_safe.
-                    let same_ftpr = unsafe { &mut *(fptr.as_mut() as *mut _) };
+                    let same_ftpr = unsafe { &mut *core::ptr::from_mut(fptr.as_mut()) };
 
                     if ffcalc_safe(
                         fptr,
@@ -8898,7 +8898,7 @@ pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
     CURSOR.set(cursor);
 
     /* the returned pointer is into the caller's own buffer, as in the C */
-    &mut buf[start] as *mut c_char
+    core::ptr::from_mut::<c_char>(&mut buf[start])
 }
 
 /*--------------------------------------------------------------------------*/

@@ -3803,7 +3803,7 @@ pub fn ffiter_safe(
 
                         if memcmp(
                             nullpointer as *const c_void,
-                            (&zeros as *const f64).cast::<c_void>(),
+                            core::ptr::from_ref::<f64>(&zeros).cast::<c_void>(),
                             nbytes as usize,
                         ) != 0
                         {

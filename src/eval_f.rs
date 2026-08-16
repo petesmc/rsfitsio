@@ -237,7 +237,7 @@ pub fn fffrow_safe(
             firstrow - 1,
             0,
             fits_parser_workfn,
-            &Info as *const _ as *mut c_void,
+            core::ptr::from_ref(&Info) as *mut c_void,
             status,
         ) == -1
         {
@@ -430,7 +430,7 @@ pub fn ffsrow_safe(
         Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>());
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = inExt.numRows as c_long;
-        Info.parseData = &mut lParse as *mut ParseData;
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
         if Info.dataPtr.is_null() {
             ffpmsg_str("Unable to allocate memory for row selection");
             ffcprs(&mut lParse);
@@ -458,7 +458,7 @@ pub fn ffsrow_safe(
                 0,
                 0,
                 fits_parser_workfn,
-                (&mut Info as *mut parseInfo).cast::<c_void>(),
+                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 status,
             );
 
@@ -773,7 +773,7 @@ pub fn ffcrow_safe(
         firstrow - 1,
         0,
         fits_parser_workfn,
-        ((&mut Info) as *mut parseInfo).cast::<c_void>(),
+        core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
         status,
     ) == -1
     {
@@ -1198,7 +1198,7 @@ pub fn ffcalc_rng_safe(
                 start[i as usize] - 1,
                 c_long::from(nPerLp),
                 fits_parser_workfn,
-                &Info as *const _ as *mut c_void,
+                core::ptr::from_ref(&Info) as *mut c_void,
                 status,
             ) == -1
             {
@@ -3457,7 +3457,7 @@ pub fn fffrwc_safe(
                     ntimes,
                     lParse.nCols,
                     &mut lParse.colData,
-                    ((&mut Info) as *mut parseInfo).cast::<c_void>(),
+                    core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 );
             }
         }
@@ -3576,7 +3576,7 @@ pub fn ffffrw_safer(
         } else {
             let mut workData = ffffrw_workdata {
                 prownum: rownum,
-                lParse: &mut lParse as *mut ParseData,
+                lParse: core::ptr::from_mut::<ParseData>(&mut lParse),
             };
             let colData_slice = &mut lParse.colData[..];
             if ffiter_safe(
@@ -3585,7 +3585,7 @@ pub fn ffffrw_safer(
                 0,
                 0,
                 ffffrw_work,
-                (&mut workData as *mut ffffrw_workdata).cast::<c_void>(),
+                core::ptr::from_mut::<ffffrw_workdata>(&mut workData).cast::<c_void>(),
                 status,
             ) == -1
             {
@@ -4238,7 +4238,7 @@ pub fn fits_pixel_filter_safer(
                     0,
                     0,
                     fits_parser_workfn,
-                    (&mut info as *mut parseInfo).cast::<c_void>(),
+                    core::ptr::from_mut::<parseInfo>(&mut info).cast::<c_void>(),
                     status,
                 )
             } == -1
@@ -6311,7 +6311,7 @@ mod tests {
                 &cc("INTCOL * 2"),
                 1,
                 10,
-                (&nulval as *const c_long).cast::<c_void>(),
+                core::ptr::from_ref::<c_long>(&nulval).cast::<c_void>(),
                 as_bytes_mut(&mut results),
                 &mut anynul,
                 &mut status,

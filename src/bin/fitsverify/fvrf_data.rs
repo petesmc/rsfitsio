@@ -322,7 +322,7 @@ pub(crate) fn test_data(
 
     if niter > 0 {
         iterdata_reset();
-        let up: *mut c_void = (&mut usrdata as *mut UserIter).cast();
+        let up: *mut c_void = core::ptr::from_mut::<UserIter>(&mut usrdata).cast();
         if fits_iterate_data(
             niter,
             &mut iter_col,

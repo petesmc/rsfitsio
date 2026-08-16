@@ -279,7 +279,7 @@ mod tests {
             let input = c"42";
             let format = c"%d";
             let mut value: c_int = 0;
-            let result = libc::sscanf(input.as_ptr(), format.as_ptr(), &mut value as *mut c_int);
+            let result = libc::sscanf(input.as_ptr(), format.as_ptr(), core::ptr::from_mut::<c_int>(&mut value));
             println!("Original sscanf result: {result}, value: {value}");
         }
 
@@ -289,7 +289,7 @@ mod tests {
         let format = c"%d";
         let mut value: c_int = 0;
         let mut valist = CustomVaList::new();
-        valist.push(VaArg::pointer(&mut value as *mut c_int as *const c_void));
+        valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut value) as *const c_void));
         let result = sscanf_internal(input.as_ptr(), format.as_ptr(), valist);
         println!("sscanf_internal result: {result}, value: {value}");
 
@@ -310,7 +310,7 @@ mod tests {
             let mut rust_value: c_int = 0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_int as *const c_void,
+                core::ptr::from_mut::<c_int>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -325,7 +325,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -348,7 +348,7 @@ mod tests {
             let mut rust_value: c_long = 0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_long as *const c_void,
+                core::ptr::from_mut::<c_long>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -363,7 +363,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_long,
+                    core::ptr::from_mut::<c_long>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -386,7 +386,7 @@ mod tests {
             let mut rust_value: c_uint = 0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_uint as *const c_void,
+                core::ptr::from_mut::<c_uint>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -401,7 +401,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_uint,
+                    core::ptr::from_mut::<c_uint>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -424,7 +424,7 @@ mod tests {
             let mut rust_value: c_double = 0.0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_double as *const c_void,
+                core::ptr::from_mut::<c_double>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -442,7 +442,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_double,
+                    core::ptr::from_mut::<c_double>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -465,7 +465,7 @@ mod tests {
             let mut rust_value: c_float = 0.0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_float as *const c_void,
+                core::ptr::from_mut::<c_float>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -483,7 +483,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_float,
+                    core::ptr::from_mut::<c_float>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -506,7 +506,7 @@ mod tests {
             let mut rust_value: c_int = 0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_int as *const c_void,
+                core::ptr::from_mut::<c_int>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -521,7 +521,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -544,7 +544,7 @@ mod tests {
             let mut rust_value: c_double = 0.0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_double as *const c_void,
+                core::ptr::from_mut::<c_double>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -562,7 +562,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_double,
+                    core::ptr::from_mut::<c_double>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -586,9 +586,9 @@ mod tests {
             let mut rust_b: c_int = 0;
             let mut rust_c: c_int = 0;
             let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(&mut rust_a as *mut c_int as *const c_void));
-            rust_valist.push(VaArg::pointer(&mut rust_b as *mut c_int as *const c_void));
-            rust_valist.push(VaArg::pointer(&mut rust_c as *mut c_int as *const c_void));
+            rust_valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut rust_a) as *const c_void));
+            rust_valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut rust_b) as *const c_void));
+            rust_valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut rust_c) as *const c_void));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
             // Expected values
@@ -606,9 +606,9 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_a as *mut c_int,
-                    &mut libc_b as *mut c_int,
-                    &mut libc_c as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_a),
+                    core::ptr::from_mut::<c_int>(&mut libc_b),
+                    core::ptr::from_mut::<c_int>(&mut libc_c),
                 );
 
                 assert_eq!(
@@ -639,7 +639,7 @@ mod tests {
             let mut rust_value: c_int = 999;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_int as *const c_void,
+                core::ptr::from_mut::<c_int>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -654,7 +654,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -677,7 +677,7 @@ mod tests {
             let mut rust_value: c_int = 999;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_int as *const c_void,
+                core::ptr::from_mut::<c_int>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -695,7 +695,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -718,7 +718,7 @@ mod tests {
             let mut rust_value: c_int = 0;
             let mut rust_valist = CustomVaList::new();
             rust_valist.push(VaArg::pointer(
-                &mut rust_value as *mut c_int as *const c_void,
+                core::ptr::from_mut::<c_int>(&mut rust_value) as *const c_void,
             ));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
@@ -733,7 +733,7 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_value as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_value),
                 );
 
                 assert_eq!(
@@ -756,8 +756,8 @@ mod tests {
             let mut rust_a: c_int = 0;
             let mut rust_b: c_int = 999;
             let mut rust_valist = CustomVaList::new();
-            rust_valist.push(VaArg::pointer(&mut rust_a as *mut c_int as *const c_void));
-            rust_valist.push(VaArg::pointer(&mut rust_b as *mut c_int as *const c_void));
+            rust_valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut rust_a) as *const c_void));
+            rust_valist.push(VaArg::pointer(core::ptr::from_mut::<c_int>(&mut rust_b) as *const c_void));
             let rust_result = sscanf_internal(input.as_ptr(), format.as_ptr(), rust_valist);
 
             // Expected values
@@ -776,8 +776,8 @@ mod tests {
                 let libc_result = libc::sscanf(
                     input.as_ptr(),
                     format.as_ptr(),
-                    &mut libc_a as *mut c_int,
-                    &mut libc_b as *mut c_int,
+                    core::ptr::from_mut::<c_int>(&mut libc_a),
+                    core::ptr::from_mut::<c_int>(&mut libc_b),
                 );
 
                 assert_eq!(

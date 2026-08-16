@@ -932,7 +932,7 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
             let m = MEM_TABLE.lock().unwrap();
             (
                 m[*hdl as usize].memaddrptr,
-                m[*hdl as usize].memsizeptr.as_mut().unwrap() as *mut usize,
+                core::ptr::from_mut::<usize>(m[*hdl as usize].memsizeptr.as_mut().unwrap()),
             )
         };
 

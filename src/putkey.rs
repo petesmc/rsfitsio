@@ -7402,7 +7402,7 @@ mod tests {
             status = 0;
             fits_write_key(
                 f.as_deref_mut().unwrap(),
-                KeywordDatatype::from_datatype(9999, &value as *const c_int as *const libc::c_void),
+                KeywordDatatype::from_datatype(9999, core::ptr::from_ref::<c_int>(&value) as *const libc::c_void),
                 &cc("BADTYPE"),
                 Some(&cc("bad datatype")),
                 &mut status,

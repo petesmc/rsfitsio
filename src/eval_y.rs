@@ -1516,7 +1516,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 }
                 let mut yynewbytes: c_long = 0;
                 libc::memcpy(
-                    (&mut (*yyptr).yyss_alloc as *mut yy_state_t).cast::<c_void>(),
+                    core::ptr::from_mut::<yy_state_t>(&mut (*yyptr).yyss_alloc).cast::<c_void>(),
                     yyss.as_ptr().cast::<c_void>(),
                     (yysize as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<yy_state_t>() as c_ulong)
@@ -1531,7 +1531,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 );
                 let mut yynewbytes_0: c_long = 0;
                 libc::memcpy(
-                    (&mut (*yyptr).yyvs_alloc as *mut FITS_PARSER_YYSTYPE).cast::<c_void>(),
+                    core::ptr::from_mut::<FITS_PARSER_YYSTYPE>(&mut (*yyptr).yyvs_alloc).cast::<c_void>(),
                     yyvs.as_ptr().cast::<c_void>(),
                     (yysize as c_ulong)
                         .wrapping_mul(::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong)
@@ -2225,7 +2225,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::LONG as c_int,
-                                (&mut yyvs[yyvsp].lng() as *mut c_long).cast::<c_void>(),
+                                core::ptr::from_mut::<c_long>(&mut yyvs[yyvsp].lng()).cast::<c_void>(),
                                 ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                             ));
                             if yyval.node() < 0 {
@@ -2239,7 +2239,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::DOUBLE as c_int,
-                                (&mut yyvs[yyvsp].dbl() as *mut c_double).cast::<c_void>(),
+                                core::ptr::from_mut::<c_double>(&mut yyvs[yyvsp].dbl()).cast::<c_void>(),
                                 ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                             ));
                             if yyval.node() < 0 {
@@ -3012,10 +3012,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    core::ptr::from_ref::<c_long>(&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
-                                        .nelem
-                                        as *const c_long)
+                                        .nelem)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 ));
@@ -3036,7 +3035,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&mut zero as *mut c_long).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_long>(&mut zero).cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
@@ -3098,7 +3097,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 13755523488868872559;
@@ -3168,7 +3167,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one_0 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one_0).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 13755523488868872559;
@@ -3208,7 +3207,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut iaxis as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut iaxis).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     if yyval.node() < 0 {
@@ -3275,10 +3274,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    core::ptr::from_ref::<c_long>(&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
-                                        .nelem
-                                        as *const c_long)
+                                        .nelem)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 ));
@@ -3341,10 +3339,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    core::ptr::from_ref::<c_long>(&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
-                                        .nelem
-                                        as *const c_long)
+                                        .nelem)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 ));
@@ -3365,10 +3362,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    core::ptr::from_ref::<c_long>(&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
-                                        .nelem
-                                        as *const c_long)
+                                        .nelem)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 ));
@@ -3447,7 +3443,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&mut zero_0 as *mut c_long).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_long>(&mut zero_0).cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
@@ -3631,10 +3627,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
+                                    core::ptr::from_ref::<c_long>(&((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .value
-                                        .nelem
-                                        as *const c_long)
+                                        .nelem)
                                         .cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 ));
@@ -3686,7 +3681,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&mut zero_1 as *mut c_long).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_long>(&mut zero_1).cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
@@ -3716,7 +3711,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    (&mut zero_2 as *mut c_double).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_double>(&mut zero_2).cast::<c_void>(),
                                     ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                                 );
 
@@ -3746,7 +3741,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
-                                    (&mut zero_3 as *mut c_long).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_long>(&mut zero_3).cast::<c_void>(),
                                     ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                 );
 
@@ -3776,7 +3771,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::DOUBLE as c_int,
-                                    (&mut zero_4 as *mut c_double).cast::<c_void>(),
+                                    core::ptr::from_mut::<c_double>(&mut zero_4).cast::<c_void>(),
                                     ::core::mem::size_of::<c_double>() as c_ulong as c_long,
                                 );
 
@@ -3954,7 +3949,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one_1 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one_1).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 7600445499126923600;
@@ -4001,7 +3996,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one_2 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one_2).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 7600445499126923600;
@@ -4014,7 +4009,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut naxis_0 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut naxis_0).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     if yyval.node() < 0 {
@@ -4946,7 +4941,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one_3 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one_3).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 9966817879908499150;
@@ -5016,7 +5011,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut one_4 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut one_4).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     current_block = 9966817879908499150;
@@ -5056,7 +5051,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                         lParse,
                                         fits_parser_yytokentype::LONG as c_int,
-                                        (&mut iaxis_0 as *mut c_long).cast::<c_void>(),
+                                        core::ptr::from_mut::<c_long>(&mut iaxis_0).cast::<c_void>(),
                                         ::core::mem::size_of::<c_long>() as c_ulong as c_long,
                                     ));
                                     if yyval.node() < 0 {
@@ -5414,7 +5409,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
-                                (&mut yyvs[yyvsp].log() as *mut c_char).cast::<c_void>(),
+                                core::ptr::from_mut::<c_char>(&mut yyvs[yyvsp].log()).cast::<c_void>(),
                                 ::core::mem::size_of::<c_char>() as c_ulong as c_long,
                             ));
                             if yyval.node() < 0 {
@@ -6825,7 +6820,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFILT_FCT,
-                                (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
+                                c"".as_ptr().cast_mut(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,
@@ -6896,7 +6891,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFIND_FCT,
-                                (b"\0" as *const u8).cast::<c_char>() as *mut c_char,
+                                c"".as_ptr().cast_mut(),
                                 -99,
                                 -99,
                                 c"*START*".as_ptr() as *mut c_char,

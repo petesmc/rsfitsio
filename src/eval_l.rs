@@ -823,8 +823,7 @@ pub(crate) fn fits_parser_yylex(
                             5 => {
                                 let mut constval: c_long = 0;
                                 let mut p: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p = core::ptr::from_mut::<c_char>(&mut *(yyscanner.yytext_r).offset(2 as c_int as isize));
                                 while *p != 0 {
                                     constval = constval << 1
                                         | c_int::from(c_int::from(*p) == '1' as i32) as c_long;
@@ -836,8 +835,7 @@ pub(crate) fn fits_parser_yylex(
                             6 => {
                                 let mut constval_0: c_long = 0;
                                 let mut p_0: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_0 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p_0 = core::ptr::from_mut::<c_char>(&mut *(yyscanner.yytext_r).offset(2 as c_int as isize));
                                 while *p_0 != 0 {
                                     constval_0 = constval_0 << 3 as c_int
                                         | c_long::from(c_int::from(*p_0) - '0' as i32);
@@ -849,8 +847,7 @@ pub(crate) fn fits_parser_yylex(
                             7 => {
                                 let mut constval_1: c_long = 0;
                                 let mut p_1: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_1 = &mut *(yyscanner.yytext_r).offset(2 as c_int as isize)
-                                    as *mut c_char;
+                                p_1 = core::ptr::from_mut::<c_char>(&mut *(yyscanner.yytext_r).offset(2 as c_int as isize));
                                 while *p_1 != 0 {
                                     let v: c_int = if isdigit_safe(*p_1) {
                                         c_int::from(*p_1) - '0' as i32
