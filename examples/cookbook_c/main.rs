@@ -83,7 +83,7 @@ fn writeimage() {
                 fptr_box.as_mut(),
                 bitpix,
                 naxis as c_int,
-                naxes.as_ptr() as *mut c_long,
+                naxes.as_ptr().cast_mut(),
                 &mut status,
             )
         } != 0

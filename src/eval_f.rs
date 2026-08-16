@@ -762,7 +762,7 @@ pub fn ffcrow_safe(
     }
 
     Info.dataPtr = array.as_mut_ptr().cast::<c_void>();
-    Info.nullPtr = nulval as *mut c_void;
+    Info.nullPtr = nulval.cast_mut();
     Info.maxRows = nelements / nelem1;
     Info.parseData = &mut lParse;
 

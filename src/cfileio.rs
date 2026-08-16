@@ -131,7 +131,7 @@ pub static DRIVER_TABLE: OnceLock<Vec<fitsdriver>> = OnceLock::new(); /* allocat
 
 /* this table of Fptr pointers is used by fits_already_open */
 pub static mut FPTR_TABLE: [*mut FITSfile; NMAXFILES] =
-    [ptr::null::<FITSfile>() as *mut FITSfile; NMAXFILES];
+    [core::ptr::null_mut::<FITSfile>(); NMAXFILES];
 
 pub static NEED_TO_INITIALIZE: Mutex<bool> = Mutex::new(true); /* true if CFITSIO has not been initialized */
 
@@ -9513,7 +9513,7 @@ pub fn pixel_filter_helper(
             path: ptr::null_mut(),
             tag: ptr::null_mut(),
             ifptr: &mut infptr_raw,
-            expression: pixfilter[expr_idx..].as_ptr() as *mut c_char,
+            expression: pixfilter[expr_idx..].as_ptr().cast_mut(),
             bitpix,
             blank: 0,
             ofptr: ofptr.as_deref_mut().unwrap(),

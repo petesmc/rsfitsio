@@ -3717,7 +3717,7 @@ pub unsafe extern "C" fn ffpky(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        let datatype_with_data = KeywordDatatype::from_datatype(datatype, value as *mut _);
+        let datatype_with_data = KeywordDatatype::from_datatype(datatype, value.cast_mut());
 
         ffpky_safe(fptr, datatype_with_data, keyname, comm, status)
     }

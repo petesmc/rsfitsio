@@ -208,7 +208,7 @@ fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_i
             fptr,
             bitpix,
             naxis as c_int,
-            naxes.as_ptr() as *mut c_long,
+            naxes.as_ptr().cast_mut(),
             status,
         )
     } != 0
@@ -265,7 +265,7 @@ fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> 
             fptr,
             bitpix,
             naxis as c_int,
-            naxes.as_ptr() as *mut c_long,
+            naxes.as_ptr().cast_mut(),
             status,
         )
     } != 0

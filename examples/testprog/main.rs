@@ -2736,7 +2736,7 @@ pub fn main() -> ExitCode {
                 );
                 print!(
                     "{:>4} {:>3} {:>2} {:>2}",
-                    CStr::from_ptr(tform[ii as usize] as *const c_char)
+                    CStr::from_ptr(tform[ii as usize].cast_const())
                         .to_str()
                         .unwrap(),
                     typecode,
@@ -2758,8 +2758,8 @@ pub fn main() -> ExitCode {
                 );
                 println!(
                     " {}, {}, {}, {}, {:.6}, {:.6}, {}, {}.",
-                    CStr::from_ptr(ttype[0] as *const c_char).to_str().unwrap(),
-                    CStr::from_ptr(tunit[0] as *const c_char).to_str().unwrap(),
+                    CStr::from_ptr(ttype[0].cast_const()).to_str().unwrap(),
+                    CStr::from_ptr(tunit[0].cast_const()).to_str().unwrap(),
                     cvalstr[0] as u8 as char,
                     repeat,
                     scale,

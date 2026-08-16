@@ -58,7 +58,7 @@ pub fn main() -> ExitCode {
                 fptr_box.as_mut(),
                 LONG_IMG,
                 2,
-                naxes.as_ptr() as *mut c_long,
+                naxes.as_ptr().cast_mut(),
                 &mut status,
             )
         } != 0

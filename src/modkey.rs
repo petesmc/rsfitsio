@@ -2604,7 +2604,7 @@ pub unsafe extern "C" fn ffikfc(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
         let value = value.as_ref().expect(NULL_MSG);
 
@@ -2669,7 +2669,7 @@ pub unsafe extern "C" fn ffikyc(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
         let value = value.as_ref().expect(NULL_MSG);
 
@@ -2734,7 +2734,7 @@ pub unsafe extern "C" fn ffikfm(
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
     unsafe {
-        let fptr = (fptr as *mut fitsfile).as_mut().expect(NULL_MSG);
+        let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
         let value = value.as_ref().expect(NULL_MSG);
 

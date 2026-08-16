@@ -1007,7 +1007,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
             /* if no value given signal it */
             {
                 let value_slice = &parser_state.NGP_CURLINE.line[value_idx..];
-                let value_ptr = value_slice.as_ptr() as *mut c_char;
+                let value_ptr = value_slice.as_ptr().cast_mut();
 
                 if NGP_TTYPE_STRING == parser_state.NGP_CURLINE.type_
                 /* string type test */
@@ -1453,7 +1453,7 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
             /* 0 for table, 6 for group */
 
             my_tform = ptr::null_mut();
-            my_ttype = c"".as_ptr() as *mut c_char;
+            my_ttype = c"".as_ptr().cast_mut();
 
             i = 0;
             loop {
@@ -1623,7 +1623,7 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"BINTABLE".to_bytes_with_nul()),
-                            core::slice::from_raw_parts(token.value.s as *const c_char, 9),
+                            core::slice::from_raw_parts(token.value.s.cast_const(), 9),
                             8,
                         ) == 0
                         {
@@ -1631,7 +1631,7 @@ fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"TABLE".to_bytes_with_nul()),
-                            core::slice::from_raw_parts(token.value.s as *const c_char, 6),
+                            core::slice::from_raw_parts(token.value.s.cast_const(), 6),
                             5,
                         ) == 0
                         {
@@ -1639,7 +1639,7 @@ fn ngp_read_xtension(
                         }
                         if fits_strncasecmp(
                             cast_slice::<u8, c_char>(c"IMAGE".to_bytes_with_nul()),
-                            core::slice::from_raw_parts(token.value.s as *const c_char, 6),
+                            core::slice::from_raw_parts(token.value.s.cast_const(), 6),
                             5,
                         ) == 0
                         {

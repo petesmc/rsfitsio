@@ -3660,7 +3660,7 @@ pub fn ffiter_safe(
                                 (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
-                                    defaultnull as *const c_void,
+                                    defaultnull.cast_const(),
                                 ),
                                 slice::from_raw_parts_mut(
                                     dataptr.cast::<u8>(),
@@ -3707,7 +3707,7 @@ pub fn ffiter_safe(
                                 (cols[jj].repeat * ntodo) as LONGLONG,
                                 NullValue::from_raw_ptr(
                                     cols[jj].datatype,
-                                    defaultnull as *const c_void,
+                                    defaultnull.cast_const(),
                                 ),
                                 slice::from_raw_parts_mut(
                                     dataptr.cast::<u8>(),

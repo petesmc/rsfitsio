@@ -438,12 +438,10 @@ pub(crate) fn ffbinse(
 
                 exprbeg[ii] = binspec
                     .as_ptr()
-                    .wrapping_add(offset_from_binspec + exprbeg_idx)
-                    as *mut c_char;
+                    .wrapping_add(offset_from_binspec + exprbeg_idx).cast_mut();
                 exprend[ii] = binspec
                     .as_ptr()
-                    .wrapping_add(offset_from_binspec + exprend_idx)
-                    as *mut c_char;
+                    .wrapping_add(offset_from_binspec + exprend_idx).cast_mut();
             }
 
             if *status > 0 {
@@ -553,8 +551,8 @@ pub(crate) fn ffbinse(
         if exprbeg_idx != 0 {
             has_exprs = true;
             // Convert indices to pointers
-            exprbeg[4] = ptr.as_ptr().wrapping_add(exprbeg_idx) as *mut c_char;
-            exprend[4] = ptr.as_ptr().wrapping_add(exprend_idx) as *mut c_char;
+            exprbeg[4] = ptr.as_ptr().wrapping_add(exprbeg_idx).cast_mut();
+            exprend[4] = ptr.as_ptr().wrapping_add(exprend_idx).cast_mut();
         }
 
         if *status > 0 {
@@ -1803,7 +1801,7 @@ pub fn ffhist_safe(
         histData.himagetype = imagetype;
         histData.haxis = naxis;
         histData.rowselector = selectrow
-            .map(|s| s.as_ptr() as *mut c_char)
+            .map(|s| s.as_ptr().cast_mut())
             .unwrap_or(ptr::null_mut());
 
         if imagetype == TBYTE {
@@ -4033,14 +4031,14 @@ pub(crate) fn fits_make_histde(
     histData.weight = weight;
     histData.wtcolnum = wtcolnum;
     histData.wtexpr = wtexpr
-        .map(|s| s.as_ptr() as *mut c_char)
+        .map(|s| s.as_ptr().cast_mut())
         .unwrap_or(ptr::null_mut());
     histData.wtrecip = recip;
     histData.tblptr = fptr;
     histData.himagetype = imagetype;
     histData.haxis = naxis;
     histData.rowselector = selectrow
-        .map(|s| s.as_ptr() as *mut c_char)
+        .map(|s| s.as_ptr().cast_mut())
         .unwrap_or(ptr::null_mut());
 
     #[allow(clippy::never_loop)] // transpiled do{}while(0)
@@ -5132,7 +5130,7 @@ extern "C" fn ffcalchist(
         } /* end of loop over elements per row */
     } /* end of main loop over all rows */
 
-    histData.rowselector_cur = rowselect as *mut c_char; /* Save row pointer for next go-round */
+    histData.rowselector_cur = rowselect.cast_mut(); /* Save row pointer for next go-round */
     status
 }
 

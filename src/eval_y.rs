@@ -5232,8 +5232,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 5].text_mut_ptr(),
                                 yyvs[yyvsp - 3].node(),
                                 yyvs[yyvsp - 1].node(),
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6823,8 +6823,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"".as_ptr().cast_mut(),
                                 -99,
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6841,8 +6841,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6858,8 +6858,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6894,8 +6894,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 c"".as_ptr().cast_mut(),
                                 -99,
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6911,8 +6911,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6928,8 +6928,8 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
                                 -99,
-                                c"*START*".as_ptr() as *mut c_char,
-                                c"*STOP*".as_ptr() as *mut c_char,
+                                c"*START*".as_ptr().cast_mut(),
+                                c"*STOP*".as_ptr().cast_mut(),
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -7575,7 +7575,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
         let yyss_tmp_ptr = yyss.as_ptr();
 
         if yyss_tmp_ptr != yyssa.as_ptr() {
-            free(yyss_tmp_ptr.cast::<c_void>() as *mut c_void);
+            free(yyss_tmp_ptr.cast::<c_void>().cast_mut());
         }
         yyresult
     }
@@ -8806,7 +8806,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                     ValueSort::Boolean => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Logical,
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_char)
+                            (((lParse.varData)[column as usize]).data.cast_const() as *mut c_char)
                                 .offset(offset as isize)
                                 .cast(),
                         );
@@ -8814,7 +8814,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                     ValueSort::Long => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Long,
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_long)
+                            (((lParse.varData)[column as usize]).data.cast_const() as *mut c_long)
                                 .offset(offset as isize)
                                 .cast(),
                         );
@@ -8822,7 +8822,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                     ValueSort::Double => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
                             BufferKind::Double,
-                            (((lParse.varData)[column as usize]).data as *const _ as *mut c_double)
+                            (((lParse.varData)[column as usize]).data.cast_const() as *mut c_double)
                                 .offset(offset as isize)
                                 .cast(),
                         );

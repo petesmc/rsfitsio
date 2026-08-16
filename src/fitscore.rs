@@ -576,7 +576,7 @@ impl ErrorStack {
 /// put message on to error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
-    ffxmsg(PUT_MESG, err_message as *mut c_char);
+    ffxmsg(PUT_MESG, err_message.cast_mut());
 }
 
 /*--------------------------------------------------------------------------*/
@@ -12646,7 +12646,7 @@ mod tests {
 
             // Test putting a message
             let test_msg = CString::new("Test error message").unwrap();
-            ffxmsg(PUT_MESG, test_msg.as_ptr() as *mut c_char);
+            ffxmsg(PUT_MESG, test_msg.as_ptr().cast_mut());
 
             // Test getting the message back
             let mut buffer: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -12672,9 +12672,9 @@ mod tests {
             let msg1 = CString::new("Message 1").unwrap();
             let msg2 = CString::new("Message 2").unwrap();
 
-            ffxmsg(PUT_MESG, msg1.as_ptr() as *mut c_char);
+            ffxmsg(PUT_MESG, msg1.as_ptr().cast_mut());
             ffxmsg(PUT_MARK, ptr::null_mut()); // Add marker
-            ffxmsg(PUT_MESG, msg2.as_ptr() as *mut c_char);
+            ffxmsg(PUT_MESG, msg2.as_ptr().cast_mut());
 
             // Should get Message 1 first (ignoring marker)
             let mut buffer: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
