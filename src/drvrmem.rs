@@ -43,13 +43,26 @@ pub const RECBUFLEN: usize = 1000;
 
 static STDIN_OUTFILE: Mutex<[c_char; FLEN_FILENAME]> = Mutex::new([0; FLEN_FILENAME]);
 
+/// Address/size pair for a memory file whose buffer this driver owns.
+///
+/// This lives in its own heap allocation rather than as two fields of
+/// `memdriver`.  Storing it inline meant `memaddrptr` had to point at the
+/// struct's own `memaddr` field, making `memdriver` self-referential: any
+/// later access to that table slot invalidated the pointer, which miri
+/// reports as a Stacked Borrows violation.  A separate allocation keeps the
+/// pointer's provenance independent of the table.
+#[derive(Debug, Copy, Clone)]
+struct OwnedMem {
+    addr: *mut c_char,
+    size: usize,
+}
+
 /* structure containing mem file structure */
 #[derive(Debug, Copy, Clone)]
 struct memdriver {
-    memaddrptr: *mut *mut c_char, /* Pointer to memory address pointer; This may or may not point to memaddr. */
-    memaddr: *mut c_char, /* Pointer to starting memory address; may not always be used, so use *memaddrptr instead */
-    memsizeptr: *mut usize, /* Pointer to the size of the memory allocation. This may or may not point to memsize. */
-    memsize: usize, /* Size of the memory allocation; this may not always be used, so use *memsizeptr instead. */
+    memaddrptr: *mut *mut c_char, /* Pointer to memory address pointer; points either into the caller's variables or into owned_cell. */
+    memsizeptr: *mut usize, /* Pointer to the size of the memory allocation; points either into the caller's variables or into owned_cell. */
+    owned_cell: *mut OwnedMem, /* non-null iff this slot allocated its own address/size cell (see mem_createmem) */
     deltasize: usize, /* Suggested increment for reallocating memory */
     mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* realloc function */
     currentpos: LONGLONG,   /* current file position, relative to start */
@@ -61,9 +74,8 @@ impl Default for memdriver {
     fn default() -> Self {
         Self {
             memaddrptr: ptr::null_mut(),
-            memaddr: ptr::null_mut(),
             memsizeptr: ptr::null_mut(),
-            memsize: 0,
+            owned_cell: ptr::null_mut(),
             deltasize: 0,
             mem_realloc: None,
             currentpos: 0,
@@ -79,9 +91,8 @@ unsafe impl Send for memdriver {}
 static MEM_TABLE: Mutex<[memdriver; NMAXFILES]> = Mutex::new(
     [memdriver {
         memaddrptr: ptr::null_mut(),
-        memaddr: ptr::null_mut(),
         memsizeptr: ptr::null_mut(),
-        memsize: 0,
+        owned_cell: ptr::null_mut(),
         deltasize: 0,
         mem_realloc: None,
         currentpos: 0,
@@ -89,6 +100,20 @@ static MEM_TABLE: Mutex<[memdriver; NMAXFILES]> = Mutex::new(
         fileptr: ptr::null_mut(),
     }; NMAXFILES],
 );
+
+/*--------------------------------------------------------------------------*/
+/// Mark a table slot as free, releasing the address/size cell if this slot
+/// owned one.  A null `memaddrptr` is what marks the slot empty.
+fn release_owned_cell(d: &mut memdriver) {
+    if !d.owned_cell.is_null() {
+        // SAFETY: owned_cell is non-null only when this slot allocated it in
+        // mem_createmem, and it is cleared here so it cannot be freed twice.
+        drop(unsafe { Box::from_raw(d.owned_cell) });
+        d.owned_cell = ptr::null_mut();
+    }
+    d.memaddrptr = ptr::null_mut();
+    d.memsizeptr = ptr::null_mut();
+}
 
 /*--------------------------------------------------------------------------*/
 pub(crate) fn mem_init() -> c_int {
@@ -254,9 +279,22 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
         return TOO_MANY_FILES; // Too many files opened
     }
 
-    /* use the internally allocated memaddr and memsize variables */
-    m[ii].memaddrptr = &mut m[ii].memaddr;
-    m[ii].memsizeptr = &mut m[ii].memsize;
+    /* Use an internally allocated address/size cell.  The C points memaddrptr
+       at the struct's own memaddr field; doing that here would make the table
+       slot self-referential, so the cell gets its own allocation and the
+       pointers are derived from it instead. */
+    let cell = Box::into_raw(Box::new(OwnedMem {
+        addr: ptr::null_mut(),
+        size: 0,
+    }));
+    m[ii].owned_cell = cell;
+    // SAFETY: `cell` was just allocated and nothing else refers to it. Taking
+    // the field pointers with `&raw mut` keeps them derived from `cell`
+    // itself, so writes through them stay valid for as long as the cell lives.
+    unsafe {
+        m[ii].memaddrptr = &raw mut (*cell).addr;
+        m[ii].memsizeptr = &raw mut (*cell).size;
+    }
 
     /* allocate initial block of memory for the file */
     if msize > 0 {
@@ -264,16 +302,17 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
         let mut v = Vec::new();
         if v.try_reserve_exact(msize).is_err() {
             ffpmsg_str("malloc of initial memory failed (mem_createmem)");
+            release_owned_cell(&mut m[ii]);
             return FILE_NOT_OPENED;
         } else {
             let (p, l, c) = vec_into_raw_parts(v);
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            m[ii].memaddr = p;
+            unsafe { *m[ii].memaddrptr = p };
         }
     }
 
     /* set initial state of the file */
-    m[ii].memsize = msize;
+    unsafe { *m[ii].memsizeptr = msize };
     m[ii].deltasize = BL!();
     m[ii].fitsfilesize = 0;
     m[ii].currentpos = 0;
@@ -413,8 +452,8 @@ pub(crate) fn stdin_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_
                     ffpmsg_str("failed to copy stdin into memory (stdin_open)");
                     // HEAP DEALLOCATION
                     let m = MEM_TABLE.lock().unwrap();
-                    let ms = m[*handle as usize].memsize;
-                    _ = Vec::from_raw_parts(m[*handle as usize].memaddr, ms, ms);
+                    let ms = *m[*handle as usize].memsizeptr;
+                    _ = Vec::from_raw_parts(*m[*handle as usize].memaddrptr, ms, ms);
                 }
             }
         }
@@ -601,7 +640,7 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
         let n = m[handle as usize].fitsfilesize as usize;
         // SAFETY: memaddr owns `memsize' bytes, of which `fitsfilesize' hold
         // the file; both are set when the memory file is created.
-        let bytes = slice::from_raw_parts(m[handle as usize].memaddr, n);
+        let bytes = slice::from_raw_parts(*m[handle as usize].memaddrptr, n);
         let mut out = std::io::stdout();
         if out.write_all(cast_slice(bytes)).is_err() || out.flush().is_err() {
             ffpmsg_str("failed to copy memory file to stdout (stdout_close)");
@@ -609,10 +648,9 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
         }
 
         // HEAP DEALLOCATION
-        let ms = m[handle as usize].memsize;
-        _ = Vec::from_raw_parts(m[handle as usize].memaddr, ms, ms); /* free the memory */
-        m[handle as usize].memaddrptr = ptr::null_mut();
-        m[handle as usize].memaddr = ptr::null_mut();
+        let ms = *m[handle as usize].memsizeptr;
+        _ = Vec::from_raw_parts(*m[handle as usize].memaddrptr, ms, ms); /* free the memory */
+        release_owned_cell(&mut m[handle as usize]);
 
         status
     }
@@ -1324,7 +1362,7 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
         let mut m = MEM_TABLE.lock().unwrap();
         //let m = &mut memTable;
 
-        let memsize = m[handle].memsize;
+        let memsize = *m[handle].memsizeptr;
 
         // HEAP DEALLOCATION
         /* free( *(m[handle].memaddrptr) );  - C free() tolerates a NULL pointer, so
@@ -1340,8 +1378,7 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
         }
         // free( *(m[handle].memaddrptr) );
 
-        m[handle].memaddrptr = ptr::null_mut();
-        m[handle].memaddr = ptr::null_mut();
+        release_owned_cell(&mut m[handle]);
         0
     }
 }
@@ -1352,8 +1389,7 @@ pub(crate) fn mem_close_keep(handle: c_int) -> c_int {
     let mut m = MEM_TABLE.lock().unwrap();
     //let m = &mut memTable;
 
-    m[handle].memaddrptr = ptr::null_mut();
-    m[handle].memaddr = ptr::null_mut();
+    release_owned_cell(&mut m[handle]);
     0
 }
 
@@ -1367,7 +1403,8 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         /* compress file in  memory to a .gz disk file */
 
         let mut m = MEM_TABLE.lock().unwrap();
-        let in_mem = slice::from_raw_parts(m[handle as usize].memaddr, m[handle as usize].memsize);
+        let in_mem =
+            slice::from_raw_parts(*m[handle as usize].memaddrptr, *m[handle as usize].memsizeptr);
 
         if compress2file_from_mem(
             in_mem,
@@ -1382,10 +1419,9 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         }
 
         // HEAP DEALLOCATION
-        let ms = m[handle as usize].memsize;
-        _ = Vec::from_raw_parts(m[handle as usize].memaddr, ms, ms); /* free the memory */
-        m[handle as usize].memaddrptr = ptr::null_mut();
-        m[handle as usize].memaddr = ptr::null_mut();
+        let ms = *m[handle as usize].memsizeptr;
+        _ = Vec::from_raw_parts(*m[handle as usize].memaddrptr, ms, ms); /* free the memory */
+        release_owned_cell(&mut m[handle as usize]);
 
         /* close the compressed disk file (except if it is 'stdout' */
         if !core::ptr::eq(m[handle as usize].fileptr, STDOUT!()) {
