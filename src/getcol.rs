@@ -2772,10 +2772,14 @@ pub fn ffgcv_safe(
             }
         }
     } else if datatype == TSTRING {
-        // SAFETY: TODO
+        // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
+        // as in the C. Derive the pointer with as_mut_ptr() rather than
+        // as_ptr(): the latter reborrows `array` shared and casting that to
+        // *mut to build a &mut slice is UB (miri reports a write through a
+        // SharedReadOnly tag).
         unsafe {
             let array =
-                slice::from_raw_parts_mut(array.as_ptr() as *mut *mut c_char, nelem as usize);
+                slice::from_raw_parts_mut(array.as_mut_ptr() as *mut *mut c_char, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);

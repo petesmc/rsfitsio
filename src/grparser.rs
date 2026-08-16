@@ -1043,7 +1043,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
-                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* complex type test */
@@ -1066,7 +1066,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
-                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 // Check for decimal point in value
                 let has_decimal = value_slice.iter().any(|&ch| ch == bb(b'.'));
@@ -1090,7 +1090,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                         let cstr_tmp = CStr::from_ptr(value_ptr);
                         let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                         let str_slice =
-                            slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+                            slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                         sscanf_lg_n(
                             str_slice,
@@ -1120,7 +1120,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
                 let str_slice =
-                    slice::from_raw_parts_mut(cstr_tmp.as_ptr() as *mut c_char, cstr_len);
+                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* integer type test */
