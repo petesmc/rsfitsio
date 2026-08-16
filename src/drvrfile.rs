@@ -584,6 +584,9 @@ fn file_seek_internal(handle: &mut diskdriver, offset: u64) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// read bytes from the current position in the file
+// clippy points ErrorKind at core::io, but that re-export is still behind the
+// unstable `core_io` feature, so the std path has to stay.
+#[allow(clippy::std_instead_of_core)]
 pub(crate) fn file_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     //let h = handleTable.lock().unwrap();
     let mut h = HANDLE_TABLE.lock().unwrap();

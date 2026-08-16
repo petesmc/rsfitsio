@@ -369,6 +369,34 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     }
 }
 
+/*--------------------------------------------------------------------------*/
+/// Read into `buf` until it is full or end-of-file is reached, returning the
+/// total number of bytes read.
+///
+/// `Read::read` is permitted to return fewer bytes than requested; a short read
+/// is not an error and happens in practice on NFS/FUSE mounts, when a signal
+/// interrupts the call, and under emulation.  Callers that transliterate C's
+/// `fread` semantics ("I asked for N bytes, so a result < N means truncation")
+/// need this loop, otherwise a short read is misreported as a corrupt file.
+// clippy points ErrorKind at core::io, but that re-export is still behind the
+// unstable `core_io` feature, so the std path has to stay.
+#[allow(clippy::std_instead_of_core)]
+pub(crate) fn read_fill<R: std::io::Read + ?Sized>(
+    reader: &mut R,
+    buf: &mut [u8],
+) -> std::io::Result<usize> {
+    let mut nread = 0;
+    while nread < buf.len() {
+        match reader.read(&mut buf[nread..]) {
+            Ok(0) => break, /* end of file */
+            Ok(n) => nread += n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(nread)
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -797,27 +825,3 @@ mod tests {
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// Read into `buf` until it is full or end-of-file is reached, returning the
-/// total number of bytes read.
-///
-/// `Read::read` is permitted to return fewer bytes than requested; a short read
-/// is not an error and happens in practice on NFS/FUSE mounts, when a signal
-/// interrupts the call, and under emulation.  Callers that transliterate C's
-/// `fread` semantics ("I asked for N bytes, so a result < N means truncation")
-/// need this loop, otherwise a short read is misreported as a corrupt file.
-pub(crate) fn read_fill<R: std::io::Read + ?Sized>(
-    reader: &mut R,
-    buf: &mut [u8],
-) -> std::io::Result<usize> {
-    let mut nread = 0;
-    while nread < buf.len() {
-        match reader.read(&mut buf[nread..]) {
-            Ok(0) => break, /* end of file */
-            Ok(n) => nread += n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        }
-    }
-    Ok(nread)
-}
