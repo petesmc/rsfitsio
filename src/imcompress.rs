@@ -4,6 +4,7 @@ use core::{cmp, mem};
 use std::collections::HashMap;
 use std::os::raw::c_schar;
 use std::sync::{LazyLock, Mutex, OnceLock};
+use crate::helpers::aligned::AlignedBytes;
 
 use hcompress::read::HCDecoder;
 use hcompress::write::HCEncoder;
@@ -5948,7 +5949,7 @@ pub(crate) fn fits_read_compressed_img(
     let mut tilenul: c_int = 0;
     let mut testnullval: f64 = 0.0;
 
-    let mut buffer: Vec<u8> = Vec::new();
+    let mut buffer = AlignedBytes::new();
     let mut buffer_len = 0;
 
     let mut bnullarray: Vec<c_char> = Vec::new();
@@ -6007,12 +6008,10 @@ pub(crate) fn fits_read_compressed_img(
         nullcheck = NullCheckType::None;
     }
 
-    if buffer.try_reserve_exact(buffer_len).is_err() {
+    if buffer.try_resize_zeroed(buffer_len).is_err() {
         ffpmsg_str("Out of memory (fits_read_compress_img)");
         *status = MEMORY_ALLOCATION;
         return *status;
-    } else {
-        buffer.resize(buffer_len, 0);
     }
 
     /* allocate memory for a null flag array, if needed */
@@ -6213,7 +6212,7 @@ fn fits_read_write_compressed_img(
     let mut irow: c_long = 0;
     let mut ndim: c_int = 0;
     let mut tilenul: c_int = 0;
-    let mut buffer: Vec<u8> = Vec::new();
+    let mut buffer = AlignedBytes::new();
     let mut bnullarray: Vec<c_char> = Vec::new();
     let mut firstelem: LONGLONG = 0;
 
@@ -6302,12 +6301,10 @@ fn fits_read_write_compressed_img(
         return *status;
     }
 
-    if buffer.try_reserve_exact(buffer_len).is_err() {
+    if buffer.try_resize_zeroed(buffer_len).is_err() {
         ffpmsg_str("Out of memory (fits_read_compress_img)");
         *status = MEMORY_ALLOCATION;
         return *status;
-    } else {
-        buffer.resize(buffer_len, 0);
     }
 
     /* initialize all the arrays */
@@ -7717,7 +7714,7 @@ fn imcomp_decompress_tile(
     let mut idatalen: size_t = 0;
     let mut tilebytesize: size_t = 0;
     let mut tnull: c_int = 0; /* value in the data which represents nulls */
-    let mut cbuf: Vec<u8> = Vec::new(); /* compressed data */
+    let mut cbuf = AlignedBytes::new(); /* compressed data */
     let charnull: c_uchar = 0;
     let snull: c_short = 0;
     let mut blocksize: c_int = 0;
@@ -8311,13 +8308,11 @@ fn imcomp_decompress_tile(
         idatalen = (tilelen as usize) * mem::size_of::<c_int>(); /* all other cases have int pixels */
     }
 
-    let mut tmp_idata: Vec<u8> = Vec::new();
-    if tmp_idata.try_reserve_exact(idatalen as usize).is_err() {
+    let mut tmp_idata = AlignedBytes::new();
+    if tmp_idata.try_resize_zeroed(idatalen as usize).is_err() {
         ffpmsg_str("Memory allocation failure for idata. (imcomp_decompress_tile)");
         *status = MEMORY_ALLOCATION;
         return *status;
-    } else {
-        tmp_idata.resize(idatalen as usize, 0);
     }
 
     let idata = &mut tmp_idata;
@@ -8332,12 +8327,10 @@ fn imcomp_decompress_tile(
         cbuf_len = nelemll as usize;
     }
 
-    if cbuf.try_reserve_exact(cbuf_len).is_err() {
+    if cbuf.try_resize_zeroed(cbuf_len).is_err() {
         ffpmsg_str("Out of memory for cbuf. (imcomp_decompress_tile)");
         *status = MEMORY_ALLOCATION;
         return *status;
-    } else {
-        cbuf.resize(cbuf_len, 0);
     }
 
     /* ************************************************************* */
@@ -14160,6 +14153,7 @@ mod tests {
         RICE_1, SHORT_IMG, SUBTRACTIVE_DITHER_2, TBYTE, TDOUBLE, TINT, TSHORT, fitsfile,
     };
     use crate::getcol::ffgpv_safe;
+    use crate::helpers::aligned::AlignedBytes;
     use crate::helpers::testhelpers::{to_buf, with_temp_file};
     use crate::putcol::ffppr_safe;
     use crate::putkey::ffcrim_safe;
@@ -14247,7 +14241,12 @@ mod tests {
         assert_eq!(status, 0);
         assert_eq!(is_comp, 1, "expected a compressed image in HDU 2");
 
-        let mut decompressed = vec![0u8; original_bytes.len()];
+        /* ffgpv_safe reinterprets this byte buffer as `datatype`, so it has to
+           be aligned for the widest type the callers pass, not just for u8. */
+        let mut decompressed = AlignedBytes::new();
+        decompressed
+            .try_resize_zeroed(original_bytes.len())
+            .expect("allocating the decompressed buffer");
         ffgpv_safe(
             of,
             datatype,
@@ -14263,7 +14262,7 @@ mod tests {
         ffclos_safe(outfptr.take().unwrap(), &mut status);
         assert_eq!(status, 0, "close final");
 
-        decompressed
+        decompressed.to_vec()
     }
 
     /// Regression test for https://github.com/cruzzil/rsfitsio/issues/82

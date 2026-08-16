@@ -15,12 +15,25 @@
       two `str_row` accessors stop being `unsafe`), then stage 4 (the numeric
       buffers and `value.undef`, ~660 sites, which would remove the last
       `malloc`/`free` and raw pointer from `NodeValue`).
-- [ ] Fix the Stacked Borrows violation in the lexer's buffer stack. Miri
-      rejects `eval_l.rs:1522` vs `:1703` (`yy_buffer_stack`) on any test that
-      invokes the parser, so Miri cannot currently validate the eval engine.
-      Pre-existing and verified against a clean worktree at fed4b4f. A second,
-      separate one is in the `test_ffcalc_*` tests themselves, which alias
-      `&mut *fp_self` twice to pass one file as both input and output.
+- [X] Fix the Stacked Borrows violation in the lexer's buffer stack
+      (`yy_buffer_stack`). yyrestart held a reference to the stack slot across
+      yy_create_buffer, which re-enters the scanner; yy_init_buffer and
+      yy_flush_buffer took `&mut yy_buffer_state` alongside `yyscanner`, which
+      also reaches that buffer; and yy_init_buffer flushed before its own
+      writes, so yy_load_buffer_state invalidated them. `b` is a raw pointer
+      now and the comparisons go through yy_current_buffer_ptr.
+- [ ] Fix the yyextra_r aliasing in the eval engine. `yyscanner.yyextra_r` is
+      a raw pointer to the same ParseData that ffiprs and fits_parser_yyparse
+      hold as `&mut`, so `&mut *yyscanner.yyextra_r` (eval_l.rs, in
+      yy_get_next_buffer) aliases a strongly-protected argument. This is now
+      the only root cause left in the eval engine, and it accounts for all 258
+      of the tests that used to fail in the buffer stack. Fixing it means
+      ParseData reaching the scanner one way only: either yyparse/ffiprs stop
+      taking `&mut ParseData` and read it back out of yyextra_r, or the
+      scanner stops holding the pointer. Same shape as the FPTR_TABLE and
+      infptr/outfptr entries below.
+- [ ] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
+      as both input and output; see the infptr/outfptr entry below.
 - [ ] Clean up all warnings
 - [ ] Remove clippy allow(unused_assignments)
 - [ ] Remove clippy allow(unused_variables)
@@ -43,7 +56,69 @@
 - [ ] Restructure modules, ::api ??
 - [X] Every extern function should be a wrapper around a safe interface
 - [X] Fix broken testprog.out comparison
-- [X] Miri currently fails, fix.
+- [ ] Miri still reports Undefined Behavior. Run with
+      `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri nextest run
+      --no-fail-fast -j 8` (cap the threads: the default fans out to one miri
+      process per core at ~1.1GB each and thrashes swap). All of the findings
+      below are Stacked Borrows violations, i.e. real aliasing UB that LLVM's
+      `noalias` is entitled to miscompile, not miri pedantry. A full run takes
+      ~3.8h and reports 2287 passed / 485 failed: 435 UB, 42 unsupported
+      operations, 8 alignment panics. Counts below are failing tests per site.
+      Root causes, in order of blast radius. The line numbers are from that
+      run; the lexer, drvrmem, getcolui, getcol and grparser ones are fixed:
+      * eval_l.rs:1571 (258) — fixed; those tests now stop on the yyextra_r
+        aliasing above instead.
+      * drvrmem.rs:259 (53), getcolui.rs:1380 (38), getcol.rs:2778 (8),
+        grparser.rs:1046 (5) — fixed. Two uncovered a further problem behind
+        them: drvrmem frees Rust-allocated buffers through libc realloc, and
+        the getcol TSTRING path assumes every caller-supplied char* is at
+        least FLEN_VALUE bytes.
+      * cfileio.rs:1880 (20) — the FPTR_TABLE entry below.
+      * The `&mut`/`&mut` aliasing sites are 1 test each, but see the first
+        entry: they are a signature problem, not a local one.
+      * The ported `_safe` signatures take `infptr: &mut fitsfile` and
+        `outfptr: &mut fitsfile`, but the C API explicitly allows
+        `infptr == outfptr` and callers rely on it. Two `&mut` to one object
+        can never be legal, so every site that reproduces the C aliasing is UB:
+        `ffsrow_safe(&mut *f, &mut *f, ..)` in cfileio.rs:4893 (library code,
+        with a SAFETY comment acknowledging it), plus the same trick in the
+        eval_f.rs and editcol.rs tests. These signatures need to take a single
+        `&mut` plus a flag, or raw pointers, before the aliasing can go away.
+      * `fitsfile.Fptr` is a `Box<FITSfile>` but several FITSfiles are shared
+        between handles by `Box::from_raw`, so two live Boxes own one
+        allocation (cfileio.rs:1854, already marked "TODO this is very
+        unsafe!"). Confirmed by miri, invalidated at getkey.rs:242.
+      * `FPTR_TABLE` (cfileio.rs:1880) stores a raw pointer derived from a
+        `&mut FITSfile` borrowed out of that Box. Any later write through the
+        Box (e.g. fitscore.rs:5757) invalidates it, and the next
+        `FPTR_TABLE[ii].as_mut()` in fits_already_open (cfileio.rs:1997) is UB.
+        Reproducer: open one file, then open a second.
+        Fixing this soundly means owning FITSfile through a raw pointer
+        (NonNull + Deref/DerefMut wrapper, which is layout- and C-ABI-neutral)
+        rather than Box, so all accesses share one provenance root.
+      * eval_l.rs:1571 — the lexer's yy_buffer_stack hands out `&mut` into a
+        raw buffer that is then invalidated at eval_l.rs:1752.
+      * drvrmem.rs:259 — `m[ii].memaddrptr = &mut m[ii].memaddr` is a
+        self-referential struct; any later access through the slice kills it.
+      * cfileio.rs:8907 — returns a raw pointer into the caller's buffer which
+        is used after a later write invalidates the tag.
+      * getcolui.rs:1380, getcol.rs:2778, grparser.rs:1046 — each rebuilds a
+        slice with slice::from_raw_parts(_mut) from a pointer that is still
+        borrowed elsewhere. grparser's also makes a *mutable* slice from a
+        CStr's const pointer, which miri reports as a write through a
+        SharedReadOnly tag.
+      Not UB, but surfaced by the same run:
+      * 8 tests panic in bytemuck `cast_slice_mut` with
+        TargetAlignmentGreaterAndInputNotAligned, at getcol.rs:2299 reading
+        TSHORT into the tiled-image `cbuf` (imcompress.rs:7720), which is a
+        `Vec<u8>` and so only 1-byte aligned. Native malloc happens to return
+        over-aligned blocks, so this passes outside miri; it is a real latent
+        panic that fires whenever the buffer lands on an odd address. Fixing
+        it means giving cbuf an alignment suitable for the widest type read
+        into it rather than relying on the allocator.
+      * 42 tests fail on miri's own gaps, not on defects: `socketpair` and
+        `copy_file_range` (the fpack/funpack/fitsverify tests spawn
+        subprocesses). Exactly one is ours: a remaining C `fopen` call.
 - [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
 - [X] Mark all extern functions as deprecated so that we can detect usage
 - [X] Feature "bzip2" doesn't work

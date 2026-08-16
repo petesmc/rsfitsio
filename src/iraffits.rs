@@ -44,6 +44,7 @@
 *              express or implied warranty.
 */
 
+use crate::wrappers::read_fill;
 use crate::c_types::{c_char, c_int};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -52,7 +53,7 @@ use core::ffi::CStr;
 use core::ptr;
 use std::fs::File;
 use std::io::Error;
-use std::io::{Read, Seek};
+use std::io::Seek;
 use std::sync::Mutex;
 
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
@@ -325,9 +326,7 @@ fn irafrdhead(
     *lihead = nihead as usize;
 
     /* Read IRAF header */
-    let nbr = fd
-        .read(cast_slice_mut(&mut irafheader[..(nbhead as usize)]))
-        .unwrap();
+    let nbr = read_fill(&mut fd, cast_slice_mut(&mut irafheader[..(nbhead as usize)])).unwrap();
 
     drop(fd); // Close the file
 
@@ -426,7 +425,7 @@ fn irafrdimage(
         pixheader.resize(lpixhead as usize, 0);
     }
 
-    nbr = fd.read(cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
+    nbr = read_fill(&mut fd, cast_slice_mut(&mut pixheader[..lpixhead])).unwrap();
 
     /* Check size of pixel header */
     if nbr < lpixhead {
@@ -515,7 +514,7 @@ fn irafrdimage(
     if npaxis1 == naxis1 {
         let image = &mut fitsheader[image_offset..];
 
-        nbr = fd.read(cast_slice_mut(&mut image[..nbimage])).unwrap();
+        nbr = read_fill(&mut fd, cast_slice_mut(&mut image[..nbimage])).unwrap();
 
     /* Read IRAF image one line at a time if physical and image dimensions differ */
     } else {
@@ -529,7 +528,7 @@ fn irafrdimage(
 
         for _i in 0..naxis2 {
             let linebuff = &mut fitsheader[line_offset..];
-            nbl = fd.read(cast_slice_mut(&mut linebuff[..nbaxis])).unwrap();
+            nbl = read_fill(&mut fd, cast_slice_mut(&mut linebuff[..nbaxis])).unwrap();
             nbr += nbl;
 
             let _ = fd.seek(std::io::SeekFrom::Current(nbdiff)).unwrap();
