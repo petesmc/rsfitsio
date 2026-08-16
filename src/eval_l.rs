@@ -1557,7 +1557,7 @@ unsafe fn yy_current_buffer_ptr(yyscanner: &yyguts_t) -> *mut yy_buffer_state {
         }
         let slot = (yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
         match (*slot).as_ref() {
-            Some(b) => &raw const **b as *mut yy_buffer_state,
+            Some(b) => (&raw const **b).cast_mut(),
             None => ptr::null_mut(),
         }
     }
