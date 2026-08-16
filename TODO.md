@@ -15,12 +15,25 @@
       two `str_row` accessors stop being `unsafe`), then stage 4 (the numeric
       buffers and `value.undef`, ~660 sites, which would remove the last
       `malloc`/`free` and raw pointer from `NodeValue`).
-- [ ] Fix the Stacked Borrows violation in the lexer's buffer stack. Miri
-      rejects `eval_l.rs:1522` vs `:1703` (`yy_buffer_stack`) on any test that
-      invokes the parser, so Miri cannot currently validate the eval engine.
-      Pre-existing and verified against a clean worktree at fed4b4f. A second,
-      separate one is in the `test_ffcalc_*` tests themselves, which alias
-      `&mut *fp_self` twice to pass one file as both input and output.
+- [X] Fix the Stacked Borrows violation in the lexer's buffer stack
+      (`yy_buffer_stack`). yyrestart held a reference to the stack slot across
+      yy_create_buffer, which re-enters the scanner; yy_init_buffer and
+      yy_flush_buffer took `&mut yy_buffer_state` alongside `yyscanner`, which
+      also reaches that buffer; and yy_init_buffer flushed before its own
+      writes, so yy_load_buffer_state invalidated them. `b` is a raw pointer
+      now and the comparisons go through yy_current_buffer_ptr.
+- [ ] Fix the yyextra_r aliasing in the eval engine. `yyscanner.yyextra_r` is
+      a raw pointer to the same ParseData that ffiprs and fits_parser_yyparse
+      hold as `&mut`, so `&mut *yyscanner.yyextra_r` (eval_l.rs, in
+      yy_get_next_buffer) aliases a strongly-protected argument. This is now
+      the only root cause left in the eval engine, and it accounts for all 258
+      of the tests that used to fail in the buffer stack. Fixing it means
+      ParseData reaching the scanner one way only: either yyparse/ffiprs stop
+      taking `&mut ParseData` and read it back out of yyextra_r, or the
+      scanner stops holding the pointer. Same shape as the FPTR_TABLE and
+      infptr/outfptr entries below.
+- [ ] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
+      as both input and output; see the infptr/outfptr entry below.
 - [ ] Clean up all warnings
 - [ ] Remove clippy allow(unused_assignments)
 - [ ] Remove clippy allow(unused_variables)
@@ -51,10 +64,15 @@
       `noalias` is entitled to miscompile, not miri pedantry. A full run takes
       ~3.8h and reports 2287 passed / 485 failed: 435 UB, 42 unsupported
       operations, 8 alignment panics. Counts below are failing tests per site.
-      Root causes, in order of blast radius:
-      * eval_l.rs:1571 (258) — see the lexer entry below; by far the biggest.
+      Root causes, in order of blast radius. The line numbers are from that
+      run; the lexer, drvrmem, getcolui, getcol and grparser ones are fixed:
+      * eval_l.rs:1571 (258) — fixed; those tests now stop on the yyextra_r
+        aliasing above instead.
       * drvrmem.rs:259 (53), getcolui.rs:1380 (38), getcol.rs:2778 (8),
-        grparser.rs:1046 (5) — each already carries a TODO/SAFETY-TODO.
+        grparser.rs:1046 (5) — fixed. Two uncovered a further problem behind
+        them: drvrmem frees Rust-allocated buffers through libc realloc, and
+        the getcol TSTRING path assumes every caller-supplied char* is at
+        least FLEN_VALUE bytes.
       * cfileio.rs:1880 (20) — the FPTR_TABLE entry below.
       * The `&mut`/`&mut` aliasing sites are 1 test each, but see the first
         entry: they are a signature problem, not a local one.
