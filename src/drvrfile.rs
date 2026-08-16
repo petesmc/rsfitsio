@@ -933,6 +933,9 @@ pub(crate) fn fits_stream_seek(_handle: c_int, _offset: LONGLONG) -> c_int {
 
 /*--------------------------------------------------------------------------*/
 /// reading from stdin stream
+// clippy points ErrorKind at core::io, but that re-export is still behind the
+// unstable `core_io` feature, so the std path has to stay.
+#[allow(clippy::std_instead_of_core)]
 pub(crate) fn fits_stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     if hdl != 1 {
         return 1; /* can only read from stdin */

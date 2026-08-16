@@ -11,6 +11,9 @@
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(unused_assignments)]
 #![allow(dead_code)]
+// The C declares its locals at the top of a function, as the library does too
+// (see src/lib.rs).
+#![allow(clippy::needless_late_init)]
 
 mod cfmt;
 mod fpack_h;
@@ -252,20 +255,16 @@ pub(crate) fn fp_get_param(argc: c_int, argv: &Argv, fpptr: &mut fpstate) -> FpR
                 fpptr.do_images = 0;
                 /* Do not write this to stdout via fp_msg.  Otherwise it will be placed at start of piped FITS
                 file, which will then be corrupted. */
-                eprint!("Note: The table compression method used by fpack has been\n");
-                eprint!(" officially approved as part of FITS format standard since 2016.\n");
-                eprint!(" However users should be aware that the compressed table files may\n");
-                eprint!(
-                    " only be readable by a limited number of applications (including fpack).\n"
-                );
+                eprintln!("Note: The table compression method used by fpack has been");
+                eprintln!(" officially approved as part of FITS format standard since 2016.");
+                eprintln!(" However users should be aware that the compressed table files may");
+                eprintln!(" only be readable by a limited number of applications (including fpack).");
             } else if strcmp_safe(arg, cs!(c"-table")) == 0 {
                 fpptr.do_tables = 1;
-                eprint!("Note: The table compression method used by fpack has been\n");
-                eprint!(" officially approved as part of FITS format standard since 2016.\n");
-                eprint!(" However users should be aware that the compressed table files may\n");
-                eprint!(
-                    " only be readable by a limited number of applications (including fpack).\n"
-                );
+                eprintln!("Note: The table compression method used by fpack has been");
+                eprintln!(" officially approved as part of FITS format standard since 2016.");
+                eprintln!(" However users should be aware that the compressed table files may");
+                eprintln!(" only be readable by a limited number of applications (including fpack).");
             } else if arg[1] == bb(b't') {
                 if gottile != 0 {
                     fp_msg_str("Error: multiple tile specifications\n");

@@ -1246,14 +1246,13 @@ fn test_prm(
 
     if hduptr.isgroup == 0 {
         key_match(&tmpkwds, numusrkey, cs!(c"EXTEND"), 1, &mut k, &mut n);
-        if k > 0 {
-            if check_log(&hduptr.kwds[k as usize], out) != 0
-                && hduptr.kwds[k as usize].kvalue[0] as u8 != b'T'
-                && totalhdu() > 1
-            {
-                spf!(errmes; "There are extensions but EXTEND = F.");
-                wrterr(out, &errmes, 1);
-            }
+        if k > 0
+            && check_log(&hduptr.kwds[k as usize], out) != 0
+            && hduptr.kwds[k as usize].kvalue[0] as u8 != b'T'
+            && totalhdu() > 1
+        {
+            spf!(errmes; "There are extensions but EXTEND = F.");
+            wrterr(out, &errmes, 1);
         }
     }
 
@@ -3640,7 +3639,7 @@ mod fits_tests {
     fn block(cards: &[&str]) -> String {
         let mut h: String = cards.iter().map(|c| card(c)).collect();
         h.push_str(&card("END"));
-        while h.len() % 2880 != 0 {
+        while !h.len().is_multiple_of(2880) {
             h.push(' ');
         }
         h

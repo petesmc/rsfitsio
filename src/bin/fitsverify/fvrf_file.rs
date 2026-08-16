@@ -40,12 +40,14 @@ fn init_hduname() {
         let mut h = h.borrow_mut();
         h.clear();
         for _i in 0..totalhdu() {
-            let mut e = HduName::default();
-            e.hdutype = -1;
-            e.errnum = 0;
-            e.wrnno = 0;
+            let mut e = HduName {
+                hdutype: -1,
+                errnum: 0,
+                wrnno: 0,
+                extver: 0,
+                ..Default::default()
+            };
             e.extname[0] = 0;
-            e.extver = 0;
             h.push(e);
         }
     });

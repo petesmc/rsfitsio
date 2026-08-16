@@ -27,6 +27,12 @@ use crate::relibc::{
 
 pub struct CustomVaList(pub VecDeque<VaArg>);
 
+impl Default for CustomVaList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CustomVaList {
     pub fn new() -> Self {
         CustomVaList(VecDeque::new())

@@ -4140,8 +4140,8 @@ pub unsafe extern "C" fn ffghtb(
         let mut v_ttype = ffgh_str_array(ttype, nelem);
         let mut v_tform = ffgh_str_array(tform, nelem);
         let mut v_tunit = ffgh_str_array(tunit, nelem);
-        let mut v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
-        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+        let v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
+        let v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
 
         ffghtb_safe(
             fptr,
@@ -4150,10 +4150,10 @@ pub unsafe extern "C" fn ffghtb(
             naxis2.as_mut(),
             tfields.as_mut(),
             v_ttype.as_deref_mut(),
-            v_tbcol.as_deref_mut(),
+            v_tbcol,
             v_tform.as_deref_mut(),
             v_tunit.as_deref_mut(),
-            v_extnm.as_deref_mut(),
+            v_extnm,
             status,
         )
     }
@@ -4292,7 +4292,7 @@ pub fn ffghtb_safe(
             }
         }
 
-        if let Some(ttype) = ttype.as_deref_mut() {
+        if let Some(ttype) = ttype {
             ffgkns_safe(
                 fptr,
                 cs!(c"TTYPE"),
@@ -4304,7 +4304,7 @@ pub fn ffghtb_safe(
             );
         }
 
-        if let Some(tunit) = tunit.as_deref_mut() {
+        if let Some(tunit) = tunit {
             ffgkns_safe(
                 fptr,
                 cs!(c"TUNIT"),
@@ -4398,8 +4398,8 @@ pub unsafe extern "C" fn ffghtbll(
         let mut v_ttype = ffgh_str_array(ttype, nelem);
         let mut v_tform = ffgh_str_array(tform, nelem);
         let mut v_tunit = ffgh_str_array(tunit, nelem);
-        let mut v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
-        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+        let v_tbcol = (!tbcol.is_null()).then(|| slice::from_raw_parts_mut(tbcol, nelem));
+        let v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
 
         ffghtbll_safe(
             fptr,
@@ -4408,10 +4408,10 @@ pub unsafe extern "C" fn ffghtbll(
             naxis2.as_mut(),
             tfields.as_mut(),
             v_ttype.as_deref_mut(),
-            v_tbcol.as_deref_mut(),
+            v_tbcol,
             v_tform.as_deref_mut(),
             v_tunit.as_deref_mut(),
-            v_extnm.as_deref_mut(),
+            v_extnm,
             status,
         )
     }
@@ -4550,7 +4550,7 @@ pub fn ffghtbll_safe(
             }
         }
 
-        if let Some(ttype) = ttype.as_deref_mut() {
+        if let Some(ttype) = ttype {
             ffgkns_safe(
                 fptr,
                 cs!(c"TTYPE"),
@@ -4562,7 +4562,7 @@ pub fn ffghtbll_safe(
             );
         }
 
-        if let Some(tunit) = tunit.as_deref_mut() {
+        if let Some(tunit) = tunit {
             ffgkns_safe(
                 fptr,
                 cs!(c"TUNIT"),
@@ -4655,7 +4655,7 @@ pub unsafe extern "C" fn ffghbn(
         let mut v_ttype = ffgh_str_array(ttype, nelem);
         let mut v_tform = ffgh_str_array(tform, nelem);
         let mut v_tunit = ffgh_str_array(tunit, nelem);
-        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+        let v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
 
         ffghbn_safe(
             fptr,
@@ -4665,7 +4665,7 @@ pub unsafe extern "C" fn ffghbn(
             v_ttype.as_deref_mut(),
             v_tform.as_deref_mut(),
             v_tunit.as_deref_mut(),
-            v_extnm.as_deref_mut(),
+            v_extnm,
             pcount.as_mut(),
             status,
         )
@@ -4796,7 +4796,7 @@ pub fn ffghbn_safe(
             }
         }
 
-        if let Some(ttype) = ttype.as_deref_mut() {
+        if let Some(ttype) = ttype {
             ffgkns_safe(
                 fptr,
                 cs!(c"TTYPE"),
@@ -4808,7 +4808,7 @@ pub fn ffghbn_safe(
             );
         }
 
-        if let Some(tunit) = tunit.as_deref_mut() {
+        if let Some(tunit) = tunit {
             ffgkns_safe(
                 fptr,
                 cs!(c"TUNIT"),
@@ -4883,7 +4883,7 @@ pub unsafe extern "C" fn ffghbnll(
         let mut v_ttype = ffgh_str_array(ttype, nelem);
         let mut v_tform = ffgh_str_array(tform, nelem);
         let mut v_tunit = ffgh_str_array(tunit, nelem);
-        let mut v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
+        let v_extnm = (!extnm.is_null()).then(|| slice::from_raw_parts_mut(extnm, 69));
 
         ffghbnll_safe(
             fptr,
@@ -4893,7 +4893,7 @@ pub unsafe extern "C" fn ffghbnll(
             v_ttype.as_deref_mut(),
             v_tform.as_deref_mut(),
             v_tunit.as_deref_mut(),
-            v_extnm.as_deref_mut(),
+            v_extnm,
             pcount.as_mut(),
             status,
         )
@@ -5023,7 +5023,7 @@ pub fn ffghbnll_safe(
             }
         }
 
-        if let Some(ttype) = ttype.as_deref_mut() {
+        if let Some(ttype) = ttype {
             ffgkns_safe(
                 fptr,
                 cs!(c"TTYPE"),
@@ -5035,7 +5035,7 @@ pub fn ffghbnll_safe(
             );
         }
 
-        if let Some(tunit) = tunit.as_deref_mut() {
+        if let Some(tunit) = tunit {
             ffgkns_safe(
                 fptr,
                 cs!(c"TUNIT"),

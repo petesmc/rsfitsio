@@ -9,6 +9,9 @@
 #![allow(unused_assignments)]
 // items only the *other* binary uses out of the two shared modules
 #![allow(dead_code)]
+// The C declares its locals at the top of a function, as the library does too
+// (see src/lib.rs).
+#![allow(clippy::needless_late_init)]
 
 /* The C links funpack.o against fpackutil.o; Rust binaries cannot share a
 module tree, so the shared files are pulled in by path. */
