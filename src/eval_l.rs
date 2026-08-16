@@ -1519,29 +1519,39 @@ pub(crate) fn fits_parser_yyrestart(input_file: *mut FILE, yyscanner: &mut yygut
         {
             fits_parser_yyensure_buffer_stack(yyscanner);
 
-            let fresh8 = &mut *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
-            *fresh8 = Some(fits_parser_yy_create_buffer(
-                yyscanner.yyin_r,
-                YY_BUF_SIZE as c_int,
-                yyscanner,
-            ));
+            /* Create the buffer before taking a reference to the slot:
+               fits_parser_yy_create_buffer re-enters the scanner and retags
+               this same slot, so a reference taken first would be dead by the
+               time the assignment dropped the old value through it. */
+            let b = fits_parser_yy_create_buffer(yyscanner.yyin_r, YY_BUF_SIZE as c_int, yyscanner);
+            *(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top) = Some(b);
         }
 
-        if !(yyscanner.yy_buffer_stack).is_null()
-            && (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
-                .as_deref_mut()
-                .is_some()
-        {
-            fits_parser_yy_init_buffer(
-                (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
-                    .as_deref_mut()
-                    .unwrap(),
-                input_file,
-                yyscanner,
-            );
+        let current = yy_current_buffer_ptr(yyscanner);
+        if !current.is_null() {
+            fits_parser_yy_init_buffer(current, input_file, yyscanner);
         }
 
         fits_parser_yy_load_buffer_state(yyscanner);
+    }
+}
+
+/// Address of the scanner's current buffer, or null if there isn't one.
+///
+/// Deliberately avoids forming a reference to the buffer itself: callers use
+/// this to compare against a buffer they are already holding, and creating a
+/// second `&mut` to it through the scanner would invalidate theirs.  Only the
+/// `Option<Box<..>>` slot in the stack array is read.
+unsafe fn yy_current_buffer_ptr(yyscanner: &yyguts_t) -> *mut yy_buffer_state {
+    unsafe {
+        if (yyscanner.yy_buffer_stack).is_null() {
+            return ptr::null_mut();
+        }
+        let slot = (yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top);
+        match (*slot).as_ref() {
+            Some(b) => &raw const **b as *mut yy_buffer_state,
+            None => ptr::null_mut(),
+        }
     }
 }
 
@@ -1604,7 +1614,7 @@ pub(crate) fn fits_parser_yy_create_buffer(
     b.yy_ch_buf = Some(v.into_boxed_slice());
     b.yy_is_our_buffer = true;
 
-    fits_parser_yy_init_buffer(&mut (b), file, yyscanner);
+    fits_parser_yy_init_buffer(&raw mut *b, file, yyscanner);
 
     b
 }
@@ -1651,34 +1661,39 @@ pub(crate) fn fits_parser_yy_delete_buffer(
  * This function is sometimes called more than once on the same buffer,
  * such as during a yyrestart() or at EOF.
  */
-fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanner: &mut yyguts_t) {
+/// `b` is a raw pointer for the same reason as in `fits_parser_yy_flush_buffer`.
+fn fits_parser_yy_init_buffer(b: *mut yy_buffer_state, file: *mut FILE, yyscanner: &mut yyguts_t) {
     unsafe {
         let oerrno = errno().0;
-
-        fits_parser_yy_flush_buffer(b, yyscanner);
-        b.yy_input_file = file;
-        b.yy_fill_buffer = 1;
-
-        let top_state = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
-            .as_deref_mut()
-        {
-            Some(x) => x as *mut yy_buffer_state,
-            None => ptr::null_mut(),
-        };
 
         /* If b is the current buffer, then yy_init_buffer was _probably_
          * called from yyrestart() or through yy_get_next_buffer.
          * In that case, we don't want to reset the lineno or column.
          */
-        if !ptr::addr_eq(b, top_state) {
-            b.yy_bs_lineno = 1;
-            b.yy_bs_column = 0;
+        let is_current = ptr::addr_eq(b, yy_current_buffer_ptr(yyscanner));
+
+        (*b).yy_input_file = file;
+        (*b).yy_fill_buffer = 1;
+
+        if !is_current {
+            (*b).yy_bs_lineno = 1;
+            (*b).yy_bs_column = 0;
         }
-        b.yy_is_interactive = if !file.is_null() {
+        (*b).yy_is_interactive = if !file.is_null() {
             c_int::from(isatty(fileno(file)) > 0)
         } else {
             0
         };
+
+        /* The C flushes first, but flushing can call yy_load_buffer_state,
+           which re-enters the scanner and invalidates `b` when b is the
+           current buffer.  The fields flushed and the fields set above are
+           disjoint, so doing it last is equivalent; the one visible
+           difference is that yy_load_buffer_state then observes the new
+           yy_input_file, and yyrestart -- the only caller that passes the
+           current buffer -- reloads the state immediately afterwards anyway. */
+        fits_parser_yy_flush_buffer(b, yyscanner);
+
         set_errno(Errno(oerrno));
     }
 }
@@ -1686,28 +1701,29 @@ fn fits_parser_yy_init_buffer(b: &mut yy_buffer_state, file: *mut FILE, yyscanne
 /// Discard all buffered characters. On the next scan, YY_INPUT will be called.
 /// @param b the buffer state to be flushed, usually @c YY_CURRENT_BUFFER.
 /// @param yyscanner The scanner object.
-pub(crate) fn fits_parser_yy_flush_buffer(b: &mut yy_buffer_state, yyscanner: &mut yyguts_t) {
+/// `b` is a raw pointer rather than a `&mut` because callers may pass the
+/// scanner's own current buffer (yyrestart) as well as a fresh one
+/// (yy_create_buffer).  A `&mut` parameter would claim exclusive access to
+/// something that is also reachable through `yyscanner`, which is UB in the
+/// first case.
+pub(crate) fn fits_parser_yy_flush_buffer(b: *mut yy_buffer_state, yyscanner: &mut yyguts_t) {
     unsafe {
-        b.yy_n_chars = 0;
+        (*b).yy_n_chars = 0;
 
         /* We always need two end-of-buffer characters.  The first causes
          * a transition to the end-of-buffer state.  The second causes
          * a jam in that state.
          */
-        (b.yy_ch_buf).as_deref_mut().unwrap()[0] = YY_END_OF_BUFFER_CHAR;
-        (b.yy_ch_buf).as_deref_mut().unwrap()[1] = YY_END_OF_BUFFER_CHAR;
-        b.yy_buf_pos = 0; // Set index to start of buffer
-        b.yy_at_bol = 1;
-        b.yy_buffer_status = YY_BUFFER_NEW;
+        ((*b).yy_ch_buf).as_deref_mut().unwrap()[0] = YY_END_OF_BUFFER_CHAR;
+        ((*b).yy_ch_buf).as_deref_mut().unwrap()[1] = YY_END_OF_BUFFER_CHAR;
+        (*b).yy_buf_pos = 0; // Set index to start of buffer
+        (*b).yy_at_bol = 1;
+        (*b).yy_buffer_status = YY_BUFFER_NEW;
 
-        let top_state = match (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
-            .as_deref_mut()
-        {
-            Some(x) => x as *mut yy_buffer_state,
-            None => ptr::null_mut(),
-        };
-
-        if ptr::addr_eq(b, top_state) {
+        /* Nothing may touch `b` past this point: yy_load_buffer_state takes its
+           own &mut to the current buffer, which invalidates `b` when they are
+           the same buffer. */
+        if ptr::addr_eq(b, yy_current_buffer_ptr(yyscanner)) {
             fits_parser_yy_load_buffer_state(yyscanner);
         }
     }
