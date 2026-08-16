@@ -1997,7 +1997,7 @@ pub fn ffpcln_safe(
         // SAFETY: array[0] points to a buffer of at least nelem*elsize bytes
         // supplied by the caller; ffpcn_safe expects exactly that many bytes.
         let array0: &[u8] =
-            unsafe { slice::from_raw_parts(array[0] as *const u8, nelem as usize * elsize) };
+            unsafe { slice::from_raw_parts(array[0].cast::<u8>(), nelem as usize * elsize) };
         let nulval0 = NullValue::from_raw_ptr(dt, nulval[0]);
         ffpcn_safe(
             fptr, dt, colnum[0], firstrow, 1, nelem, array0, nulval0, status,
@@ -2025,7 +2025,7 @@ pub fn ffpcln_safe(
             // and length mirror the C pointer arithmetic and stay within it.
             let array1: &[u8] = unsafe {
                 slice::from_raw_parts(
-                    (array[ic] as *const u8).add(byteoff),
+                    array[ic].cast::<u8>().add(byteoff),
                     nelem1 as usize * elsize,
                 )
             };
@@ -6034,7 +6034,7 @@ mod tests {
             let ptrs: Vec<*const c_char> = str_bufs.iter().map(|v| v.as_ptr()).collect();
             let ptr_bytes: &[u8] = unsafe {
                 core::slice::from_raw_parts(
-                    ptrs.as_ptr() as *const u8,
+                    ptrs.as_ptr().cast::<u8>(),
                     core::mem::size_of_val(&ptrs[..]),
                 )
             };
@@ -6059,7 +6059,7 @@ mod tests {
             let mut read_ptrs: [*mut c_char; 5] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let read_ptr_bytes: &mut [u8] = unsafe {
                 core::slice::from_raw_parts_mut(
-                    read_ptrs.as_mut_ptr() as *mut u8,
+                    read_ptrs.as_mut_ptr().cast::<u8>(),
                     core::mem::size_of_val(&read_ptrs),
                 )
             };

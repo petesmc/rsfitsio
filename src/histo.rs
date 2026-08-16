@@ -4189,7 +4189,7 @@ pub(crate) fn fits_make_histde(
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
                         core::mem::size_of::<iteratorCol>(),
-                    ) as *mut iteratorCol
+                    ).cast::<iteratorCol>()
                 };
                 if iterCols.is_null() {
                     *status = MEMORY_ALLOCATION;
@@ -4274,7 +4274,7 @@ pub(crate) fn fits_make_histde(
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
                     core::mem::size_of::<iteratorCol>(),
-                ) as *mut iteratorCol
+                ).cast::<iteratorCol>()
             };
             if iterCols.is_null() {
                 *status = MEMORY_ALLOCATION;

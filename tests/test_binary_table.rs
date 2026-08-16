@@ -94,11 +94,11 @@ fn readtable(filename: &str, query: &str, expected_rows: usize) {
         }
 
         let ttype0 =
-            unsafe { CStr::from_ptr(ttype_vecs[0].as_ptr() as *const c_char) }.to_string_lossy();
+            unsafe { CStr::from_ptr(ttype_vecs[0].as_ptr().cast::<c_char>()) }.to_string_lossy();
         let ttype1 =
-            unsafe { CStr::from_ptr(ttype_vecs[1].as_ptr() as *const c_char) }.to_string_lossy();
+            unsafe { CStr::from_ptr(ttype_vecs[1].as_ptr().cast::<c_char>()) }.to_string_lossy();
         let ttype2 =
-            unsafe { CStr::from_ptr(ttype_vecs[2].as_ptr() as *const c_char) }.to_string_lossy();
+            unsafe { CStr::from_ptr(ttype_vecs[2].as_ptr().cast::<c_char>()) }.to_string_lossy();
         println!(" Row  {ttype0:>10} {ttype1:>10} {ttype2:>10}");
 
         /*  read the columns */
@@ -151,7 +151,7 @@ fn readtable(filename: &str, query: &str, expected_rows: usize) {
             assert_eq!(status, 0);
 
             for ii in 0..6 {
-                let name_str = unsafe { CStr::from_ptr(name_vecs[ii].as_ptr() as *const c_char) }
+                let name_str = unsafe { CStr::from_ptr(name_vecs[ii].as_ptr().cast::<c_char>()) }
                     .to_string_lossy();
                 println!(
                     "{:5} {:>10} {:>10} {:>10.24}",

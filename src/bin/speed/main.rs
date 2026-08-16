@@ -335,7 +335,7 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
             ttype.as_ptr(),
             tform.as_ptr(),
             tunit.as_ptr(),
-            extname.as_ptr() as *const c_char,
+            extname.as_ptr().cast::<c_char>(),
             status,
         )
     } != 0
@@ -427,7 +427,7 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
             ttype.as_ptr(),
             tform.as_ptr(),
             tunit.as_ptr(),
-            extname.as_ptr() as *const c_char,
+            extname.as_ptr().cast::<c_char>(),
             status,
         )
     } != 0
@@ -683,18 +683,18 @@ fn printerror(status: c_int) {
     }
 
     unsafe {
-        fits_get_errstatus(status, status_str.as_mut_ptr() as *mut c_char);
+        fits_get_errstatus(status, status_str.as_mut_ptr().cast::<c_char>());
     } /* get the error description */
     let status_str = String::from_utf8_lossy(&status_str);
     eprintln!("\nstatus = {status}: {status_str}");
 
     /* get first message; null if stack is empty */
-    if unsafe { fits_read_errmsg(errmsg.as_mut_ptr() as *mut c_char) } != 0 {
+    if unsafe { fits_read_errmsg(errmsg.as_mut_ptr().cast::<c_char>()) } != 0 {
         eprintln!("\nError message stack:");
         let msg = String::from_utf8_lossy(&errmsg);
         eprintln!(" {msg}");
 
-        while unsafe { fits_read_errmsg(errmsg.as_mut_ptr() as *mut c_char) } != 0 {
+        while unsafe { fits_read_errmsg(errmsg.as_mut_ptr().cast::<c_char>()) } != 0 {
             /* get remaining messages */
             let msg = String::from_utf8_lossy(&errmsg);
             eprintln!(" {msg}");

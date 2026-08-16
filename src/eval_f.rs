@@ -123,7 +123,7 @@ macro_rules! FREE {
             // keep the block so the macro stays usable from safe code.
             #[allow(unused_unsafe)]
             unsafe {
-                libc::free($x as *mut libc::c_void);
+                libc::free($x.cast::<libc::c_void>());
             }
             $x = core::ptr::null_mut();
         } else {

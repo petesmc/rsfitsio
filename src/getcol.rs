@@ -2779,7 +2779,7 @@ pub fn ffgcv_safe(
         // SharedReadOnly tag).
         unsafe {
             let array =
-                slice::from_raw_parts_mut(array.as_mut_ptr() as *mut *mut c_char, nelem as usize);
+                slice::from_raw_parts_mut(array.as_mut_ptr().cast::<*mut c_char>(), nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
                 let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
@@ -5089,7 +5089,7 @@ mod tests {
             let mut ptrs: [*mut c_char; 3] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let ptr_bytes: &mut [u8] = unsafe {
                 core::slice::from_raw_parts_mut(
-                    ptrs.as_mut_ptr() as *mut u8,
+                    ptrs.as_mut_ptr().cast::<u8>(),
                     core::mem::size_of_val(&ptrs),
                 )
             };
@@ -5561,7 +5561,7 @@ mod tests {
             let mut ptrs: [*mut c_char; 3] = core::array::from_fn(|i| buf[i].as_mut_ptr());
             let ptr_bytes: &mut [u8] = unsafe {
                 core::slice::from_raw_parts_mut(
-                    ptrs.as_mut_ptr() as *mut u8,
+                    ptrs.as_mut_ptr().cast::<u8>(),
                     core::mem::size_of_val(&ptrs),
                 )
             };
@@ -5821,9 +5821,9 @@ mod tests {
                 Some(NullValue::Double(0.0)),
             ];
             let mut arrays: [*mut c_void; 3] = [
-                col1_result.as_mut_ptr() as *mut c_void,
-                col2_result.as_mut_ptr() as *mut c_void,
-                col3_result.as_mut_ptr() as *mut c_void,
+                col1_result.as_mut_ptr().cast::<c_void>(),
+                col2_result.as_mut_ptr().cast::<c_void>(),
+                col3_result.as_mut_ptr().cast::<c_void>(),
             ];
             let mut anynul = [0 as c_int; 3];
 

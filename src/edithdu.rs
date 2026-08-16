@@ -1862,7 +1862,7 @@ mod tests {
             assert!(!stream.is_null());
             ffwrhdu_safe(
                 f.as_deref_mut().unwrap(),
-                stream as *mut crate::c_types::FILE,
+                stream.cast::<crate::c_types::FILE>(),
                 &mut status,
             );
             assert_eq!(status, 0, "ffwrhdu failed");

@@ -8986,7 +8986,7 @@ unsafe fn free_node_buffer(node: &mut Node) {
             if !node.value.data.str_buf().is_null() {
                 /* the row pointers all point into one block, allocated at [0] */
                 if !(*node.value.data.str_buf()).is_null() {
-                    free((*node.value.data.str_buf()) as *mut c_void);
+                    free((*node.value.data.str_buf()).cast::<c_void>());
                 }
                 node.value.data.free_buffer();
             }

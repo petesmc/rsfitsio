@@ -107,7 +107,7 @@ fn writeimage() {
                 TUSHORT,
                 fpixel as LONGLONG,
                 nelements as LONGLONG,
-                array.as_ptr() as *const _,
+                array.as_ptr().cast(),
                 &mut status,
             )
         } != 0
@@ -126,7 +126,7 @@ fn writeimage() {
                 fptr_box.as_mut(),
                 TLONG,
                 exposure_key.as_ptr(),
-                core::ptr::from_ref::<c_long>(&exposure) as *const _,
+                core::ptr::from_ref::<c_long>(&exposure).cast(),
                 exposure_comment.as_ptr(),
                 &mut status,
             )
@@ -232,7 +232,7 @@ fn writeascii() {
                 firstrow,
                 firstelem,
                 nrows,
-                planet.as_ptr() as *const _,
+                planet.as_ptr().cast(),
                 &mut status,
             );
             fits_write_col(
@@ -242,7 +242,7 @@ fn writeascii() {
                 firstrow,
                 firstelem,
                 nrows,
-                diameter.as_ptr() as *const _,
+                diameter.as_ptr().cast(),
                 &mut status,
             );
             fits_write_col(
@@ -252,7 +252,7 @@ fn writeascii() {
                 firstrow,
                 firstelem,
                 nrows,
-                density.as_ptr() as *const _,
+                density.as_ptr().cast(),
                 &mut status,
             );
         }
@@ -362,7 +362,7 @@ fn writebintable() {
                 firstrow,
                 firstelem,
                 nrows,
-                planet.as_ptr() as *const _,
+                planet.as_ptr().cast(),
                 &mut status,
             );
             fits_write_col(
@@ -372,7 +372,7 @@ fn writebintable() {
                 firstrow,
                 firstelem,
                 nrows,
-                diameter.as_ptr() as *const _,
+                diameter.as_ptr().cast(),
                 &mut status,
             );
             fits_write_col(
@@ -382,7 +382,7 @@ fn writebintable() {
                 firstrow,
                 firstelem,
                 nrows,
-                density.as_ptr() as *const _,
+                density.as_ptr().cast(),
                 &mut status,
             );
         }
@@ -556,12 +556,12 @@ fn selectrows() {
                 fits_read_record(
                     infptr_box.as_mut(),
                     ii,
-                    card.as_mut_ptr() as *mut c_char,
+                    card.as_mut_ptr().cast::<c_char>(),
                     &mut status,
                 );
                 fits_write_record(
                     outfptr_box.as_mut(),
-                    card.as_ptr() as *const c_char,
+                    card.as_ptr().cast::<c_char>(),
                     &mut status,
                 );
             }
@@ -614,8 +614,8 @@ fn selectrows() {
                 frow,
                 felem,
                 naxes[1] as LONGLONG,
-                core::ptr::from_ref::<c_float>(&nullval) as *const _,
-                density.as_mut_ptr() as *mut _,
+                core::ptr::from_ref::<c_float>(&nullval).cast(),
+                density.as_mut_ptr().cast(),
                 &mut anynulls,
                 &mut status,
             )
@@ -625,7 +625,7 @@ fn selectrows() {
     }
 
     /* allocate buffer large enough for 1 row of the table */
-    let buffer: *mut u8 = unsafe { malloc(naxes[0] as usize) as *mut u8 };
+    let buffer: *mut u8 = unsafe { malloc(naxes[0] as usize).cast::<u8>() };
 
     /* If the density is less than 3.0, copy the row to the output table */
     noutrows = 0;
@@ -663,7 +663,7 @@ fn selectrows() {
                 outfptr_box.as_mut(),
                 TLONG,
                 naxis2_key.as_ptr(),
-                core::ptr::from_ref::<c_long>(&(noutrows as c_long)) as *const _,
+                core::ptr::from_ref::<c_long>(&(noutrows as c_long)).cast(),
                 ptr::null(),
                 &mut status,
             )
@@ -673,7 +673,7 @@ fn selectrows() {
         }
     }
 
-    unsafe { free(buffer as *mut _) };
+    unsafe { free(buffer.cast()) };
 
     let mut close_status = 0;
     if let Some(outfptr_box) = outfptr
@@ -726,7 +726,7 @@ fn readheader() {
                 fits_read_record(
                     fptr_box.as_mut(),
                     jj,
-                    card.as_mut_ptr() as *mut c_char,
+                    card.as_mut_ptr().cast::<c_char>(),
                     &mut status,
                 )
             } != 0
@@ -734,7 +734,7 @@ fn readheader() {
                 printerror(status);
             }
 
-            let card_str = unsafe { CStr::from_ptr(card.as_ptr() as *const c_char) };
+            let card_str = unsafe { CStr::from_ptr(card.as_ptr().cast::<c_char>()) };
             println!("{}", card_str.to_string_lossy()); /* print the keyword card */
         }
         println!("END\n"); /* terminate listing with END */
@@ -821,8 +821,8 @@ fn readimage() {
                     TFLOAT,
                     fpixel,
                     nbuffer,
-                    core::ptr::from_ref::<c_float>(&nullval) as *const _,
-                    buffer.as_mut_ptr() as *mut _,
+                    core::ptr::from_ref::<c_float>(&nullval).cast(),
+                    buffer.as_mut_ptr().cast(),
                     &mut anynull,
                     &mut status,
                 )
@@ -881,14 +881,14 @@ fn readtable() {
     /* allocate space for the column labels */
     let mut ttype_ptrs: Vec<*mut c_char> = Vec::new();
     for _i in 0..3 {
-        let ptr = unsafe { malloc(FLEN_VALUE) as *mut c_char };
+        let ptr = unsafe { malloc(FLEN_VALUE).cast::<c_char>() };
         ttype_ptrs.push(ptr);
     }
 
     /* allocate space for string column values */
     let mut name_ptrs: Vec<*mut c_char> = Vec::new();
     for _i in 0..6 {
-        let ptr = unsafe { malloc(10) as *mut c_char };
+        let ptr = unsafe { malloc(10).cast::<c_char>() };
         name_ptrs.push(ptr);
     }
 
@@ -941,8 +941,8 @@ fn readtable() {
                     frow,
                     felem,
                     nelem,
-                    strnull.as_ptr() as *const _,
-                    name_ptrs.as_mut_ptr() as *mut _,
+                    strnull.as_ptr().cast(),
+                    name_ptrs.as_mut_ptr().cast(),
                     &mut anynull,
                     &mut status,
                 );
@@ -953,8 +953,8 @@ fn readtable() {
                     frow,
                     felem,
                     nelem,
-                    core::ptr::from_ref::<c_long>(&longnull) as *const _,
-                    dia.as_mut_ptr() as *mut _,
+                    core::ptr::from_ref::<c_long>(&longnull).cast(),
+                    dia.as_mut_ptr().cast(),
                     &mut anynull,
                     &mut status,
                 );
@@ -965,8 +965,8 @@ fn readtable() {
                     frow,
                     felem,
                     nelem,
-                    core::ptr::from_ref::<c_float>(&floatnull) as *const _,
-                    den.as_mut_ptr() as *mut _,
+                    core::ptr::from_ref::<c_float>(&floatnull).cast(),
+                    den.as_mut_ptr().cast(),
                     &mut anynull,
                     &mut status,
                 );
@@ -987,12 +987,12 @@ fn readtable() {
 
     /* free the memory for the column labels */
     for ptr in ttype_ptrs {
-        unsafe { free(ptr as *mut _) };
+        unsafe { free(ptr.cast()) };
     }
 
     /* free the memory for the string column */
     for ptr in name_ptrs {
-        unsafe { free(ptr as *mut _) };
+        unsafe { free(ptr.cast()) };
     }
 
     if let Some(fptr_box) = fptr

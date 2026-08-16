@@ -208,7 +208,7 @@ extern "C" fn writehisto(
             rowoffset,
             rows_per_loop,
             calchisto,
-            histogram as *mut std::os::raw::c_void,
+            histogram.cast::<std::os::raw::c_void>(),
             &mut status,
         );
 
@@ -258,7 +258,7 @@ extern "C" fn calchisto(
             /* assign the input array pointers to the X and Y arrays */
             XCOL = fits_iter_get_array(&mut cols[0]) as *mut c_long;
             YCOL = fits_iter_get_array(&mut cols[1]) as *mut c_long;
-            HISTOGRAM = user_pointer as *mut c_long;
+            HISTOGRAM = user_pointer.cast::<c_long>();
 
             /* initialize the histogram image pixels = 0 */
             for ii in 0..=(XSIZE * YSIZE) {

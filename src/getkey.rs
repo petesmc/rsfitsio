@@ -6713,7 +6713,7 @@ mod tests {
             assert!(nkeys >= 5); /* SIMPLE, BITPIX, NAXIS, NAXIS1, NAXIS2, END */
             let hdr = unsafe { CStr::from_ptr(header) };
             assert!(hdr.to_bytes().starts_with(b"SIMPLE"));
-            unsafe { fffree_safe(header as *mut c_void, &mut status) };
+            unsafe { fffree_safe(header.cast::<c_void>(), &mut status) };
             ffclos_safe(fptr.take().unwrap(), &mut status);
         });
     }

@@ -157,7 +157,7 @@ pub fn main() -> ExitCode {
             {
                 use std::os::unix::io::AsRawFd;
                 let stream = &mut std::io::stderr().as_raw_fd();
-                fits_report_error(core::ptr::from_mut(stream) as *mut FILE, status);
+                fits_report_error(core::ptr::from_mut(stream).cast::<FILE>(), status);
             }
 
             return ExitCode::from(status as u8);
@@ -329,7 +329,7 @@ pub fn main() -> ExitCode {
 
         /* if error occurred, print out error message */
         if status != 0 {
-            fits_report_error(STDERR!() as *mut _, status);
+            fits_report_error(STDERR!().cast(), status);
         }
     }
 

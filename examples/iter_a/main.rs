@@ -180,8 +180,8 @@ extern "C" fn flux_rate(
                 (cols[0]).fptr,
                 TFLOAT,
                 deadtime_key.as_ptr(),
-                &raw mut DEADTIME as *mut std::os::raw::c_void,
-                null_comment.as_mut_ptr() as *mut libc::c_char,
+                (&raw mut DEADTIME).cast::<std::os::raw::c_void>(),
+                null_comment.as_mut_ptr().cast::<libc::c_char>(),
                 &mut status,
             );
 
@@ -234,7 +234,7 @@ extern "C" fn flux_rate(
                 (cols[0]).fptr,
                 TFLOAT,
                 livetime_key.as_ptr(),
-                &raw const LIVETIME as *const std::os::raw::c_void,
+                (&raw const LIVETIME).cast::<std::os::raw::c_void>(),
                 livetime_comment.as_ptr(),
                 &mut status,
             );

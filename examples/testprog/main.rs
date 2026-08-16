@@ -309,13 +309,13 @@ pub fn main() -> ExitCode {
 
             for ii in 0..21 {
                 /* allocate space for string column value */
-                inskey[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                inskey[ii] = malloc(FLEN_VALUE).cast::<c_char>();
             }
 
             for ii in 0..10 {
-                ttype[ii] = malloc(FLEN_VALUE) as *mut c_char;
-                tform[ii] = malloc(FLEN_VALUE) as *mut c_char;
-                tunit[ii] = malloc(FLEN_VALUE) as *mut c_char;
+                ttype[ii] = malloc(FLEN_VALUE).cast::<c_char>();
+                tform[ii] = malloc(FLEN_VALUE).cast::<c_char>();
+                tunit[ii] = malloc(FLEN_VALUE).cast::<c_char>();
             }
 
             comms[0] = comm.as_mut_ptr();
@@ -556,7 +556,7 @@ pub fn main() -> ExitCode {
             if ffpkyc(
                 fptr.as_mut_ptr(),
                 c"key_pkyc".as_ptr(),
-                onekey[..2].as_ptr() as *const [f32; 2],
+                onekey[..2].as_ptr().cast::<[f32; 2]>(),
                 6,
                 c"fxpkyc comment".as_ptr(),
                 &mut status,
@@ -568,7 +568,7 @@ pub fn main() -> ExitCode {
             if ffpkym(
                 fptr.as_mut_ptr(),
                 c"key_pkym".as_ptr(),
-                ondkey[..2].as_ptr() as *const [f64; 2],
+                ondkey[..2].as_ptr().cast::<[f64; 2]>(),
                 14,
                 c"fxpkym comment".as_ptr(),
                 &mut status,
@@ -580,7 +580,7 @@ pub fn main() -> ExitCode {
             if ffpkfc(
                 fptr.as_mut_ptr(),
                 c"key_pkfc".as_ptr(),
-                onekey[..2].as_ptr() as *const [f32; 2],
+                onekey[..2].as_ptr().cast::<[f32; 2]>(),
                 6,
                 c"fxpkfc comment".as_ptr(),
                 &mut status,
@@ -592,7 +592,7 @@ pub fn main() -> ExitCode {
             if ffpkfm(
                 fptr.as_mut_ptr(),
                 c"key_pkfm".as_ptr(),
-                ondkey[..2].as_ptr() as *const [f64; 2],
+                ondkey[..2].as_ptr().cast::<[f64; 2]>(),
                 14,
                 c"fxpkfm comment".as_ptr(),
                 &mut status,
@@ -668,7 +668,7 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onskey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -682,7 +682,7 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onlkey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -696,7 +696,7 @@ pub fn main() -> ExitCode {
                 1,
                 nkeys,
                 onjkey.as_ptr(),
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -711,7 +711,7 @@ pub fn main() -> ExitCode {
                 nkeys,
                 onfkey.as_ptr(),
                 5,
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -726,7 +726,7 @@ pub fn main() -> ExitCode {
                 nkeys,
                 onekey.as_ptr(),
                 6,
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -741,7 +741,7 @@ pub fn main() -> ExitCode {
                 nkeys,
                 ongkey.as_ptr(),
                 13,
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -756,7 +756,7 @@ pub fn main() -> ExitCode {
                 nkeys,
                 ondkey.as_ptr(),
                 14,
-                comms.as_ptr() as *const *const c_char,
+                comms.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ) > 0
             {
@@ -774,7 +774,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSTRING,
                 c"tstring".as_ptr(),
-                oskey.as_ptr() as *const _ as *const c_void,
+                oskey.as_ptr().cast::<c_void>(),
                 c"tstring comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -787,7 +787,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLOGICAL,
                 c"tlogical".as_ptr(),
-                core::ptr::from_ref(&olkey) as *const c_void,
+                core::ptr::from_ref(&olkey).cast::<c_void>(),
                 c"tlogical comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -800,7 +800,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TBYTE,
                 c"tbyte".as_ptr(),
-                core::ptr::from_ref(&cval) as *const c_void,
+                core::ptr::from_ref(&cval).cast::<c_void>(),
                 c"tbyte comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -813,7 +813,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSHORT,
                 c"tshort".as_ptr(),
-                core::ptr::from_ref(&oshtkey) as *const c_void,
+                core::ptr::from_ref(&oshtkey).cast::<c_void>(),
                 c"tshort comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -826,7 +826,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TINT,
                 c"tint".as_ptr(),
-                core::ptr::from_ref(&olkey) as *const c_void,
+                core::ptr::from_ref(&olkey).cast::<c_void>(),
                 c"tint comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -839,7 +839,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"tlong".as_ptr(),
-                core::ptr::from_ref(&ojkey) as *const c_void,
+                core::ptr::from_ref(&ojkey).cast::<c_void>(),
                 c"tlong comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -852,7 +852,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 c"tfloat".as_ptr(),
-                core::ptr::from_ref(&oekey) as *const c_void,
+                core::ptr::from_ref(&oekey).cast::<c_void>(),
                 c"tfloat comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -865,7 +865,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 c"tdouble".as_ptr(),
-                core::ptr::from_ref(&odkey) as *const c_void,
+                core::ptr::from_ref(&odkey).cast::<c_void>(),
                 c"tdouble comment".as_ptr(),
                 &mut status,
             ) > 0
@@ -918,7 +918,7 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 firstpix.as_ptr(),
                 2,
-                boutarray[0..].as_ptr() as *const _ as *const c_void,
+                boutarray[0..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 5;
@@ -927,7 +927,7 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 firstpix.as_ptr(),
                 2,
-                ioutarray[4..].as_ptr() as *const _ as *const c_void,
+                ioutarray[4..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 9;
@@ -936,7 +936,7 @@ pub fn main() -> ExitCode {
                 TLONG,
                 firstpix.as_ptr(),
                 2,
-                joutarray[8..].as_ptr() as *const _ as *const c_void,
+                joutarray[8..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 3;
@@ -946,7 +946,7 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 firstpix.as_ptr(),
                 2,
-                eoutarray[12..].as_ptr() as *const _ as *const c_void,
+                eoutarray[12..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 7;
@@ -955,7 +955,7 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 firstpix.as_ptr(),
                 2,
-                doutarray[16..].as_ptr() as *const _ as *const c_void,
+                doutarray[16..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
 
@@ -974,8 +974,8 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 firstpix.as_mut_ptr(),
                 2,
-                boutarray[2..].as_ptr() as *const _ as *const c_void,
-                core::ptr::from_ref(&bnul) as *const c_void,
+                boutarray[2..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&bnul).cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 7;
@@ -985,8 +985,8 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 firstpix.as_mut_ptr(),
                 2,
-                ioutarray[6..].as_ptr() as *const _ as *const c_void,
-                core::ptr::from_ref(&inul) as *const c_void,
+                ioutarray[6..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&inul).cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 1;
@@ -997,8 +997,8 @@ pub fn main() -> ExitCode {
                 TLONG,
                 firstpix.as_mut_ptr(),
                 2,
-                joutarray[10..].as_ptr() as *const _ as *const c_void,
-                core::ptr::from_ref(&jnul) as *const c_void,
+                joutarray[10..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&jnul).cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 5;
@@ -1008,8 +1008,8 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 firstpix.as_mut_ptr(),
                 2,
-                eoutarray[14..].as_ptr() as *const _ as *const c_void,
-                core::ptr::from_ref(&enul) as *const c_void,
+                eoutarray[14..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&enul).cast::<c_void>(),
                 &mut status,
             );
             firstpix[0] = 9;
@@ -1019,8 +1019,8 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 firstpix.as_mut_ptr(),
                 2,
-                doutarray[18..].as_ptr() as *const _ as *const c_void,
-                core::ptr::from_ref(&dnul) as *const c_void,
+                doutarray[18..].as_ptr().cast::<c_void>(),
+                core::ptr::from_ref(&dnul).cast::<c_void>(),
                 &mut status,
             );
 
@@ -1525,7 +1525,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSTRING,
                 c"key_pkys".as_ptr(),
-                iskey.as_mut_ptr() as *mut c_void,
+                iskey.as_mut_ptr().cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1541,7 +1541,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLOGICAL,
                 c"key_pkyl".as_ptr(),
-                core::ptr::from_mut(&mut ilkey) as *mut c_void,
+                core::ptr::from_mut(&mut ilkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1556,7 +1556,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TBYTE,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut cval) as *mut c_void,
+                core::ptr::from_mut(&mut cval).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1571,7 +1571,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TSHORT,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ishtkey) as *mut c_void,
+                core::ptr::from_mut(&mut ishtkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1586,7 +1586,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TINT,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ilkey) as *mut c_void,
+                core::ptr::from_mut(&mut ilkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1602,7 +1602,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ijkey) as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1618,7 +1618,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TFLOAT,
                 c"KEY_PKYE".as_ptr(),
-                core::ptr::from_mut(&mut iekey) as *mut c_void,
+                core::ptr::from_mut(&mut iekey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1634,7 +1634,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TDOUBLE,
                 c"KEY_PKYD".as_ptr(),
-                core::ptr::from_mut(&mut idkey) as *mut c_void,
+                core::ptr::from_mut(&mut idkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1704,7 +1704,7 @@ pub fn main() -> ExitCode {
             ffgkyc(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYC".as_ptr(),
-                inekey.as_mut_ptr() as *mut _ as *mut [f32; 2],
+                inekey.as_mut_ptr().cast::<[f32; 2]>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1719,7 +1719,7 @@ pub fn main() -> ExitCode {
             ffgkyc(
                 fptr.as_mut_ptr(),
                 c"KEY_PKFC".as_ptr(),
-                inekey.as_mut_ptr() as *mut _ as *mut [f32; 2],
+                inekey.as_mut_ptr().cast::<[f32; 2]>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1734,7 +1734,7 @@ pub fn main() -> ExitCode {
             ffgkym(
                 fptr.as_mut_ptr(),
                 c"KEY_PKYM".as_ptr(),
-                indkey[..2].as_mut_ptr() as *mut _ as *mut [f64; 2],
+                indkey[..2].as_mut_ptr().cast::<[f64; 2]>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1749,7 +1749,7 @@ pub fn main() -> ExitCode {
             ffgkym(
                 fptr.as_mut_ptr(),
                 c"KEY_PKFM".as_ptr(),
-                indkey[..2].as_mut_ptr() as *mut _ as *mut [f64; 2],
+                indkey[..2].as_mut_ptr().cast::<[f64; 2]>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1788,7 +1788,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ijkey) as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1817,7 +1817,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ijkey) as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1846,7 +1846,7 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 TLONG,
                 c"KEY_PKYJ".as_ptr(),
-                core::ptr::from_mut(&mut ijkey) as *mut c_void,
+                core::ptr::from_mut(&mut ijkey).cast::<c_void>(),
                 comment.as_mut_ptr(),
                 &mut status,
             );
@@ -1877,7 +1877,7 @@ pub fn main() -> ExitCode {
             );
 
             /* free the memory for the long string value */
-            fffree(lsptr as *mut c_void, &mut status);
+            fffree(lsptr.cast::<c_void>(), &mut status);
 
             /* get size and position in header */
             ffghps(fptr.as_mut_ptr(), &mut existkeys, &mut keynum, &mut status);
@@ -2372,9 +2372,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 0,
                 &mut status,
@@ -2748,7 +2748,7 @@ pub fn main() -> ExitCode {
                     ii + 1,
                     ttype[0],
                     tunit[0],
-                    cvalstr.as_mut_ptr() as *mut [c_char; 2],
+                    cvalstr.as_mut_ptr().cast::<[c_char; 2]>(),
                     &mut repeat,
                     &mut scale,
                     &mut zero,
@@ -2808,10 +2808,10 @@ pub fn main() -> ExitCode {
                 rowlen as LONGLONG,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
                 tbcol.as_ptr(),
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
                 &mut status,
             );
@@ -3540,10 +3540,10 @@ pub fn main() -> ExitCode {
                 rowlen as LONGLONG,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
                 tbcol.as_ptr(),
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
                 &mut status,
             );
@@ -3592,9 +3592,9 @@ pub fn main() -> ExitCode {
                 tmpfptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
                 0,
                 &mut status,
@@ -4497,9 +4497,9 @@ pub fn main() -> ExitCode {
                 tmpfptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 0,
                 &mut status,
@@ -4631,9 +4631,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 pcount as LONGLONG,
                 &mut status,
@@ -4830,7 +4830,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_ptr() as *const c_short,
+                imgarray.as_ptr().cast::<c_short>(),
                 &mut status,
             );
             print!("\nWrote whole 2D array: ffp2di status = {status}\n");
@@ -4848,7 +4848,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_mut_ptr() as *mut c_short,
+                imgarray.as_mut_ptr().cast::<c_short>(),
                 &mut anynull,
                 &mut status,
             );
@@ -4884,7 +4884,7 @@ pub fn main() -> ExitCode {
                 naxes.as_ptr(),
                 fpixels.as_ptr(),
                 lpixels.as_ptr(),
-                imgarray2.as_ptr() as *const c_short,
+                imgarray2.as_ptr().cast::<c_short>(),
                 &mut status,
             );
             print!("\nWrote subset 2D array: ffpssi status = {status}\n");
@@ -4896,7 +4896,7 @@ pub fn main() -> ExitCode {
                 19,
                 naxes[0] as LONGLONG,
                 naxes[1] as LONGLONG,
-                imgarray.as_mut_ptr() as *mut c_short,
+                imgarray.as_mut_ptr().cast::<c_short>(),
                 &mut anynull,
                 &mut status,
             );
@@ -4931,7 +4931,7 @@ pub fn main() -> ExitCode {
                 lpixels.as_ptr(),
                 inc.as_ptr(),
                 0,
-                imgarray.as_mut_ptr() as *mut c_short,
+                imgarray.as_mut_ptr().cast::<c_short>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5042,9 +5042,9 @@ pub fn main() -> ExitCode {
                 fptr.as_mut_ptr(),
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 binname.as_ptr(),
                 pcount as LONGLONG,
                 &mut status,
@@ -5129,7 +5129,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 1,
-                inskey.as_ptr() as *const *const c_char,
+                inskey.as_ptr().cast::<*const c_char>(),
                 &mut status,
             ); /* write string values */
             ffpcll(fptr.as_mut_ptr(), 2, 1, 1, 1, larray.as_ptr(), &mut status); /* write logicals */
@@ -5191,7 +5191,7 @@ pub fn main() -> ExitCode {
                     ii,
                     1,
                     1,
-                    inskey.as_ptr() as *const *const c_char,
+                    inskey.as_ptr().cast::<*const c_char>(),
                     &mut status,
                 ); /* write string values */
 
@@ -5488,7 +5488,7 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 1,
                 2,
-                boutarray[0..].as_ptr() as *const c_void,
+                boutarray[0..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5496,7 +5496,7 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 3,
                 2,
-                ioutarray[2..].as_ptr() as *const c_void,
+                ioutarray[2..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5504,7 +5504,7 @@ pub fn main() -> ExitCode {
                 TINT,
                 5,
                 2,
-                koutarray[4..].as_ptr() as *const c_void,
+                koutarray[4..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5512,7 +5512,7 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 7,
                 2,
-                ioutarray[6..].as_ptr() as *const c_void,
+                ioutarray[6..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5520,7 +5520,7 @@ pub fn main() -> ExitCode {
                 TLONG,
                 9,
                 2,
-                joutarray[8..].as_ptr() as *const c_void,
+                joutarray[8..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5528,7 +5528,7 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 11,
                 2,
-                eoutarray[10..].as_ptr() as *const c_void,
+                eoutarray[10..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             ffppr(
@@ -5536,7 +5536,7 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 13,
                 2,
-                doutarray[12..].as_ptr() as *const c_void,
+                doutarray[12..].as_ptr().cast::<c_void>(),
                 &mut status,
             );
             println!("ffppr status = {status}");
@@ -5554,8 +5554,8 @@ pub fn main() -> ExitCode {
                 TBYTE,
                 1,
                 14,
-                core::ptr::from_mut(&mut bnul) as *mut c_void,
-                binarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut bnul).cast::<c_void>(),
+                binarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5564,8 +5564,8 @@ pub fn main() -> ExitCode {
                 TSHORT,
                 1,
                 14,
-                core::ptr::from_mut(&mut inul) as *mut c_void,
-                iinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut inul).cast::<c_void>(),
+                iinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5574,8 +5574,8 @@ pub fn main() -> ExitCode {
                 TINT,
                 1,
                 14,
-                core::ptr::from_mut(&mut knul) as *mut c_void,
-                kinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut knul).cast::<c_void>(),
+                kinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5584,8 +5584,8 @@ pub fn main() -> ExitCode {
                 TLONG,
                 1,
                 14,
-                core::ptr::from_mut(&mut jnul) as *mut c_void,
-                jinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut jnul).cast::<c_void>(),
+                jinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5594,8 +5594,8 @@ pub fn main() -> ExitCode {
                 TFLOAT,
                 1,
                 14,
-                core::ptr::from_mut(&mut enul) as *mut c_void,
-                einarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut enul).cast::<c_void>(),
+                einarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5604,8 +5604,8 @@ pub fn main() -> ExitCode {
                 TDOUBLE,
                 1,
                 14,
-                core::ptr::from_mut(&mut dnul) as *mut c_void,
-                dinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut dnul).cast::<c_void>(),
+                dinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5734,7 +5734,7 @@ pub fn main() -> ExitCode {
                 &mut xinc,
                 &mut yinc,
                 &mut rot,
-                ctype.as_mut_ptr() as *mut [c_char; 5],
+                ctype.as_mut_ptr().cast::<[c_char; 5]>(),
                 &mut status,
             );
             println!("Read WCS keywords with ffgics status = {status}");
@@ -5752,7 +5752,7 @@ pub fn main() -> ExitCode {
                 xinc,
                 yinc,
                 rot,
-                ctype.as_ptr() as *const [c_char; 5],
+                ctype.as_ptr().cast::<[c_char; 5]>(),
                 &mut xpos,
                 &mut ypos,
                 &mut status,
@@ -5778,7 +5778,7 @@ pub fn main() -> ExitCode {
                 xinc,
                 yinc,
                 rot,
-                ctype.as_ptr() as *const [c_char; 5],
+                ctype.as_ptr().cast::<[c_char; 5]>(),
                 &mut xpix,
                 &mut ypix,
                 &mut status,
@@ -5818,9 +5818,9 @@ pub fn main() -> ExitCode {
                 ASCII_TBL,
                 nrows,
                 tfields,
-                ttype.as_ptr() as *const *const c_char,
-                tform.as_ptr() as *const *const c_char,
-                tunit.as_ptr() as *const *const c_char,
+                ttype.as_ptr().cast::<*const c_char>(),
+                tform.as_ptr().cast::<*const c_char>(),
+                tunit.as_ptr().cast::<*const c_char>(),
                 tblname.as_ptr(),
                 &mut status,
             );
@@ -5842,7 +5842,7 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 3,
-                onskey.as_ptr() as *const c_void,
+                onskey.as_ptr().cast::<c_void>(),
                 &mut status,
             ); /* write string values */
 
@@ -5867,7 +5867,7 @@ pub fn main() -> ExitCode {
                     1,
                     1,
                     2,
-                    boutarray.as_ptr() as *const c_void,
+                    boutarray.as_ptr().cast::<c_void>(),
                     &mut status,
                 );
                 ffpcl(
@@ -5877,7 +5877,7 @@ pub fn main() -> ExitCode {
                     3,
                     1,
                     2,
-                    ioutarray[2..].as_ptr() as *const c_void,
+                    ioutarray[2..].as_ptr().cast::<c_void>(),
                     &mut status,
                 );
                 ffpcl(
@@ -5887,7 +5887,7 @@ pub fn main() -> ExitCode {
                     5,
                     1,
                     2,
-                    joutarray[4..].as_ptr() as *const c_void,
+                    joutarray[4..].as_ptr().cast::<c_void>(),
                     &mut status,
                 );
                 ffpcl(
@@ -5897,7 +5897,7 @@ pub fn main() -> ExitCode {
                     7,
                     1,
                     2,
-                    eoutarray[6..].as_ptr() as *const c_void,
+                    eoutarray[6..].as_ptr().cast::<c_void>(),
                     &mut status,
                 );
                 ffpcl(
@@ -5907,7 +5907,7 @@ pub fn main() -> ExitCode {
                     9,
                     1,
                     2,
-                    doutarray[8..].as_ptr() as *const c_void,
+                    doutarray[8..].as_ptr().cast::<c_void>(),
                     &mut status,
                 );
             }
@@ -5921,8 +5921,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut bnul) as *mut c_void,
-                binarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut bnul).cast::<c_void>(),
+                binarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5933,8 +5933,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut inul) as *mut c_void,
-                iinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut inul).cast::<c_void>(),
+                iinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5945,8 +5945,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut knul) as *mut c_void,
-                kinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut knul).cast::<c_void>(),
+                kinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5957,8 +5957,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut jnul) as *mut c_void,
-                jinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut jnul).cast::<c_void>(),
+                jinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5969,8 +5969,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut enul) as *mut c_void,
-                einarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut enul).cast::<c_void>(),
+                einarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -5981,8 +5981,8 @@ pub fn main() -> ExitCode {
                 1,
                 1,
                 10,
-                core::ptr::from_mut(&mut dnul) as *mut c_void,
-                dinarray.as_mut_ptr() as *mut c_void,
+                core::ptr::from_mut(&mut dnul).cast::<c_void>(),
+                dinarray.as_mut_ptr().cast::<c_void>(),
                 &mut anynull,
                 &mut status,
             );
@@ -6170,7 +6170,7 @@ pub fn main() -> ExitCode {
               ########################
             */
             checksum = 1234567890;
-            ffesum(checksum, 0, asciisum.as_mut_ptr() as *mut [c_char; 17]);
+            ffesum(checksum, 0, asciisum.as_mut_ptr().cast::<[c_char; 17]>());
             print!(
                 "\nEncode checksum: {} -> {}\n",
                 checksum,
@@ -6282,19 +6282,19 @@ pub fn main() -> ExitCode {
 
         /* free the allocated memory */
         for item in inskey {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in ttype {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in tform {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
 
         for item in tunit {
-            free(item as *mut c_void);
+            free(item.cast::<c_void>());
         }
     }
 
