@@ -16,6 +16,16 @@ stubs, and main() below is fitsverify.c's main().  */
 // `temp1` buffer, which is filled and then unused. Keeping them preserves the
 // line-by-line correspondence with the original.
 #![allow(unused_assignments, unused_variables)]
+// Same C-shape allowances the library takes (see src/lib.rs): the C declares
+// its locals at the top of a function and indexes its arrays with an explicit
+// counter, and its integer widths are target-dependent, so a cast that looks
+// like a no-op on this target is load-bearing on another.
+#![allow(
+    clippy::needless_late_init,
+    clippy::needless_range_loop,
+    clippy::manual_range_contains,
+    clippy::unnecessary_cast
+)]
 
 use std::process::ExitCode;
 

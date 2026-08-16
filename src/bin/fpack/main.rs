@@ -11,6 +11,9 @@
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(unused_assignments)]
 #![allow(dead_code)]
+// The C declares its locals at the top of a function, as the library does too
+// (see src/lib.rs).
+#![allow(clippy::needless_late_init)]
 
 mod cfmt;
 mod fpack_h;
