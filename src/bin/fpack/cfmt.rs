@@ -42,6 +42,10 @@ pub(crate) fn not_int(hdusum: c_ulong) -> c_ulong {
 }
 
 #[cfg(test)]
+// 3.14159265 below is a printf input paired with the exact digits C prints for
+// it, not a use of pi as a constant; substituting f64::consts::PI would change
+// the value being formatted.
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
 
