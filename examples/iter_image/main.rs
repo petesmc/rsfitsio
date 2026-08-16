@@ -28,7 +28,8 @@ pub fn main() -> ExitCode {
     let filename = c"iter_image.fit"; /* name of image FITS file */
 
     /* open file */
-    if unsafe { fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) } != 0 {
+    if unsafe { fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) } != 0
+    {
         printerror(status);
     }
 

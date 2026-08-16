@@ -1042,8 +1042,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
-                let str_slice =
-                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
+                let str_slice = slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* complex type test */
@@ -1065,8 +1064,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
-                let str_slice =
-                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
+                let str_slice = slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 // Check for decimal point in value
                 let has_decimal = value_slice.iter().any(|&ch| ch == bb(b'.'));
@@ -1089,8 +1087,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
 
                         let cstr_tmp = CStr::from_ptr(value_ptr);
                         let cstr_len = cstr_tmp.to_bytes_with_nul().len();
-                        let str_slice =
-                            slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
+                        let str_slice = slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                         sscanf_lg_n(
                             str_slice,
@@ -1119,8 +1116,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
 
                 let cstr_tmp = CStr::from_ptr(value_ptr);
                 let cstr_len = cstr_tmp.to_bytes_with_nul().len();
-                let str_slice =
-                    slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
+                let str_slice = slice::from_raw_parts(cstr_tmp.as_ptr(), cstr_len);
 
                 if NGP_TTYPE_UNKNOWN == parser_state.NGP_LINKEY.type_
                 /* integer type test */
@@ -1458,12 +1454,22 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
             i = 0;
             loop {
                 let token = &ngph.tok[i as usize];
-                if 1 == sscanf_d_c(&token.name, cs!(c"TFORM%d%c"), &raw mut ngph_i, &raw mut ngph_ctmp) {
+                if 1 == sscanf_d_c(
+                    &token.name,
+                    cs!(c"TFORM%d%c"),
+                    &raw mut ngph_i,
+                    &raw mut ngph_ctmp,
+                ) {
                     if (NGP_TTYPE_STRING == token.type_) && (ngph_i == (j + 1)) {
                         my_tform = token.value.s;
                     }
                 } else if 1
-                    == sscanf_d_c(&token.name, cs!(c"TTYPE%d%c"), &raw mut ngph_i, &raw mut ngph_ctmp)
+                    == sscanf_d_c(
+                        &token.name,
+                        cs!(c"TTYPE%d%c"),
+                        &raw mut ngph_i,
+                        &raw mut ngph_ctmp,
+                    )
                     && (NGP_TTYPE_STRING == token.type_)
                     && (ngph_i == (j + 1))
                 {
@@ -1664,7 +1670,13 @@ fn ngp_read_xtension(
                     if NGP_TTYPE_STRING == token.type_ {
                         ngph_extname = token.value.s;
                     }
-                } else if 1 == sscanf_d_c(&token.name, cs!(c"NAXIS%d%c"), &raw mut j, &raw mut ngph_ctmp)
+                } else if 1
+                    == sscanf_d_c(
+                        &token.name,
+                        cs!(c"NAXIS%d%c"),
+                        &raw mut j,
+                        &raw mut ngph_ctmp,
+                    )
                     && NGP_TTYPE_INT == token.type_
                     && (j >= 1)
                     && (j <= NGP_MAX_ARRAY_DIM as c_int)

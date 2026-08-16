@@ -44,9 +44,9 @@
 *              express or implied warranty.
 */
 
-use crate::wrappers::read_fill;
 use crate::c_types::{c_char, c_int};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::wrappers::read_fill;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use core::ffi::CStr;
@@ -326,7 +326,11 @@ fn irafrdhead(
     *lihead = nihead as usize;
 
     /* Read IRAF header */
-    let nbr = read_fill(&mut fd, cast_slice_mut(&mut irafheader[..(nbhead as usize)])).unwrap();
+    let nbr = read_fill(
+        &mut fd,
+        cast_slice_mut(&mut irafheader[..(nbhead as usize)]),
+    )
+    .unwrap();
 
     drop(fd); // Close the file
 

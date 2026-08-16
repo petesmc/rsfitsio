@@ -63,7 +63,7 @@ struct memdriver {
     memaddrptr: *mut *mut c_char, /* Pointer to memory address pointer; points either into the caller's variables or into owned_cell. */
     memsizeptr: *mut usize, /* Pointer to the size of the memory allocation; points either into the caller's variables or into owned_cell. */
     owned_cell: *mut OwnedMem, /* non-null iff this slot allocated its own address/size cell (see mem_createmem) */
-    deltasize: usize, /* Suggested increment for reallocating memory */
+    deltasize: usize,          /* Suggested increment for reallocating memory */
     mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* realloc function */
     currentpos: LONGLONG,   /* current file position, relative to start */
     fitsfilesize: LONGLONG, /* size of the FITS file (always <= *memsizeptr) */
@@ -280,9 +280,9 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
     }
 
     /* Use an internally allocated address/size cell.  The C points memaddrptr
-       at the struct's own memaddr field; doing that here would make the table
-       slot self-referential, so the cell gets its own allocation and the
-       pointers are derived from it instead. */
+    at the struct's own memaddr field; doing that here would make the table
+    slot self-referential, so the cell gets its own allocation and the
+    pointers are derived from it instead. */
     let cell = Box::into_raw(Box::new(OwnedMem {
         addr: ptr::null_mut(),
         size: 0,
@@ -592,8 +592,8 @@ pub(crate) fn stdin2file(handle: c_int) -> c_int {
     }
 
     /* fill up the remainder of the buffer.  stdin is typically a pipe, where
-       short reads are the norm rather than the exception, so loop until the
-       buffer is full or the stream ends. */
+    short reads are the norm rather than the exception, so loop until the
+    buffer is full or the stream ends. */
     let mut nread = read_fill(&mut stdin_hdl, cast_slice_mut(&mut recbuf[6..RECBUFLEN])).unwrap();
 
     nread += 6; /* add in the 6 characters in 'SIMPLE' */
@@ -1403,8 +1403,10 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
         /* compress file in  memory to a .gz disk file */
 
         let mut m = MEM_TABLE.lock().unwrap();
-        let in_mem =
-            slice::from_raw_parts(*m[handle as usize].memaddrptr, *m[handle as usize].memsizeptr);
+        let in_mem = slice::from_raw_parts(
+            *m[handle as usize].memaddrptr,
+            *m[handle as usize].memsizeptr,
+        );
 
         if compress2file_from_mem(
             in_mem,

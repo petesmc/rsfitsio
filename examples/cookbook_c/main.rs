@@ -196,7 +196,15 @@ fn writeascii() {
     let extname_cstr = CString::new(extname).unwrap();
 
     /* open with write access the FITS file containing a primary array */
-    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READWRITE, &raw mut status) } != 0 {
+    if unsafe {
+        fits_open_file(
+            &raw mut fptr,
+            filename_cstr.as_ptr(),
+            READWRITE,
+            &raw mut status,
+        )
+    } != 0
+    {
         printerror(status);
     }
 
@@ -319,7 +327,15 @@ fn writebintable() {
     let extname_cstr = CString::new(extname).unwrap();
 
     /* open the FITS file containing a primary array and an ASCII table */
-    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READWRITE, &raw mut status) } != 0 {
+    if unsafe {
+        fits_open_file(
+            &raw mut fptr,
+            filename_cstr.as_ptr(),
+            READWRITE,
+            &raw mut status,
+        )
+    } != 0
+    {
         printerror(status);
     }
 
@@ -415,12 +431,21 @@ fn copyhdu() {
     let outfilename_cstr = CString::new(outfilename).unwrap();
 
     /* open the existing FITS file */
-    if unsafe { fits_open_file(&raw mut infptr, infilename_cstr.as_ptr(), READONLY, &raw mut status) } != 0
+    if unsafe {
+        fits_open_file(
+            &raw mut infptr,
+            infilename_cstr.as_ptr(),
+            READONLY,
+            &raw mut status,
+        )
+    } != 0
     {
         printerror(status);
     }
 
-    if unsafe { fits_create_file(&raw mut outfptr, outfilename_cstr.as_ptr(), &raw mut status) } != 0 {
+    if unsafe { fits_create_file(&raw mut outfptr, outfilename_cstr.as_ptr(), &raw mut status) }
+        != 0
+    {
         /*create FITS file*/
         printerror(status); /* call printerror if error occurs */
     }
@@ -441,7 +466,8 @@ fn copyhdu() {
 
     /* move to the 3rd HDU in the input file */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) } != 0
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) }
+            != 0
     {
         printerror(status);
     }
@@ -502,7 +528,14 @@ fn selectrows() {
     let outfilename_cstr = CString::new(outfilename).unwrap();
 
     /* open the existing FITS files */
-    if unsafe { fits_open_file(&raw mut infptr, infilename_cstr.as_ptr(), READONLY, &raw mut status) } != 0
+    if unsafe {
+        fits_open_file(
+            &raw mut infptr,
+            infilename_cstr.as_ptr(),
+            READONLY,
+            &raw mut status,
+        )
+    } != 0
         || unsafe {
             fits_open_file(
                 &raw mut outfptr,
@@ -517,7 +550,8 @@ fn selectrows() {
 
     /* move to the 3rd HDU in the input file (a binary table in this case) */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) } != 0
+        && unsafe { fits_movabs_hdu(infptr_box.as_mut(), 3, &raw mut hdutype, &raw mut status) }
+            != 0
     {
         printerror(status);
     }
@@ -529,7 +563,8 @@ fn selectrows() {
 
     /* move to the last (2rd) HDU in the output file */
     if let Some(ref mut outfptr_box) = outfptr
-        && unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &raw mut hdutype, &raw mut status) } != 0
+        && unsafe { fits_movabs_hdu(outfptr_box.as_mut(), 2, &raw mut hdutype, &raw mut status) }
+            != 0
     {
         printerror(status);
     }
@@ -543,8 +578,14 @@ fn selectrows() {
 
     /* get number of keywords */
     if let Some(ref mut infptr_box) = infptr
-        && unsafe { fits_get_hdrpos(infptr_box.as_mut(), &raw mut nkeys, &raw mut keypos, &raw mut status) }
-            != 0
+        && unsafe {
+            fits_get_hdrpos(
+                infptr_box.as_mut(),
+                &raw mut nkeys,
+                &raw mut keypos,
+                &raw mut status,
+            )
+        } != 0
     {
         printerror(status);
     }
@@ -703,19 +744,35 @@ fn readheader() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
+    if unsafe {
+        fits_open_file(
+            &raw mut fptr,
+            filename_cstr.as_ptr(),
+            READONLY,
+            &raw mut status,
+        )
+    } != 0
+    {
         printerror(status);
     }
 
     /* attempt to move to next HDU, until we get an EOF error */
     ii = 1;
     while let Some(ref mut fptr_box) = fptr {
-        if unsafe { fits_movabs_hdu(fptr_box.as_mut(), ii, &raw mut hdutype, &raw mut status) } != 0 {
+        if unsafe { fits_movabs_hdu(fptr_box.as_mut(), ii, &raw mut hdutype, &raw mut status) } != 0
+        {
             break;
         }
 
         /* get no. of keywords */
-        if unsafe { fits_get_hdrpos(fptr_box.as_mut(), &raw mut nkeys, &raw mut keypos, &raw mut status) } != 0
+        if unsafe {
+            fits_get_hdrpos(
+                fptr_box.as_mut(),
+                &raw mut nkeys,
+                &raw mut keypos,
+                &raw mut status,
+            )
+        } != 0
         {
             printerror(status);
         }
@@ -776,7 +833,15 @@ fn readimage() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
+    if unsafe {
+        fits_open_file(
+            &raw mut fptr,
+            filename_cstr.as_ptr(),
+            READONLY,
+            &raw mut status,
+        )
+    } != 0
+    {
         printerror(status);
     }
 
@@ -874,7 +939,15 @@ fn readtable() {
 
     let filename_cstr = CString::new(filename).unwrap();
 
-    if unsafe { fits_open_file(&raw mut fptr, filename_cstr.as_ptr(), READONLY, &raw mut status) } != 0 {
+    if unsafe {
+        fits_open_file(
+            &raw mut fptr,
+            filename_cstr.as_ptr(),
+            READONLY,
+            &raw mut status,
+        )
+    } != 0
+    {
         printerror(status);
     }
 
@@ -896,7 +969,9 @@ fn readtable() {
         /*read ASCII, then binary table */
         /* move to the HDU */
         if let Some(ref mut fptr_box) = fptr
-            && unsafe { fits_movabs_hdu(fptr_box.as_mut(), hdunum, &raw mut hdutype, &raw mut status) } != 0
+            && unsafe {
+                fits_movabs_hdu(fptr_box.as_mut(), hdunum, &raw mut hdutype, &raw mut status)
+            } != 0
         {
             printerror(status);
         }

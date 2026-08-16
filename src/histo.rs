@@ -438,10 +438,12 @@ pub(crate) fn ffbinse(
 
                 exprbeg[ii] = binspec
                     .as_ptr()
-                    .wrapping_add(offset_from_binspec + exprbeg_idx).cast_mut();
+                    .wrapping_add(offset_from_binspec + exprbeg_idx)
+                    .cast_mut();
                 exprend[ii] = binspec
                     .as_ptr()
-                    .wrapping_add(offset_from_binspec + exprend_idx).cast_mut();
+                    .wrapping_add(offset_from_binspec + exprend_idx)
+                    .cast_mut();
             }
 
             if *status > 0 {
@@ -4189,7 +4191,8 @@ pub(crate) fn fits_make_histde(
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
                         core::mem::size_of::<iteratorCol>(),
-                    ).cast::<iteratorCol>()
+                    )
+                    .cast::<iteratorCol>()
                 };
                 if iterCols.is_null() {
                     *status = MEMORY_ALLOCATION;
@@ -4274,7 +4277,8 @@ pub(crate) fn fits_make_histde(
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
                     core::mem::size_of::<iteratorCol>(),
-                ).cast::<iteratorCol>()
+                )
+                .cast::<iteratorCol>()
             };
             if iterCols.is_null() {
                 *status = MEMORY_ALLOCATION;

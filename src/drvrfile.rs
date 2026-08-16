@@ -600,10 +600,10 @@ pub(crate) fn file_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     }
 
     /* Read::read is permitted to return fewer bytes than requested (short
-       read), which is not an error -- it happens on NFS/FUSE mounts, when a
-       signal interrupts the call, and under emulation.  Loop until the buffer
-       is full or we hit a genuine end-of-file, so that the nread checks below
-       see the true total rather than the size of the first chunk. */
+    read), which is not an error -- it happens on NFS/FUSE mounts, when a
+    signal interrupts the call, and under emulation.  Loop until the buffer
+    is full or we hit a genuine end-of-file, so that the nread checks below
+    see the true total rather than the size of the first chunk. */
     let stream = handle.fileptr.as_mut().unwrap();
     let mut nread = 0;
     while nread < nbytes {

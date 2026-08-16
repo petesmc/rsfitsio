@@ -294,7 +294,12 @@ pub fn main() -> ExitCode {
 
             println!("CFITSIO TESTPROG\n");
             println!("Try opening then closing a nonexistent file:");
-            fits_open_file(&raw mut fptr, c"tq123x.kjl".as_ptr(), READWRITE, &raw mut status);
+            fits_open_file(
+                &raw mut fptr,
+                c"tq123x.kjl".as_ptr(),
+                READWRITE,
+                &raw mut status,
+            );
             println!(
                 "  ffopen fptr, status  = {} {} (expect an error)",
                 if fptr.is_none() { 0 } else { 1 } as c_ulong,
@@ -1033,7 +1038,10 @@ pub fn main() -> ExitCode {
 
             ffflus(fptr.as_mut_ptr(), &raw mut status); /* flush all data to the disk file */
             println!("ffflus status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /*
               ############################
@@ -1342,13 +1350,17 @@ pub fn main() -> ExitCode {
                     break 'mainloop;
                 }
 
-                if fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) > 0 {
+                if fits_open_file(&raw mut fptr, filename.as_ptr(), READWRITE, &raw mut status) > 0
+                {
                     println!("ERROR: ffopen open file status = {status}");
                     break 'mainloop;
                 }
             }
             print!("\nClosed then reopened the FITS file 10 times.\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             filename[0] = 0;
             ffflnm(fptr.as_mut_ptr(), filename.as_mut_ptr(), &raw mut status);
@@ -1880,7 +1892,12 @@ pub fn main() -> ExitCode {
             fffree(lsptr.cast::<c_void>(), &raw mut status);
 
             /* get size and position in header */
-            ffghps(fptr.as_mut_ptr(), &raw mut existkeys, &raw mut keynum, &raw mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             println!("header contains {existkeys} keywords; located at keyword {keynum} ");
 
             /*
@@ -1976,7 +1993,12 @@ pub fn main() -> ExitCode {
                 card.as_mut_ptr(),
                 &raw mut status,
             );
-            ffghps(fptr.as_mut_ptr(), &raw mut existkeys, &raw mut keynum, &raw mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             keynum -= 2;
 
             print!("\nBefore deleting the HISTORY and DATE keywords...\n");
@@ -2381,10 +2403,18 @@ pub fn main() -> ExitCode {
             );
 
             print!("\nffibin status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /* get size and position in header, and reserve space for more keywords */
-            ffghps(fptr.as_mut_ptr(), &raw mut existkeys, &raw mut keynum, &raw mut status);
+            ffghps(
+                fptr.as_mut_ptr(),
+                &raw mut existkeys,
+                &raw mut keynum,
+                &raw mut status,
+            );
             println!("header contains {existkeys} keywords; located at keyword {keynum} ");
 
             morekeys = 40;
@@ -2485,7 +2515,15 @@ pub fn main() -> ExitCode {
                 doutarray[ii as usize] = ((ii + 1) * signval) as f64;
             }
 
-            ffpcls(fptr.as_mut_ptr(), 1, 1, 1, 3, onskey.as_ptr(), &raw mut status); /* write string values */
+            ffpcls(
+                fptr.as_mut_ptr(),
+                1,
+                1,
+                1,
+                3,
+                onskey.as_ptr(),
+                &raw mut status,
+            ); /* write string values */
             ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &raw mut status); /* write null value */
 
             larray[0] = 0;
@@ -2525,7 +2563,15 @@ pub fn main() -> ExitCode {
             larray[34] = 0;
             larray[35] = 0;
 
-            ffpclx(fptr.as_mut_ptr(), 3, 1, 1, 36, larray.as_ptr(), &raw mut status); /*write bits*/
+            ffpclx(
+                fptr.as_mut_ptr(),
+                3,
+                1,
+                1,
+                36,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /*write bits*/
 
             for ii in 4..9
             /* loop over cols 4 - 8 */
@@ -2681,7 +2727,15 @@ pub fn main() -> ExitCode {
                     status = 0;
                 }
             }
-            ffpcll(fptr.as_mut_ptr(), 2, 1, 1, 21, larray.as_ptr(), &raw mut status); /*write logicals*/
+            ffpcll(
+                fptr.as_mut_ptr(),
+                2,
+                1,
+                1,
+                21,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /*write logicals*/
             ffpclu(fptr.as_mut_ptr(), 2, 11, 1, 1, &raw mut status); /* write null value */
             println!("ffpcl_ status = {status}");
 
@@ -2816,7 +2870,10 @@ pub fn main() -> ExitCode {
                 &raw mut status,
             );
             println!("ffitab status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             ffsnul(fptr.as_mut_ptr(), 1, c"null1".as_ptr(), &raw mut status); /* define null value for int cols */
             ffsnul(fptr.as_mut_ptr(), 2, c"null2".as_ptr(), &raw mut status);
@@ -2888,7 +2945,15 @@ pub fn main() -> ExitCode {
                 doutarray[ii] = (ii + 1) as f64;
             }
 
-            ffpcls(fptr.as_mut_ptr(), 1, 1, 1, 3, onskey.as_ptr(), &raw mut status); /* write string values */
+            ffpcls(
+                fptr.as_mut_ptr(),
+                1,
+                1,
+                1,
+                3,
+                onskey.as_ptr(),
+                &raw mut status,
+            ); /* write string values */
             ffpclu(fptr.as_mut_ptr(), 1, 4, 1, 1, &raw mut status); /* write null value */
 
             for ii in 2..6
@@ -3092,7 +3157,14 @@ pub fn main() -> ExitCode {
             );
             uchars[78] = 0;
             print!("\n{}\n", byte_slice_to_str!(&uchars));
-            ffptbb(fptr.as_mut_ptr(), 1, 20, 78, uchars.as_ptr(), &raw mut status);
+            ffptbb(
+                fptr.as_mut_ptr(),
+                1,
+                20,
+                78,
+                uchars.as_ptr(),
+                &raw mut status,
+            );
 
             /*
               #########################################
@@ -3662,7 +3734,10 @@ pub fn main() -> ExitCode {
                 break 'mainloop;
             }
 
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             ffghsp(
                 fptr.as_mut_ptr(),
@@ -4639,7 +4714,10 @@ pub fn main() -> ExitCode {
                 &raw mut status,
             );
             println!("ffibin status = {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             extvers = 3;
             ffpkyj(
@@ -4816,7 +4894,10 @@ pub fn main() -> ExitCode {
                 &raw mut status,
             );
             print!("\nCreate image extension: ffiimg status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             for jj in 0..30 {
                 for ii in 0..19 {
@@ -4961,7 +5042,10 @@ pub fn main() -> ExitCode {
                 &raw mut status,
             );
             print!("\nCreate image extension: ffiimg status = {status}\n");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             strcpy_safe(&mut filename, cs!(c"t1q2s3v4.tmp"));
             ffinit(&raw mut tmpfptr, filename.as_ptr(), &raw mut status);
@@ -4990,7 +5074,10 @@ pub fn main() -> ExitCode {
 
             ffdhdu(fptr.as_mut_ptr(), &raw mut hdutype, &raw mut status);
             println!("Delete the image extension; hdutype, status = {hdutype} {status}");
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
 
             /*
               ###########################################################
@@ -5132,8 +5219,24 @@ pub fn main() -> ExitCode {
                 inskey.as_ptr().cast::<*const c_char>(),
                 &raw mut status,
             ); /* write string values */
-            ffpcll(fptr.as_mut_ptr(), 2, 1, 1, 1, larray.as_ptr(), &raw mut status); /* write logicals */
-            ffpclx(fptr.as_mut_ptr(), 3, 1, 1, 1, larray.as_ptr(), &raw mut status); /* write bits */
+            ffpcll(
+                fptr.as_mut_ptr(),
+                2,
+                1,
+                1,
+                1,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /* write logicals */
+            ffpclx(
+                fptr.as_mut_ptr(),
+                3,
+                1,
+                1,
+                1,
+                larray.as_ptr(),
+                &raw mut status,
+            ); /* write bits */
             ffpclb(
                 fptr.as_mut_ptr(),
                 4,
@@ -5301,7 +5404,10 @@ pub fn main() -> ExitCode {
             strcpy(inskey[0], c" ".as_ptr());
             strcpy_safe(&mut iskey, cs!(c" "));
 
-            println!("HDU number = {}", ffghdn(fptr.as_mut_ptr(), &raw mut hdunum));
+            println!(
+                "HDU number = {}",
+                ffghdn(fptr.as_mut_ptr(), &raw mut hdunum)
+            );
             for ii in 1..=20 as LONGLONG
             /* loop over rows 1 - 20 */
             {
@@ -6202,7 +6308,12 @@ pub fn main() -> ExitCode {
             );
             println!("{:.30}", byte_slice_to_str!(&card));
 
-            ffgcks(fptr.as_mut_ptr(), &raw mut datsum, &raw mut checksum, &raw mut status);
+            ffgcks(
+                fptr.as_mut_ptr(),
+                &raw mut datsum,
+                &raw mut checksum,
+                &raw mut status,
+            );
             println!("ffgcks data checksum, status = {datsum}, {status}");
 
             ffvcks(

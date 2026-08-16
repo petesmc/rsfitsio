@@ -1,10 +1,10 @@
+use crate::helpers::aligned::AlignedBytes;
 use core::ffi::CStr;
 use core::slice;
 use core::{cmp, mem};
 use std::collections::HashMap;
 use std::os::raw::c_schar;
 use std::sync::{LazyLock, Mutex, OnceLock};
-use crate::helpers::aligned::AlignedBytes;
 
 use hcompress::read::HCDecoder;
 use hcompress::write::HCEncoder;
@@ -14242,7 +14242,7 @@ mod tests {
         assert_eq!(is_comp, 1, "expected a compressed image in HDU 2");
 
         /* ffgpv_safe reinterprets this byte buffer as `datatype`, so it has to
-           be aligned for the widest type the callers pass, not just for u8. */
+        be aligned for the widest type the callers pass, not just for u8. */
         let mut decompressed = AlignedBytes::new();
         decompressed
             .try_resize_zeroed(original_bytes.len())
