@@ -3639,7 +3639,7 @@ mod fits_tests {
     fn block(cards: &[&str]) -> String {
         let mut h: String = cards.iter().map(|c| card(c)).collect();
         h.push_str(&card("END"));
-        while h.len() % 2880 != 0 {
+        while !h.len().is_multiple_of(2880) {
             h.push(' ');
         }
         h
