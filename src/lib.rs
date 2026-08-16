@@ -210,7 +210,7 @@ macro_rules! slice_to_str {
         {
             let __b: &[u8] = cast_slice($e);
             let __n = __b.iter().position(|&c| c == 0).unwrap_or(__b.len());
-            ::std::string::String::from_utf8_lossy(&__b[..__n])
+            ::alloc::string::String::from_utf8_lossy(&__b[..__n])
         }
     };
 }
