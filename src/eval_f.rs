@@ -3909,6 +3909,16 @@ pub(crate) fn ffffrw_work_safe(
     }
 }
 
+/// Backing store for the C's `DEFAULT_TAGS`, which fits_pixel_filter hands to
+/// the caller through `filter->tag`.
+struct DefaultTags([*mut c_char; 1]);
+
+/* SAFETY: the single element points into a 'static string literal and is only
+ever read; nothing writes through it or through the array. */
+unsafe impl Sync for DefaultTags {}
+
+static DEFAULT_TAGS: DefaultTags = DefaultTags([c"X".as_ptr().cast_mut()]);
+
 /*--------------------------------------------------------------------------*/
 /// Apply pixel filtering operations
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -3942,7 +3952,10 @@ pub fn fits_pixel_filter_safer(
         let result: *mut Node = core::ptr::null_mut();
         let mut datatype: c_int = 0;
 
-        let default_tags: [c_char; 2] = [b'X' as c_char, 0];
+        /* C: `char *DEFAULT_TAGS[] = { "X" };` -- an array holding one string
+        pointer, not a string.  It is assigned to filter->tag, which the caller
+        owns and reads back as tag[0][0], so it must both have pointer type and
+        outlive this frame. */
         let mut msg: [c_char; 256] = [0; 256];
         let mut write_blank_kwd: c_int = 0; /* write BLANK if any output nulls? */
         let mut lParse: ParseData = ParseData::default();
@@ -3958,7 +3971,7 @@ pub fn fits_pixel_filter_safer(
         }
 
         if filter.tag.is_null() || (*filter.tag).is_null() || **filter.tag == 0 {
-            filter.tag = default_tags.as_ptr() as *mut *mut c_char;
+            filter.tag = DEFAULT_TAGS.0.as_ptr().cast_mut();
             if debug_pixfilter != 0 {
                 println!("using default tag '{}'", **filter.tag);
             }
