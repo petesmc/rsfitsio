@@ -183,7 +183,6 @@ pub(crate) struct yyguts_t {
     /* This is a shorthand accessor to get at the "extra" data inside the
     lexer, which in our case is the lParse (ParseData) structure */
     /* How ParseData is accessed from the lexer, i.e. by yyextra */
-    pub(crate) yyextra_r: *mut ParseData,
 
     /* The rest are the same as the globals declared in the non-reentrant scanner. */
     pub(crate) yyin_r: *mut FILE,
@@ -449,6 +448,7 @@ static YY_CHK: [flex_int16_t; 474] = [
 pub(crate) fn fits_parser_yylex(
     yylval_param: &mut FITS_PARSER_YYSTYPE,
     yyscanner: &mut yyguts_t,
+    lParse: &mut ParseData,
 ) -> c_int {
     unsafe {
         let mut yy_amount_of_matched_text: c_int = 0;
@@ -552,7 +552,7 @@ pub(crate) fn fits_parser_yylex(
                                 }
                                 if len >= MAX_STRLEN {
                                     let mut errMsg: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg,
                                         cs!(c"Bit string exceeds maximum length: '"),
@@ -578,7 +578,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_0 = strlen_safe(yyscanner.yytext()) as c_int;
                                 if len_0 >= 256 as c_int {
                                     let mut errMsg: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg,
                                         cs!(c"Bit string exceeds maximum length: '"),
@@ -654,7 +654,7 @@ pub(crate) fn fits_parser_yylex(
                                     if !chunk.is_empty() {
                                         if bitlen + chunk_len > bitcap {
                                             let mut errMsg: [c_char; 100] = [0; 100];
-                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            lParse.status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
                                                 &mut errMsg,
                                                 cs!(c"Bit string exceeds maximum length: '"),
@@ -687,7 +687,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_1 = strlen_safe(yyscanner.yytext()) as c_int;
                                 if len_1 >= 256 as c_int {
                                     let mut errMsg_0: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg_0,
                                         cs!(c"Hex string exceeds maximum length: '"),
@@ -794,7 +794,7 @@ pub(crate) fn fits_parser_yylex(
                                     if !chunk.is_empty() {
                                         if bitlen + chunk_len > bitcap {
                                             let mut errMsg: [c_char; 100] = [0; 100];
-                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            lParse.status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
                                                 &mut errMsg,
                                                 cs!(c"Hex string exceeds maximum length: '"),
@@ -937,7 +937,7 @@ pub(crate) fn fits_parser_yylex(
                                             as c_int;
                                         if len_2 >= MAX_STRLEN - 1 {
                                             let mut errMsg: [c_char; 100] = [0; 100];
-                                            (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                            lParse.status = PARSE_SYNTAX_ERR;
                                             strcpy_safe(
                                                 &mut errMsg,
                                                 cs!(c"Keyword string exceeds maximum length: '"),
@@ -964,9 +964,10 @@ pub(crate) fn fits_parser_yylex(
                                         CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
                                     );
 
-                                    result = ((*yyscanner.yyextra_r).getData)
-                                        .expect("non-null function pointer")(
-                                        &mut *yyscanner.yyextra_r,
+                                    let get_data = (lParse.getData)
+                                        .expect("non-null function pointer");
+                                    result = get_data(
+                                        lParse,
                                         yytext_r_slice,
                                         yyscanner
                                             .yylval_r
@@ -982,7 +983,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_3 = (strlen_safe(yyscanner.yytext())).wrapping_sub(2) as c_int;
                                 if len_3 >= 256 as c_int {
                                     let mut errMsg_1: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg_1,
                                         cs!(c"String exceeds maximum length: '"),
@@ -1007,7 +1008,7 @@ pub(crate) fn fits_parser_yylex(
                                 len_4 = strlen_safe(yyscanner.yytext()) as c_int;
                                 if len_4 >= MAX_STRLEN {
                                     let mut errMsg: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg,
                                         cs!(c"Variable exceeds maximum length: '"),
@@ -1035,7 +1036,7 @@ pub(crate) fn fits_parser_yylex(
                                 );
 
                                 dtype = fits_parser_yyGetVariable(
-                                    &mut *yyscanner.yyextra_r,
+                                    lParse,
                                     yytext_r_slice,
                                     yyscanner.yylval_r.as_mut().unwrap(),
                                 );
@@ -1047,7 +1048,7 @@ pub(crate) fn fits_parser_yylex(
 
                                 if len >= MAX_STRLEN as usize {
                                     let mut errMsg: [c_char; 100] = [0; 100];
-                                    (*yyscanner.yyextra_r).status = PARSE_SYNTAX_ERR;
+                                    lParse.status = PARSE_SYNTAX_ERR;
                                     strcpy_safe(
                                         &mut errMsg,
                                         cs!(c"Function exceeds maximum length: '"),
@@ -1195,7 +1196,7 @@ pub(crate) fn fits_parser_yylex(
                                         break;
                                     }
                                 } else {
-                                    match yy_get_next_buffer(yyscanner) {
+                                    match yy_get_next_buffer(yyscanner, lParse) {
                                         EOB_ACT_END_OF_FILE => {
                                             yyscanner.yy_did_buffer_switch_on_eof = 0;
                                             if fits_parser_yywrap() != 0 {
@@ -1284,7 +1285,7 @@ pub(crate) fn fits_parser_yylex(
  *	EOB_ACT_CONTINUE_SCAN - continue scanning from current position
  *	EOB_ACT_END_OF_FILE - end of file
  */
-fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
+fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
     unsafe {
         let mut source: *mut c_char = yyscanner.yytext_r;
         let mut number_to_move: c_int = 0;
@@ -1391,7 +1392,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
                (as per old ftools.skel)
             */
             yyscanner.yy_n_chars = expr_read(
-                &mut *yyscanner.yyextra_r,
+                lParse,
                 &mut (top_state.yy_ch_buf).as_deref_mut().unwrap()[number_to_move as usize..],
                 num_to_read,
             );
@@ -1446,7 +1447,9 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t) -> c_int {
             YY_END_OF_BUFFER_CHAR;
         (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] =
             YY_END_OF_BUFFER_CHAR;
-        yyscanner.yytext_r = &raw mut *(top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
+        /* Take the slice pointer directly rather than round-tripping it
+           through a place expression. */
+        yyscanner.yytext_r = (top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         ret_val
     }
 }
@@ -1831,29 +1834,15 @@ fn yy_fatal_error(msg: &str) -> ! {
     exit(YY_EXIT_FAILURE);
 }
 
-/** Set the user-defined data. This data is never touched by the scanner.
- * @param user_defined The data to be associated with this scanner.
- * @param yyscanner The scanner object.
+/* Allocate and initialise the scanner.
+ *
+ * The C uses yylex_init_extra to stash a ParseData pointer in the scanner's
+ * yyextra field, which the lexer rules then dereference.  That made ParseData
+ * reachable both through yyextra and through the `&mut ParseData` that ffiprs
+ * and yyparse hold, which is aliasing UB.  ParseData is threaded through
+ * yylex as an argument instead, so the scanner no longer refers to it at all.
  */
-pub(crate) fn fits_parser_yyset_extra(user_defined: &mut ParseData, yyscanner: &mut yyguts_t) {
-    yyscanner.yyextra_r = user_defined;
-}
-
-/* yylex_init_extra has the same functionality as yylex_init, but follows the
- * convention of taking the scanner as the last argument. Note however, that
- * this is a *pointer* to a scanner, as it will be allocated by this call (and
- * is the reason, too, why this function also must handle its own declaration).
- * The user defined value in the first argument will be available to yyalloc in
- * the yyextra field.
- */
-pub(crate) fn fits_parser_yylex_init_extra(
-    yy_user_defined: &mut ParseData,
-    ptr_yy_globals: &mut Option<Box<yyguts_t>>,
-) -> c_int {
-    let mut dummy_yyguts = yyguts_t::default();
-
-    fits_parser_yyset_extra(yy_user_defined, &mut dummy_yyguts);
-
+pub(crate) fn fits_parser_yylex_init(ptr_yy_globals: &mut Option<Box<yyguts_t>>) -> c_int {
     let b = box_try_new(yyguts_t::default());
 
     if b.is_err() {
@@ -1861,11 +1850,7 @@ pub(crate) fn fits_parser_yylex_init_extra(
         return 1;
     }
 
-    let mut b = b.unwrap();
-
-    fits_parser_yyset_extra(yy_user_defined, &mut b);
-
-    *ptr_yy_globals = Some(b);
+    *ptr_yy_globals = Some(b.unwrap());
 
     yy_init_globals(ptr_yy_globals.as_deref_mut().unwrap())
 }
