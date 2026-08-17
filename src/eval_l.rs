@@ -60,7 +60,7 @@ use core::slice;
 use std::process::exit;
 
 use bytemuck::cast_slice;
-use libc::{ENOMEM, FILE, atof, atol, fileno, free, fwrite, isatty, size_t};
+use libc::{ENOMEM, FILE, fileno, fwrite, isatty, size_t};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
 use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData, ValueSort};
@@ -69,7 +69,8 @@ use crate::fitsio2::FSTRCMP;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use crate::wrappers::{
-    isdigit_safe, strcat_safe, strcpy_safe, strlen_safe, strncat_safe, strncpy_safe,
+    atof_safe, atol_safe, isdigit_safe, strcat_safe, strcpy_safe, strlen_safe, strncat_safe,
+    strncpy_safe,
 };
 use crate::{STDOUT, cs, eval_tab::*};
 use crate::{
@@ -868,7 +869,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             8 => {
                                 (*yyscanner.yylval_r) =
-                                    FITS_PARSER_YYSTYPE::Long(atol(yyscanner.yytext_r));
+                                    FITS_PARSER_YYSTYPE::Long(atol_safe(yyscanner.yytext()));
                                 return fits_parser_yytokentype::LONG as c_int;
                             }
                             9 => {
@@ -883,7 +884,7 @@ pub(crate) fn fits_parser_yylex(
                             }
                             10 => {
                                 (*yyscanner.yylval_r) =
-                                    FITS_PARSER_YYSTYPE::Double(atof(yyscanner.yytext_r));
+                                    FITS_PARSER_YYSTYPE::Double(atof_safe(yyscanner.yytext()));
                                 return fits_parser_yytokentype::DOUBLE as c_int;
                             }
                             11 => {
@@ -1890,8 +1891,17 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
             (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top)) = None;
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
-        /* Destroy the stack itself. */
-        free(yyscanner.yy_buffer_stack.cast::<c_void>());
+        /* Destroy the stack itself. yyensure_buffer_stack builds it as a Rust
+           Vec, so reconstruct and drop it: handing it to libc free is an
+           allocator mismatch. len == capacity == yy_buffer_stack_max, the same
+           convention the grow path in yyensure_buffer_stack uses. */
+        if !(yyscanner.yy_buffer_stack).is_null() {
+            drop(Vec::from_raw_parts(
+                yyscanner.yy_buffer_stack,
+                yyscanner.yy_buffer_stack_max,
+                yyscanner.yy_buffer_stack_max,
+            ));
+        }
         yyscanner.yy_buffer_stack = core::ptr::null_mut();
 
         /* Reset the globals. This is important in a non-reentrant scanner so the next time
