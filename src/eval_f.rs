@@ -427,19 +427,27 @@ pub fn ffsrow_safe(
         /*  Fill out Info data for parser  */
         /***********************************/
 
-        Info.dataPtr = malloc((inExt.numRows + 1) as usize * size_of::<c_char>());
-        Info.nullPtr = ptr::null_mut();
-        Info.maxRows = inExt.numRows as c_long;
-        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
-        if Info.dataPtr.is_null() {
+        /* The row-selection flags are owned here and handed to the parser as a
+        raw pointer, so the error returns below cannot leak them. Everything
+        after this point reaches them through Info.dataPtr, never through
+        `row_flags` directly, so the pointer stays the only live borrow. */
+        let mut row_flags: Vec<c_char> = Vec::new();
+        if row_flags
+            .try_reserve_exact((inExt.numRows + 1) as usize)
+            .is_err()
+        {
             ffpmsg_str("Unable to allocate memory for row selection");
             ffcprs(&mut lParse);
             *status = MEMORY_ALLOCATION;
             return *status;
         }
+        /* resize also zero terminates the array */
+        row_flags.resize((inExt.numRows + 1) as usize, 0);
 
-        /* make sure array is zero terminated */
-        *Info.dataPtr.cast::<c_char>().add(inExt.numRows as usize) = 0;
+        Info.dataPtr = row_flags.as_mut_ptr().cast::<c_void>();
+        Info.nullPtr = ptr::null_mut();
+        Info.maxRows = inExt.numRows as c_long;
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
 
         if constant != 0 {
             /*  Set all rows to the same value from constant result  */
@@ -480,7 +488,6 @@ pub fn ffsrow_safe(
                 .try_reserve_exact(cmp::max(500000, rdlen) as usize)
                 .is_err()
             {
-                FREE!(Info.dataPtr);
                 ffcprs(&mut lParse);
                 *status = MEMORY_ALLOCATION;
                 return *status;
@@ -658,7 +665,6 @@ pub fn ffsrow_safe(
             } /*  End of HEAP copy  */
         }
 
-        FREE!(Info.dataPtr);
         ffcprs(&mut lParse);
 
         ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
@@ -3357,27 +3363,46 @@ pub fn fffrwc_safe(
         /* Allocate data arrays for each parameter */
         /*******************************************/
 
+        /* The C wrote each array straight into lParse.colData[parNo].array.
+        `iteratorCol` is Copy here, so pulling the descriptor out into a local
+        and assigning through that -- as this used to -- set the field on a
+        copy that was then dropped: the allocation leaked and the parser saw
+        whatever array the descriptor already had. Index the vector directly.
+
+        The arrays are owned for the length of the call instead of malloc'd,
+        so the error return below and every path after it release them without
+        a cleanup loop. Pushing to these outer vectors moves the inner Vec
+        headers but not their heap data, so the pointers handed to colData
+        stay valid. */
+        let mut lng_arrays: Vec<Vec<c_long>> = Vec::new();
+        let mut dbl_arrays: Vec<Vec<c_double>> = Vec::new();
+        let mut str_blocks: Vec<Vec<c_char>> = Vec::new();
+        let mut str_ptrs: Vec<Vec<*mut c_char>> = Vec::new();
+
         parNo = lParse.nCols;
         while parNo > 0 {
             parNo -= 1;
-            let mut col_data = lParse.colData[parNo as usize];
-            match col_data.datatype {
+            match lParse.colData[parNo as usize].datatype {
                 TLONG => {
-                    col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_long>());
-                    if !col_data.array.is_null() {
-                        let array_ptr = col_data.array.cast::<c_long>();
-                        *array_ptr.wrapping_add(0) = 1234554321;
-                    } else {
+                    let mut v: Vec<c_long> = Vec::new();
+                    if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
                         *status = MEMORY_ALLOCATION;
+                    } else {
+                        v.resize((ntimes + 1) as usize, 0);
+                        v[0] = 1234554321;
+                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                        lng_arrays.push(v);
                     }
                 }
                 TDOUBLE => {
-                    col_data.array = malloc(((ntimes + 1) as usize) * size_of::<c_double>());
-                    if !col_data.array.is_null() {
-                        let array_ptr = col_data.array.cast::<c_double>();
-                        *array_ptr.wrapping_add(0) = DOUBLENULLVALUE;
-                    } else {
+                    let mut v: Vec<c_double> = Vec::new();
+                    if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
                         *status = MEMORY_ALLOCATION;
+                    } else {
+                        v.resize((ntimes + 1) as usize, 0.0);
+                        v[0] = DOUBLENULLVALUE;
+                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                        dbl_arrays.push(v);
                     }
                 }
                 TSTRING => {
@@ -3391,24 +3416,25 @@ pub fn fffrwc_safe(
                     ) == 0
                     {
                         alen += 1;
-                        col_data.array = malloc(((ntimes + 1) as usize) * size_of::<*mut c_char>());
-                        if !col_data.array.is_null() {
-                            let str_array = col_data.array.cast::<*mut c_char>();
-                            let first_str = malloc(((ntimes + 1) * alen) as usize).cast::<c_char>();
-                            *str_array.wrapping_add(0) = first_str;
-                            if !first_str.is_null() {
-                                for elem in 1..=(ntimes as usize) {
-                                    *str_array.wrapping_add(elem) = (*str_array
-                                        .wrapping_add(elem - 1))
-                                    .wrapping_add(alen as usize);
-                                }
-                                *(*str_array.wrapping_add(0)).wrapping_add(0) = 0;
-                            } else {
-                                free(col_data.array);
-                                *status = MEMORY_ALLOCATION;
-                            }
-                        } else {
+                        let nelems = (ntimes + 1) as usize;
+                        let mut block: Vec<c_char> = Vec::new();
+                        let mut ptrs: Vec<*mut c_char> = Vec::new();
+                        if block.try_reserve_exact(nelems * alen as usize).is_err()
+                            || ptrs.try_reserve_exact(nelems).is_err()
+                        {
                             *status = MEMORY_ALLOCATION;
+                        } else {
+                            /* one block, `alen` characters per element -- the
+                            zero fill also gives element 0 its empty string */
+                            block.resize(nelems * alen as usize, 0);
+                            let base = block.as_mut_ptr();
+                            for elem in 0..nelems {
+                                ptrs.push(base.add(elem * alen as usize));
+                            }
+                            lParse.colData[parNo as usize].array =
+                                ptrs.as_mut_ptr().cast::<c_void>();
+                            str_blocks.push(block);
+                            str_ptrs.push(ptrs);
                         }
                     }
                 }
@@ -3416,19 +3442,6 @@ pub fn fffrwc_safe(
             }
 
             if *status != 0 {
-                while parNo > 0 {
-                    parNo -= 1;
-                    let col_data2 = lParse.colData[parNo as usize];
-                    if (col_data2).datatype == TSTRING {
-                        let str_array = (col_data2).array.cast::<*mut c_char>();
-                        if !str_array.is_null() {
-                            let mut first_str = *str_array.wrapping_add(0);
-                            FREE!(first_str);
-                        }
-                    }
-                    let mut array_ptr = (col_data2).array;
-                    FREE!(array_ptr);
-                }
                 return *status;
             }
         }
@@ -3439,7 +3452,7 @@ pub fn fffrwc_safe(
 
         if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
-                let result_node = lParse.Nodes[lParse.resultNode as usize];
+                let result_node = &lParse.Nodes[lParse.resultNode as usize];
                 result = (result_node).value.data.log();
                 let mut elem = ntimes;
                 while elem > 0 {
@@ -3466,20 +3479,8 @@ pub fn fffrwc_safe(
         /* Clean up */
         /************/
 
-        parNo = lParse.nCols;
-        while parNo > 0 {
-            parNo -= 1;
-            let col_data = lParse.colData[parNo as usize];
-            if (col_data).datatype == TSTRING {
-                let str_array = (col_data).array.cast::<*mut c_char>();
-                if !str_array.is_null() {
-                    let mut first_str = *str_array.wrapping_add(0);
-                    FREE!(first_str);
-                }
-            }
-            let mut array_ptr = (col_data).array;
-            FREE!(array_ptr);
-        }
+        /* No cleanup loop: lng_arrays/dbl_arrays/str_blocks/str_ptrs own the
+        column arrays and drop at the end of this function. */
 
         if constant != 0 {
             lParse.nCols = nCol;

@@ -70,7 +70,6 @@
 
 use alloc::rc::Rc;
 use core::ffi::CStr;
-use core::slice;
 use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -528,13 +527,6 @@ impl UnaryOp {
 }
 
 const PARSER_VECTOR_MIN_ADDR: usize = 0x1000;
-
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub(crate) union yyalloc {
-    pub yyss_alloc: yy_state_t,
-    pub yyvs_alloc: FITS_PARSER_YYSTYPE,
-}
 
 /* YYFINAL -- State number of the termination state.  */
 const YYFINAL: usize = 2;
@@ -1463,12 +1455,25 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
         let mut yystate: yy_state_fast_t = 0;
         let mut yyerrstatus: c_int = 0;
         let mut yystacksize: c_long = YYINITDEPTH as c_long;
-        let mut yyssa: [yy_state_t; YYINITDEPTH] = [0; YYINITDEPTH];
-        let mut yyss: &mut [yy_state_t] = &mut yyssa;
+        /* The C started on two YYINITDEPTH stack arrays and, on overflow,
+        carved a replacement for both out of a single alloca-turned-malloc
+        block, stepping through it with the `yyalloc` union to get the
+        alignment right. Two owned stacks do the same job: growing is a
+        `resize`, which keeps what is already there just as the memcpy pair
+        did, and they are released on every exit -- the C leaked them on the
+        error gotos. Starting on the heap also keeps YYINITDEPTH parser values
+        (a few tens of KB) off the call stack. */
+        let mut yyss: Vec<yy_state_t> = Vec::new();
+        let mut yyvs: Vec<FITS_PARSER_YYSTYPE> = Vec::new();
+        if yyss.try_reserve_exact(YYINITDEPTH).is_err()
+            || yyvs.try_reserve_exact(YYINITDEPTH).is_err()
+        {
+            lParse.status = MEMORY_ALLOCATION;
+            return 2; /* as yyexhaustedlab does */
+        }
+        yyss.resize(YYINITDEPTH, 0);
+        yyvs.resize(YYINITDEPTH, FITS_PARSER_YYSTYPE::Empty);
         let mut yyssp: usize = 0;
-        let mut yyvsa: [FITS_PARSER_YYSTYPE; YYINITDEPTH] =
-            [FITS_PARSER_YYSTYPE::Empty; YYINITDEPTH];
-        let mut yyvs: &mut [FITS_PARSER_YYSTYPE] = &mut yyvsa;
         let mut yyvsp: usize = 0;
         let mut yyn: c_int = 0;
         let mut yyresult: c_int = 0;
@@ -1484,7 +1489,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                 eprintln!("Entering state {}", yystate);
             }
             assert!(0 <= yystate && yystate < YYNSTATES as c_int);
-            YY_STACK_PRINT!(yyss, yyssp);
+            YY_STACK_PRINT!(&yyss[..], yyssp);
 
             yyss[yyssp] = yystate as yy_state_t;
             if (yystacksize - 1) as usize <= yyssp {
@@ -1499,58 +1504,17 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                     /* Extend the stack our own way.  */
                     yystacksize = YYMAXDEPTH as c_long;
                 }
-                let yyss1: *mut yy_state_t = yyss.as_mut_ptr();
-                let mut yyptr: *mut yyalloc = malloc(
-                    ((yystacksize
-                        * (::core::mem::size_of::<yy_state_t>() as c_ulong as c_long
-                            + ::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong as c_long)
-                        + (::core::mem::size_of::<yyalloc>() as c_ulong as c_long - 1))
-                        as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                )
-                .cast::<yyalloc>();
-                if yyptr.is_null() {
+                let want = yystacksize as usize;
+                if yyss.try_reserve_exact(want - yyss.len()).is_err()
+                    || yyvs.try_reserve_exact(want - yyvs.len()).is_err()
+                {
                     current_block = 11794367917084412820; // goto yyexhaustedlab;
                     break;
                 }
-                let mut yynewbytes: c_long = 0;
-                libc::memcpy(
-                    core::ptr::from_mut::<yy_state_t>(&mut (*yyptr).yyss_alloc).cast::<c_void>(),
-                    yyss.as_ptr().cast::<c_void>(),
-                    (yysize as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<yy_state_t>() as c_ulong)
-                        as libc::size_t,
-                );
-                yyss =
-                    slice::from_raw_parts_mut(&raw mut (*yyptr).yyss_alloc, yystacksize as usize);
-                yynewbytes = yystacksize
-                    * ::core::mem::size_of::<yy_state_t>() as c_ulong as c_long
-                    + (::core::mem::size_of::<yyalloc>() as c_ulong as c_long - 1);
-                yyptr = yyptr.offset(
-                    (yynewbytes / ::core::mem::size_of::<yyalloc>() as c_ulong as c_long) as isize,
-                );
-                let mut yynewbytes_0: c_long = 0;
-                libc::memcpy(
-                    core::ptr::from_mut::<FITS_PARSER_YYSTYPE>(&mut (*yyptr).yyvs_alloc)
-                        .cast::<c_void>(),
-                    yyvs.as_ptr().cast::<c_void>(),
-                    (yysize as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong)
-                        as libc::size_t,
-                );
-                yyvs =
-                    slice::from_raw_parts_mut(&raw mut (*yyptr).yyvs_alloc, yystacksize as usize);
-                yynewbytes_0 = yystacksize
-                    * ::core::mem::size_of::<FITS_PARSER_YYSTYPE>() as c_ulong as c_long
-                    + (::core::mem::size_of::<yyalloc>() as c_ulong as c_long - 1);
-                yyptr = yyptr.offset(
-                    (yynewbytes_0 / ::core::mem::size_of::<yyalloc>() as c_ulong as c_long)
-                        as isize,
-                );
-                if yyss1 != yyssa.as_mut_ptr() {
-                    free(yyss1.cast::<c_void>());
-                }
+                /* resize keeps the yysize entries already on the stacks, which
+                is what the C's two memcpys did. */
+                yyss.resize(want, 0);
+                yyvs.resize(want, FITS_PARSER_YYSTYPE::Empty);
                 yyssp = yysize as usize - 1;
                 yyvsp = yysize as usize - 1;
                 if (yystacksize - 1) as usize <= yyssp {
@@ -7608,11 +7572,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
             yyssp -= 1;
         }
 
-        let yyss_tmp_ptr = yyss.as_ptr();
-
-        if yyss_tmp_ptr != yyssa.as_ptr() {
-            free(yyss_tmp_ptr.cast::<c_void>().cast_mut());
-        }
+        /* yyss and yyvs own their storage and release it here. */
         yyresult
     }
 }
@@ -11102,13 +11062,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
         let mut theParams: [usize; 10] = [0; 10];
         let mut vector: [c_int; 10] = [0; 10];
         let mut allConst: c_int = 0;
-        let mut pVals: [lval; 10] = [lval {
+        let mut pVals: [lval; 10] = core::array::from_fn(|_| lval {
             nelem: 0,
             naxis: 0,
             naxes: [0; 5],
             undef: core::ptr::null_mut::<c_char>(),
             data: NodeValue::Empty,
-        }; 10];
+        });
         let mut pNull: [c_char; 10] = [0; 10];
         let mut ival: c_long = 0;
         let mut dval: c_double = 0.0;
@@ -12194,27 +12154,24 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                             let mut dptr: *mut c_long =
                                 (lParse.Nodes[theParams[0]]).value.data.lng_buf();
                             let mut uptr: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
-                            let mptr: *mut c_long = malloc(
-                                (::core::mem::size_of::<c_long>() as c_ulong)
-                                    .wrapping_mul(nelem as c_ulong)
-                                    .try_into()
-                                    .unwrap(),
-                            )
-                            .cast::<c_long>();
-                            let mut irow: c_int = 0;
                             /* Allocate temporary storage for this row, since the
-                            quickselect function will scramble the contents */
-                            if mptr.is_null() {
+                            quickselect function will scramble the contents. It is
+                            owned rather than malloc'd, so the early error return
+                            below cannot leak it. */
+                            let mut mvec: Vec<c_long> = Vec::new();
+                            let mut irow: c_int = 0;
+                            if mvec.try_reserve_exact(nelem as usize).is_err() {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
                                 free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
+                                mvec.resize(nelem as usize, 0);
                                 irow = 0;
                                 while c_long::from(irow) < row {
-                                    let mut p: *mut c_long = mptr;
                                     let mut nelem1: c_int = nelem as c_int;
+                                    let mut p: usize = 0; /* C: p walked mptr */
                                     loop {
                                         let fresh80 = nelem1;
                                         nelem1 -= 1;
@@ -12222,21 +12179,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if c_int::from(*uptr) == 0 {
-                                            let fresh81 = p;
-                                            p = p.offset(1);
-                                            *fresh81 = *dptr; /* Only advance the dest pointer if we copied */
+                                            mvec[p] = *dptr; /* Only advance the dest index if we copied */
+                                            p += 1;
                                         }
                                         dptr = dptr.offset(1); /* Advance the source pointer ... */
                                         uptr = uptr.offset(1); /* ... and source "undef" pointer */
                                     }
-                                    nelem1 = p.offset_from(mptr) as c_long as c_int; /* Number of accepted data points */
+                                    nelem1 = p as c_int; /* Number of accepted data points */
                                     if nelem1 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
-                                            .offset(irow as isize) = qselect_median(
-                                            slice::from_raw_parts_mut(mptr, nelem1 as usize),
-                                        );
+                                            .offset(irow as isize) =
+                                            qselect_median(&mut mvec[..nelem1 as usize]);
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow as isize) = 1;
@@ -12245,33 +12200,30 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     irow += 1;
                                 }
-                                free(mptr.cast::<c_void>());
+                                /* mvec owns the scratch; it is freed on scope exit. */
                             }
                         } else {
                             let mut dptr_0: *mut c_double =
                                 (lParse.Nodes[theParams[0]]).value.data.dbl_buf();
                             let mut uptr_0: *mut c_char = (lParse.Nodes[theParams[0]]).value.undef;
-                            let mptr_0: *mut c_double = malloc(
-                                (::core::mem::size_of::<c_double>() as c_ulong)
-                                    .wrapping_mul(nelem as c_ulong)
-                                    .try_into()
-                                    .unwrap(),
-                            )
-                            .cast::<c_double>();
-                            let mut irow_0: c_int = 0;
                             /* Allocate temporary storage for this row, since the
-                            quickselect function will scramble the contents */
-                            if mptr_0.is_null() {
+                            quickselect function will scramble the contents. It is
+                            owned rather than malloc'd, so the early error return
+                            below cannot leak it. */
+                            let mut mvec_0: Vec<c_double> = Vec::new();
+                            let mut irow_0: c_int = 0;
+                            if mvec_0.try_reserve_exact(nelem as usize).is_err() {
                                 fits_parser_yyerror(
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
                                 free((lParse.Nodes[this_node_idx]).value.data.raw());
                             } else {
+                                mvec_0.resize(nelem as usize, 0.0);
                                 irow_0 = 0;
                                 while c_long::from(irow_0) < row {
-                                    let mut p_0: *mut c_double = mptr_0;
                                     let mut nelem1_0: c_int = nelem as c_int;
+                                    let mut p_0: usize = 0; /* C: p_0 walked mptr_0 */
                                     loop {
                                         let fresh82 = nelem1_0;
                                         nelem1_0 -= 1;
@@ -12279,21 +12231,19 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                             break;
                                         }
                                         if c_int::from(*uptr_0) == 0 {
-                                            let fresh83 = p_0;
-                                            p_0 = p_0.offset(1);
-                                            *fresh83 = *dptr_0; /* Only advance the dest pointer if we copied */
+                                            mvec_0[p_0] = *dptr_0; /* Only advance the dest index if we copied */
+                                            p_0 += 1;
                                         }
                                         dptr_0 = dptr_0.offset(1); /* Advance the source pointer ... */
                                         uptr_0 = uptr_0.offset(1); /* ... and source "undef" pointer */
                                     }
-                                    nelem1_0 = p_0.offset_from(mptr_0) as c_long as c_int; /* Number of accepted data points */
+                                    nelem1_0 = p_0 as c_int; /* Number of accepted data points */
                                     if nelem1_0 > 0 {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 0;
                                         *((lParse.Nodes[this_node_idx]).value.data.dbl_buf())
-                                            .offset(irow_0 as isize) = qselect_median(
-                                            slice::from_raw_parts_mut(mptr_0, nelem1_0 as usize),
-                                        );
+                                            .offset(irow_0 as isize) =
+                                            qselect_median(&mut mvec_0[..nelem1_0 as usize]);
                                     } else {
                                         *((lParse.Nodes[this_node_idx]).value.undef)
                                             .offset(irow_0 as isize) = 1;
@@ -12302,7 +12252,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     }
                                     irow_0 += 1;
                                 }
-                                free(mptr_0.cast::<c_void>());
+                                /* mvec_0 owns the scratch; it is freed on scope exit. */
                             }
                         }
                     }

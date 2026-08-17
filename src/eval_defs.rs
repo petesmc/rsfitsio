@@ -105,16 +105,23 @@ pub(crate) enum BufferKind {
 /// matched the node's sort. The accessors below assert it, so that class of
 /// mistake is a panic in a debug build instead of undefined behaviour.
 ///
-/// The buffer is still a raw allocation rather than a `Vec`. The `Do_*`
-/// routines read two operand buffers while writing a third, all indexed out of
-/// `ParseData::Nodes`; owning the storage would make that a borrow conflict,
-/// and untangling it is a separate change from tagging the union.
+/// The buffer is still a raw allocation rather than a `Vec`. Two things stand
+/// in the way, neither of them `Copy`:
+///
+/// * The `Do_*` routines read two operand buffers while writing a third, all
+///   indexed out of `ParseData::Nodes`. That needs one `&mut` and two `&` at
+///   distinct indices -- `split_at_mut` territory, since the two operands may
+///   be the same node.
+/// * Only *computed* nodes own their buffer. `Evaluate_Parser` re-points every
+///   *column* node at `varData[column].data` before each evaluation, and for a
+///   String column that is the iterator's own array, laid out by `ffiter`. An
+///   owning arm would need a borrowed one beside it, and the ownership question
+///   moves to `ffiter`. See `notes/EVAL_STRING_STORAGE.md`.
+///
 /// The `Text` arm makes this 264 bytes where the others need 16. That is the
-/// union's own footprint, so it is not a regression, and boxing it is not an
-/// option while `lval` and `Node` are `Copy` and get copied by value all
-/// through the engine.
+/// union's own footprint, so it is not a regression.
 #[allow(clippy::large_enum_variant)]
-#[derive(Copy, Clone, Default)]
+#[derive(Clone, Default)]
 pub(crate) enum NodeValue {
     /// A freshly allocated node, or one whose buffer has been freed.
     #[default]
@@ -290,7 +297,7 @@ fn wrong_arm(want: &str, got: &NodeValue) -> ! {
     panic!("node value is {got:?}, expected {want}");
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Clone)]
 pub(crate) struct lval {
     pub nelem: c_long,
     pub naxis: c_int,
@@ -336,7 +343,7 @@ impl lval {
     }
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Clone)]
 pub(crate) struct Node {
     pub operation: c_int,
     pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
