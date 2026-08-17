@@ -11062,13 +11062,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
         let mut theParams: [usize; 10] = [0; 10];
         let mut vector: [c_int; 10] = [0; 10];
         let mut allConst: c_int = 0;
-        let mut pVals: [lval; 10] = [lval {
+        let mut pVals: [lval; 10] = core::array::from_fn(|_| lval {
             nelem: 0,
             naxis: 0,
             naxes: [0; 5],
             undef: core::ptr::null_mut::<c_char>(),
             data: NodeValue::Empty,
-        }; 10];
+        });
         let mut pNull: [c_char; 10] = [0; 10];
         let mut ival: c_long = 0;
         let mut dval: c_double = 0.0;

@@ -3452,7 +3452,7 @@ pub fn fffrwc_safe(
 
         if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
-                let result_node = lParse.Nodes[lParse.resultNode as usize];
+                let result_node = &lParse.Nodes[lParse.resultNode as usize];
                 result = (result_node).value.data.log();
                 let mut elem = ntimes;
                 while elem > 0 {
