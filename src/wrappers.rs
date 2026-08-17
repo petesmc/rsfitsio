@@ -2,7 +2,7 @@ use core::{cmp, ffi::CStr, str::FromStr};
 
 use bytemuck::cast_slice;
 
-use crate::c_types::{c_char, c_int};
+use crate::c_types::{c_char, c_int, c_long};
 
 use crate::bb;
 
@@ -235,6 +235,50 @@ pub(crate) fn isspace(c: c_char) -> bool {
     c == bb(b' ') || c == bb(b'\t') || c == bb(b'\n') || c == bb(b'\r') || c == 0x0b || c == 0x0c
 }
 
+/// C `atol`: leading optional whitespace and sign, then decimal digits.
+///
+/// Matches the C on the two edge cases Rust's `parse` gets differently:
+/// a value that does not fit saturates to `c_long::MIN`/`MAX` rather than
+/// failing, and input with no digits at all yields 0.
+pub fn atol_safe(cs: &[c_char]) -> c_long {
+    let bytes: &[u8] = cast_slice(cs);
+    let mut i = 0;
+
+    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+        i += 1;
+    }
+
+    let negative = match bytes.get(i) {
+        Some(b'-') => {
+            i += 1;
+            true
+        }
+        Some(b'+') => {
+            i += 1;
+            false
+        }
+        _ => false,
+    };
+
+    let mut acc: c_long = 0;
+    let mut overflow = false;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        let d = c_long::from(bytes[i] - b'0');
+        /* Accumulate negatively so that c_long::MIN is representable. */
+        match acc.checked_mul(10).and_then(|a| a.checked_sub(d)) {
+            Some(next) => acc = next,
+            None => overflow = true,
+        }
+        i += 1;
+    }
+
+    if overflow {
+        return if negative { c_long::MIN } else { c_long::MAX };
+    }
+
+    if negative { acc } else { -acc }
+}
+
 pub fn atof_safe(cs: &[c_char]) -> f64 {
     let mut dummy = 0;
     strtod_safe(cs, &mut dummy)
@@ -261,9 +305,18 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
         si += 1;
     }
 
+    /* Start of the literal itself, sign included: the digit-by-digit
+       accumulation below is not correctly rounded (it compounds a rounding
+       error per fractional digit, so e.g. 12345.6789 comes out as
+       12345.678899999999), so once the extent of the literal is known the
+       decimal case re-parses this span with Rust's correctly-rounded parser
+       and only falls back to the accumulated value if that fails. */
+    let literal_start = si;
+
     let mut result: f64 = 0.0;
     let mut exponent: Option<f64> = None;
     let mut radix = 10;
+    let mut is_inf_or_nan = false;
 
     let result_sign = match s[si] as u8 {
         b'-' => {
@@ -283,11 +336,13 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     if rust_s.to_lowercase().starts_with("inf") {
         result = f64::INFINITY;
         si += 3;
+        is_inf_or_nan = true;
     } else if rust_s.to_lowercase().starts_with("nan") {
         // we cannot signal negative NaN in LLVM backed languages
         // https://github.com/rust-lang/rust/issues/73328 , https://github.com/rust-lang/rust/issues/81261
         result = f64::NAN;
         si += 3;
+        is_inf_or_nan = true;
     } else {
         if s[si] as u8 == b'0' && s[si + 1] as u8 == b'x' {
             si += 2;
@@ -345,10 +400,17 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
                         _ => unreachable!(),
                     };
 
+                    /* Saturate rather than panic: `1e400` overflows a u128
+                       pow, and the C just returns inf/0 for out-of-range
+                       exponents. The correctly-rounded re-parse below produces
+                       the real value whenever the literal is well-formed. */
+                    let magnitude = exponent_base
+                        .checked_pow(exponent_value)
+                        .map_or(f64::INFINITY, |m| m as f64);
                     if is_exponent_positive {
-                        Some(exponent_base.pow(exponent_value) as f64)
+                        Some(magnitude)
                     } else {
-                        Some(1.0 / (exponent_base.pow(exponent_value) as f64))
+                        Some(1.0 / magnitude)
                     }
                 } else {
                     // Exponent had no valid digits after 'e'/'p' and '+'/'-', rollback
@@ -361,6 +423,15 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     }
 
     *endptr = si;
+
+    /* Correctly-rounded re-parse of the decimal case; see literal_start. */
+    if !is_inf_or_nan
+        && radix == 10
+        && let Ok(text) = str::from_utf8(cast_slice(&s[literal_start..si]))
+        && let Ok(parsed) = text.parse::<f64>()
+    {
+        return parsed;
+    }
 
     if let Some(exponent) = exponent {
         result_sign * result * exponent
@@ -822,5 +893,76 @@ mod tests {
         let result = strtod_safe(&input[1..], &mut endp);
         assert_eq!(result, 21.0);
         assert_eq!(endp, 2);
+    }
+}
+
+#[cfg(test)]
+mod libc_parity_tests {
+    use super::*;
+    use crate::c_types::c_long;
+
+    /// NUL-terminated `[c_char]` from a `&str`, as the callers always pass.
+    fn cc(s: &str) -> Vec<c_char> {
+        let mut v: Vec<c_char> = s.bytes().map(|b| b as c_char).collect();
+        v.push(0);
+        v
+    }
+
+    /// Inputs exercised against the C: plain values, the precision cases that
+    /// digit-by-digit accumulation gets wrong, signs, whitespace, exponents,
+    /// trailing junk, and the no-digits case.
+    const FLOAT_CASES: &[&str] = &[
+        "0", "1", "1.5", "2.", ".5", "-1.5", "+1.5", "  3.75", "1e3", "1E3", "1.5e-3", "1.5E+3",
+        "3.25", "0.1", "0.2", "0.3", "12345.6789", "1234567.891011", "0.000123456789",
+        "9007199254740993", "1.7976931348623157e308", "2.2250738585072014e-308", "1e-400",
+        "1e400", "123abc", "abc", "", "   ", "-0", "0.0000000000000001",
+    ];
+
+    const LONG_CASES: &[&str] = &[
+        "0", "1", "-1", "+1", "  42", "42abc", "abc", "", "   ", "-0", "2147483647",
+        "-2147483648", "9223372036854775807", "-9223372036854775808",
+        "99999999999999999999", "-99999999999999999999", "007", "-  5", "1 2",
+    ];
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_atof_safe_matches_libc_atof() {
+        for case in FLOAT_CASES {
+            let s = cc(case);
+            let got = atof_safe(&s);
+            let want = unsafe { libc::atof(s.as_ptr()) };
+            assert!(
+                got == want || (got.is_nan() && want.is_nan()),
+                "atof({case:?}): atof_safe gave {got:?}, libc gave {want:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn test_atol_safe_matches_libc_atol() {
+        for case in LONG_CASES {
+            let s = cc(case);
+            let got = atol_safe(&s);
+            let want: c_long = unsafe { libc::atol(s.as_ptr()) };
+            assert_eq!(got, want, "atol({case:?})");
+        }
+    }
+
+    /// The specific regression: accumulating fractional digits by hand made
+    /// this 12345.678899999999, so row filters comparing it with `==` failed.
+    #[test]
+    fn test_atof_safe_is_correctly_rounded() {
+        assert_eq!(atof_safe(&cc("12345.6789")), 12345.6789);
+        assert_eq!(atof_safe(&cc("0.000123456789")), 0.000123456789);
+        assert_eq!(atof_safe(&cc("1234567.891011")), 1234567.891011);
+    }
+
+    /// C saturates on overflow rather than failing.
+    #[test]
+    fn test_atol_safe_saturates_like_c() {
+        assert_eq!(atol_safe(&cc("99999999999999999999")), c_long::MAX);
+        assert_eq!(atol_safe(&cc("-99999999999999999999")), c_long::MIN);
+        assert_eq!(atol_safe(&cc("-9223372036854775808")), c_long::MIN);
     }
 }
