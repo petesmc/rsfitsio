@@ -116,6 +116,45 @@ fn release_owned_cell(d: &mut memdriver) {
 }
 
 /*--------------------------------------------------------------------------*/
+/// Resize a driver-owned buffer, returning the new address or null on failure.
+///
+/// mem_createmem allocates the buffer with Rust's allocator (a `Vec`), so it
+/// has to be resized and freed through the same allocator; handing it to the C
+/// realloc is an allocator mismatch. Buffers supplied by the caller through
+/// mem_openmem keep using the caller's realloc function, which is correct
+/// because the caller allocated them -- `owned_cell` is what distinguishes the
+/// two.
+///
+/// Grows with zeroed bytes, matching what mem_truncate did by hand after
+/// calling realloc.
+unsafe fn owned_realloc(ptr: *mut c_char, newsize: usize) -> *mut c_char {
+    unsafe {
+        let mut allocations = ALLOCATIONS.lock().unwrap();
+
+        let Some((len, capacity)) = allocations.remove(&(ptr as usize)) else {
+            /* Not one of ours; refuse rather than free it with the wrong
+               allocator. */
+            return ptr::null_mut();
+        };
+
+        let mut v = Vec::from_raw_parts(ptr, len, capacity);
+
+        if newsize > v.len() && v.try_reserve_exact(newsize - v.len()).is_err() {
+            /* Put it back so the close path can still release it. */
+            let (p, l, c) = vec_into_raw_parts(v);
+            allocations.insert(p as usize, (l, c));
+            return ptr::null_mut();
+        }
+        v.resize(newsize, 0);
+        v.shrink_to(newsize);
+
+        let (p, l, c) = vec_into_raw_parts(v);
+        allocations.insert(p as usize, (l, c));
+        p
+    }
+}
+
+/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_init() -> c_int {
     0
 }
@@ -305,6 +344,7 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
             release_owned_cell(&mut m[ii]);
             return FILE_NOT_OPENED;
         } else {
+            v.resize(msize, 0);
             let (p, l, c) = vec_into_raw_parts(v);
             ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
             unsafe { *m[ii].memaddrptr = p };
@@ -330,27 +370,31 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
         //let m = &mut memTable;
 
         /* call the memory reallocation function, if defined */
-        if m[handle].mem_realloc.is_some() {
-            /* explicit LONGLONG->size_t cast */
-            let ptr = (m[handle].mem_realloc.unwrap())(
-                (*(m[handle].memaddrptr)).cast::<c_void>(),
-                filesize,
-            );
+        if !m[handle].owned_cell.is_null() || m[handle].mem_realloc.is_some() {
+            let oldsize = *(m[handle].memsizeptr);
+            let ptr = if m[handle].owned_cell.is_null() {
+                /* caller's buffer, so the caller's realloc */
+                let p = (m[handle].mem_realloc.unwrap())(
+                    (*(m[handle].memaddrptr)).cast::<c_void>(),
+                    filesize,
+                )
+                .cast::<c_char>();
+                /* if allocated more memory, initialize it to zero */
+                if !p.is_null() && filesize > oldsize {
+                    memset(p.add(oldsize).cast::<c_void>(), 0, filesize - oldsize);
+                }
+                p
+            } else {
+                /* our own Vec: owned_realloc already zeroes any growth */
+                owned_realloc(*(m[handle].memaddrptr), filesize)
+            };
+
             if ptr.is_null() {
                 ffpmsg_str("Failed to reallocate memory (mem_truncate)");
                 return MEMORY_ALLOCATION;
             }
 
-            /* if allocated more memory, initialize it to zero */
-            if filesize > *(m[handle].memsizeptr) {
-                memset(
-                    ptr.add(*(m[handle].memsizeptr)),
-                    0,
-                    (filesize) - *(m[handle].memsizeptr),
-                );
-            }
-
-            *(m[handle].memaddrptr) = ptr.cast::<c_char>();
+            *(m[handle].memaddrptr) = ptr;
             *(m[handle].memsizeptr) = filesize;
 
             m[handle].currentpos = filesize as LONGLONG;
@@ -1485,7 +1529,7 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
         let mut m = MEM_TABLE.lock().unwrap();
 
         if (m[hdl].currentpos + nbytes) as usize > *(m[hdl].memsizeptr) {
-            if m[hdl].mem_realloc.is_none() {
+            if m[hdl].owned_cell.is_null() && m[hdl].mem_realloc.is_none() {
                 ffpmsg_str("realloc function not defined (mem_write)");
                 return WRITE_ERROR;
             }
@@ -1502,15 +1546,20 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
                 *(m[hdl].memsizeptr) + m[hdl].deltasize,
             );
 
-            /* call the realloc function */
-            let ptr =
-                (m[hdl].mem_realloc.unwrap())((*(m[hdl].memaddrptr)).cast::<c_void>(), newsize);
+            /* call the realloc function; see owned_realloc for why a
+               driver-owned buffer cannot go through the C one */
+            let ptr = if m[hdl].owned_cell.is_null() {
+                (m[hdl].mem_realloc.unwrap())((*(m[hdl].memaddrptr)).cast::<c_void>(), newsize)
+                    .cast::<c_char>()
+            } else {
+                owned_realloc(*(m[hdl].memaddrptr), newsize)
+            };
             if ptr.is_null() {
                 ffpmsg_str("Failed to reallocate memory (mem_write)");
                 return MEMORY_ALLOCATION;
             }
 
-            *(m[hdl].memaddrptr) = ptr.cast::<c_char>();
+            *(m[hdl].memaddrptr) = ptr;
             *(m[hdl].memsizeptr) = newsize;
         }
 
