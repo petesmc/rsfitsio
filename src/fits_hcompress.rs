@@ -1,8 +1,11 @@
 /* H-compress routines */
 
+use bytemuck::cast_slice_mut;
+use hcompress::write::HCEncoder;
+
 use crate::c_types::{c_char, c_int, c_long};
 
-use crate::fitsio::{LONGLONG, NULL_MSG};
+use crate::fitsio::{DATA_COMPRESSION_ERR, LONGLONG, NULL_MSG};
 
 /* ---------------------------------------------------------------------- */
 /// Compress the input image using the H-compress algorithm
@@ -19,9 +22,12 @@ use crate::fitsio::{LONGLONG, NULL_MSG};
 /// NOTE: the nx and ny dimensions as defined within this code are reversed from
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
+///
+/// NOTE: `a` is modified in place (the H-transform and digitize steps overwrite
+/// it), which is why it is a `*mut` here and a `&mut [c_int]` in the safe form.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_hcompress(
-    a: *const c_int,
+    a: *mut c_int,
     ny: c_int,
     nx: c_int,
     scale: c_int,
@@ -34,7 +40,7 @@ pub unsafe extern "C" fn fits_hcompress(
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        let a = core::slice::from_raw_parts(a, nx as usize * ny as usize);
+        let a = core::slice::from_raw_parts_mut(a, nx as usize * ny as usize);
         let output = core::slice::from_raw_parts_mut(output, *nbytes as usize);
 
         fits_hcompress_safe(a, ny, nx, scale, output, nbytes, status)
@@ -57,15 +63,47 @@ pub unsafe extern "C" fn fits_hcompress(
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
 pub fn fits_hcompress_safe(
-    _a: &[c_int],
-    _ny: c_int,
-    _nx: c_int,
-    _scale: c_int,
-    _output: &mut [c_char],
-    _nbytes: &mut c_long,
-    _status: &mut c_int,
+    a: &mut [c_int],
+    ny: c_int,
+    nx: c_int,
+    scale: c_int,
+    output: &mut [c_char],
+    nbytes: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
-    todo!()
+    if *status > 0 {
+        return *status;
+    }
+
+    /* The C's htrans() / digitize() / encode() are not in this crate -- they
+    live in the external `hcompress` crate, where HCEncoder::write() is exactly
+    that same sequence.  The C's FFLOCK/FFUNLOCK around encode() guarded the
+    file-scope `noutmax`/bit-buffer globals; the crate keeps that state inside
+    the HCEncoder, so no lock is needed here. */
+
+    /* noutmax = *nbytes;  input value is the allocated size of the array */
+    let noutmax = (*nbytes as usize).min(output.len());
+    *nbytes = 0; /* reset */
+
+    /* DEVIATION: the C's encode() compares its running byte count against
+    `noutmax` and fails with "encode: output buffer too small".  The crate's
+    encoder discards its sink's io::Errors (`let _ = write_all(..)`), so writing
+    straight into `output` would truncate silently.  Encode into a Vec instead
+    and enforce `noutmax` here, so the caller still sees DATA_COMPRESSION_ERR. */
+    let mut buf: Vec<u8> = Vec::with_capacity(noutmax);
+
+    /* H-transform, digitize, then encode and write to the output array */
+    let stat = HCEncoder::new(&mut buf).write(a, ny as usize, nx as usize, scale);
+
+    if stat.is_err() || buf.len() > noutmax {
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
+    }
+
+    cast_slice_mut(&mut output[..buf.len()]).copy_from_slice(&buf);
+    *nbytes = buf.len() as c_long;
+
+    *status
 }
 
 /* ---------------------------------------------------------------------- */
@@ -82,9 +120,11 @@ pub fn fits_hcompress_safe(
 /// NOTE: the nx and ny dimensions as defined within this code are reversed from
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
+///
+/// NOTE: `a` is modified in place, as in the 32-bit routine above.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_hcompress64(
-    a: *const LONGLONG,
+    a: *mut LONGLONG,
     ny: c_int,
     nx: c_int,
     scale: c_int,
@@ -97,7 +137,7 @@ pub unsafe extern "C" fn fits_hcompress64(
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        let a = core::slice::from_raw_parts(a, nx as usize * ny as usize);
+        let a = core::slice::from_raw_parts_mut(a, nx as usize * ny as usize);
         let output = core::slice::from_raw_parts_mut(output, *nbytes as usize);
 
         fits_hcompress64_safe(a, ny, nx, scale, output, nbytes, status)
@@ -119,24 +159,50 @@ pub unsafe extern "C" fn fits_hcompress64(
 /// the usual FITS notation.  ny is the fastest varying dimension, which is
 /// usually considered the X axis in the FITS image display
 pub fn fits_hcompress64_safe(
-    _a: &[LONGLONG],
-    _ny: c_int,
-    _nx: c_int,
-    _scale: c_int,
-    _output: &mut [c_char],
-    _nbytes: &mut c_long,
-    _status: &mut c_int,
+    a: &mut [LONGLONG],
+    ny: c_int,
+    nx: c_int,
+    scale: c_int,
+    output: &mut [c_char],
+    nbytes: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
-    todo!();
+    if *status > 0 {
+        return *status;
+    }
+
+    /* As above: HCEncoder::write64() is the C's htrans64() + digitize64() +
+    encode64(), and it carries its own state so FFLOCK/FFUNLOCK is moot. */
+
+    /* noutmax = *nbytes;  input value is the allocated size of the array */
+    let noutmax = (*nbytes as usize).min(output.len());
+    *nbytes = 0; /* reset */
+
+    /* DEVIATION: see fits_hcompress_safe -- the crate cannot report a full
+    sink, so the C's "output buffer too small" check is done here instead. */
+    let mut buf: Vec<u8> = Vec::with_capacity(noutmax);
+
+    /* H-transform, digitize, then encode and write to the output array */
+    let stat = HCEncoder::new(&mut buf).write64(a, ny as usize, nx as usize, scale);
+
+    if stat.is_err() || buf.len() > noutmax {
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
+    }
+
+    cast_slice_mut(&mut output[..buf.len()]).copy_from_slice(&buf);
+    *nbytes = buf.len() as c_long;
+
+    *status
 }
 
 /// Tests ported from cfitsio's test_hcompress.c
 ///
 /// rsfitsio delegates H-compress to the external `hcompress` crate
-/// (`HCEncoder`/`HCDecoder`), which is what `imcompress` drives internally (the
-/// `fits_hcompress_safe`/`fits_hdecompress_safe` shims in this file are unused
-/// stubs). The original C test exercised `fits_hcompress`/`fits_hdecompress`
-/// directly; here we drive the same round-trips through the crate API.
+/// (`HCEncoder`/`HCDecoder`), which is what `imcompress` drives internally and
+/// what `fits_hcompress_safe`/`fits_hdecompress_safe` are written against. Most
+/// of these tests drive the crate API directly, mirroring the C test's
+/// round-trips; `test_hcompress_safe_*` go through the `_safe` wrappers instead.
 ///
 /// NOTE: like the C API, `HCEncoder::write` takes the dimensions in `(ny, nx)`
 /// order and modifies its input array in place, and `HCDecoder::read` returns
@@ -146,7 +212,10 @@ mod tests {
     use hcompress::read::HCDecoder;
     use hcompress::write::HCEncoder;
 
-    use crate::fitsio::LONGLONG;
+    use super::{fits_hcompress_safe, fits_hcompress64_safe};
+    use crate::c_types::{c_char, c_int, c_long};
+    use crate::fits_hdecompress::{fits_hdecompress_safe, fits_hdecompress64_safe};
+    use crate::fitsio::{DATA_COMPRESSION_ERR, LONGLONG};
 
     /// Compress `original` (32-bit) losslessly-or-lossily, then decompress.
     /// Returns the decompressed image and the `(nx, ny)` reported by the decoder.
@@ -385,5 +454,152 @@ mod tests {
             .map(|i| ((i % nx) * 100 + (i / nx) * 10) as i64)
             .collect();
         let (_rnx, _rny) = roundtrip64(&original, nx, ny, 8, 1);
+    }
+
+    /* ---- round-trips through the `_safe` wrappers themselves ---- */
+
+    /// `fits_hcompress_safe` -> `fits_hdecompress_safe`, lossless.
+    #[test]
+    fn test_hcompress_safe_roundtrip() {
+        let nx: c_int = 17;
+        let ny: c_int = 19;
+        let original: Vec<c_int> = (0..(nx * ny)).map(|i| (i * 7) % 500).collect();
+
+        let mut a = original.clone(); // compression works in place
+        let mut output = vec![0 as c_char; 4 * original.len() + 1024];
+        let mut nbytes = output.len() as c_long;
+        let mut status: c_int = 0;
+
+        fits_hcompress_safe(&mut a, ny, nx, 0, &mut output, &mut nbytes, &mut status);
+        assert_eq!(status, 0);
+        assert!(nbytes > 0 && (nbytes as usize) <= output.len());
+
+        let input: Vec<u8> = output[..nbytes as usize].iter().map(|&c| c as u8).collect();
+        let mut decompressed = vec![0 as c_int; original.len()];
+        let (mut rny, mut rnx, mut rscale) = (0, 0, 0);
+
+        fits_hdecompress_safe(
+            &input,
+            0,
+            &mut decompressed,
+            original.len() as c_int,
+            &mut rny,
+            &mut rnx,
+            &mut rscale,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(rnx, nx);
+        assert_eq!(rny, ny);
+        assert_eq!(rscale, 0);
+        assert_eq!(decompressed, original);
+    }
+
+    /// The 64-bit pair. `fits_hdecompress64_safe` packs the I*8 result back
+    /// into an I*4 array in place, as the C does.
+    #[test]
+    fn test_hcompress64_safe_roundtrip() {
+        let nx: c_int = 16;
+        let ny: c_int = 16;
+        let nval = (nx * ny) as usize;
+        let original: Vec<LONGLONG> = (0..nval as LONGLONG).map(|i| i * 13 + 100).collect();
+
+        let mut a = original.clone();
+        let mut output = vec![0 as c_char; 8 * nval + 1024];
+        let mut nbytes = output.len() as c_long;
+        let mut status: c_int = 0;
+
+        fits_hcompress64_safe(&mut a, ny, nx, 0, &mut output, &mut nbytes, &mut status);
+        assert_eq!(status, 0);
+        assert!(nbytes > 0);
+
+        let input: Vec<u8> = output[..nbytes as usize].iter().map(|&c| c as u8).collect();
+        let mut decompressed = vec![0 as LONGLONG; nval];
+        let (mut rny, mut rnx, mut rscale) = (0, 0, 0);
+
+        fits_hdecompress64_safe(
+            &input,
+            0,
+            &mut decompressed,
+            nval as c_int,
+            &mut rny,
+            &mut rnx,
+            &mut rscale,
+            &mut status,
+        );
+        assert_eq!(status, 0);
+        assert_eq!(rnx, nx);
+        assert_eq!(rny, ny);
+
+        /* the values come back packed as I*4 in the first half of the array */
+        let packed: &[c_int] = bytemuck::cast_slice(&decompressed);
+        let got: Vec<LONGLONG> = packed[..nval].iter().map(|&v| v as LONGLONG).collect();
+        assert_eq!(got, original);
+    }
+
+    /// A non-zero input status is passed straight through, untouched.
+    #[test]
+    fn test_hcompress_safe_status_passthrough() {
+        let mut a = vec![0 as c_int; 16];
+        let mut output = vec![0 as c_char; 256];
+        let mut nbytes = output.len() as c_long;
+        let mut status: c_int = 104;
+
+        assert_eq!(
+            fits_hcompress_safe(&mut a, 4, 4, 0, &mut output, &mut nbytes, &mut status),
+            104
+        );
+        assert_eq!(nbytes, 256); /* not reset */
+
+        let mut decompressed = vec![0 as c_int; 16];
+        let (mut rny, mut rnx, mut rscale) = (0, 0, 0);
+        assert_eq!(
+            fits_hdecompress_safe(
+                &[],
+                0,
+                &mut decompressed,
+                16,
+                &mut rny,
+                &mut rnx,
+                &mut rscale,
+                &mut status
+            ),
+            104
+        );
+    }
+
+    /// An output buffer too small for the compressed stream reports
+    /// DATA_COMPRESSION_ERR, as the C's "encode: output buffer too small" does.
+    #[test]
+    fn test_hcompress_safe_buffer_too_small() {
+        let nx: c_int = 16;
+        let ny: c_int = 16;
+        let mut a: Vec<c_int> = (0..(nx * ny)).map(|i| (i * 977) % 65536).collect();
+        let mut output = vec![0 as c_char; 20];
+        let mut nbytes = output.len() as c_long;
+        let mut status: c_int = 0;
+
+        fits_hcompress_safe(&mut a, ny, nx, 0, &mut output, &mut nbytes, &mut status);
+        assert_eq!(status, DATA_COMPRESSION_ERR);
+    }
+
+    /// A truncated/garbage stream is rejected rather than panicking.
+    #[test]
+    fn test_hdecompress_safe_bad_stream() {
+        let mut decompressed = vec![0 as c_int; 256];
+        let (mut rny, mut rnx, mut rscale) = (0, 0, 0);
+        let mut status: c_int = 0;
+
+        fits_hdecompress_safe(
+            &[0xde, 0xad, 0xbe, 0xef],
+            0,
+            &mut decompressed,
+            256,
+            &mut rny,
+            &mut rnx,
+            &mut rscale,
+            &mut status,
+        );
+        assert_ne!(status, 0);
     }
 }

@@ -11329,7 +11329,7 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // ffexist tests (ffexist_safer is todo!())
+    // ffexist (fits_file_exists) tests
     // ------------------------------------------------------------------
 
     /// Mirrors test_ffexist_exists in ~/code/cfitsio/tests/test_cfileio.c
@@ -11581,13 +11581,14 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // ffextn (fits_parse_extnum) tests - ffextn_safer is todo!()
+    // ffextn (fits_parse_extnum) tests
     // ------------------------------------------------------------------
 
-    /* The three ffextn cases the C's test_cfileio.c covers -- an explicit
-    extension number, no extension specifier, and a binning specification --
-    are already covered, with an extra case each, by test_ffextn_extension_number,
-    test_ffextn_no_extension and test_ffextn_binning_returns_one above. */
+    /* The three ffextn cases the C's test_cfileio.c covers -- test_ffextn_number
+    (an explicit extension number), test_ffextn_none (no extension specifier) and
+    test_ffextn_binspec (a binning specification) -- are already covered, with an
+    extra case each, by test_ffextn_extension_number, test_ffextn_no_extension and
+    test_ffextn_binning_returns_one above. */
 
     // ------------------------------------------------------------------
     // Open function variants
@@ -12732,8 +12733,11 @@ mod tests {
             ffdelt_safe(&mut f, &mut status);
             assert_eq!(status, 0, "ffdelt failed");
 
-            // Verify it's gone (use std::fs since ffexist is todo!())
-            assert!(!std::path::Path::new(filename).exists());
+            // Verify it's gone
+            let mut exists: c_int = -99;
+            fits_file_exists(&name, &mut exists, &mut status);
+            assert_eq!(status, 0);
+            assert_eq!(exists, 0);
         });
     }
 
@@ -13015,9 +13019,20 @@ mod tests {
         }
     }
 
+    /// Mirrors test_ffihtps in ~/code/cfitsio/tests/test_cfileio.c
+    ///
+    /// NOTE: the C's `fail_if(status != 0)` cannot be expressed yet -- ffihtps
+    /// and ffchtps return `int` in fitsio.h, but their stubs here return `()`.
+    /// Fixing that is part of implementing them.
     #[test]
     #[ignore = "ffihtps_safe / ffchtps_safe are still todo!() in src/cfileio.rs"]
-    fn test_ffihtps() {}
+    fn test_ffihtps() {
+        /* Initialize HTTPS support. Returns 0 on success or if CURL not configured. */
+        fits_init_https();
+
+        /* Cleanup. */
+        fits_cleanup_https();
+    }
 
     #[test]
     fn test_ffeopn() {
