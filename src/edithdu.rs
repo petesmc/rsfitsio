@@ -521,11 +521,8 @@ pub fn ffcpdt_safe(
     nb = ((indataend - indatastart) / IOBUFLEN) as c_long;
 
     if nb > 0 {
-        if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut()) {
+        if core::ptr::eq(infptr.Fptr.as_ptr(), outfptr.Fptr.as_ptr()) {
             /* copying between 2 HDUs in the SAME file */
-            unreachable!(
-                "Above ptr comparison prevents us from landing here. Matching original code"
-            );
             for _ii in 0..(nb as usize) {
                 ffmbyt_safe(infptr, indatastart, REPORT_EOF, status);
                 ffgbyt(infptr, IOBUFLEN, cast_slice_mut(&mut buffer), status); /* read input block */

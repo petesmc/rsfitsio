@@ -1774,10 +1774,10 @@ pub fn ffgtam_safe(
     status: &mut c_int, /* return status code                          */
 ) -> c_int {
     /* SPR 3463: consolidates the repeated "are the member and grouping-table
-    files the same?" test. In this port each fitsfile owns a distinct
-    Box<FITSfile>, so the Fptr pointers are never equal even for the same
-    physical file; the rootname comparison is the effective test (matches the
-    C's combined `(tmpfptr->Fptr != gfptr->Fptr) && strncmp(rootnames)`). */
+    files the same?" test, matching the C's combined
+    `(tmpfptr->Fptr != gfptr->Fptr) && strncmp(rootnames)`. Handles that share a
+    FITSfile now compare equal by address, so the first half of the test is
+    effective rather than always true. */
     fn files_differ(tmpfptr: &fitsfile, gfptr: &fitsfile, status: &mut c_int) -> bool {
         let mut tmprootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut grootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
@@ -1792,7 +1792,7 @@ pub fn ffgtam_safe(
             fits_parse_rootname(gfn, &mut grootname, status);
         }
 
-        let same_fptr = core::ptr::eq(tmpfptr.Fptr.as_ref(), gfptr.Fptr.as_ref());
+        let same_fptr = core::ptr::eq(tmpfptr.Fptr.as_ptr(), gfptr.Fptr.as_ptr());
         !same_fptr && strncmp_safe(&tmprootname, &grootname, FLEN_FILENAME) != 0
     }
 
@@ -4148,13 +4148,11 @@ pub fn ffgmrm_safe(
                     fits_parse_rootname(gfn, &mut grootname, status);
                 }
 
-                /* In this port each fitsfile owns a distinct Box<FITSfile>, so the
-                Fptr pointers are never equal even for the same physical file; the
-                rootname comparison is the effective test (matches the C's combined
-                condition). */
+                /* The C's combined condition: same FITSfile by address, or
+                failing that the same rootname. */
                 let same_fptr = core::ptr::eq(
-                    mfptr.as_deref().expect(NULL_MSG).Fptr.as_ref(),
-                    gfptr.Fptr.as_ref(),
+                    mfptr.as_deref().expect(NULL_MSG).Fptr.as_ptr(),
+                    gfptr.Fptr.as_ptr(),
                 );
                 if !same_fptr && strncmp_safe(&mrootname, &grootname, FLEN_FILENAME) != 0 {
                     groupExtver = -groupExtver;

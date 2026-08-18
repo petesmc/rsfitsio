@@ -6,6 +6,8 @@ use bytemuck::{cast_slice, cast_slice_mut};
 use core::{
     cmp,
     ffi::{CStr, c_char, c_int, c_long, c_longlong},
+    ops::{Deref, DerefMut},
+    ptr,
 };
 use std::os::raw::c_void;
 
@@ -1072,6 +1074,85 @@ impl Drop for FITSfile {
     }
 }
 
+/// Handle to a [`FITSfile`], which several [`fitsfile`]s may share.
+///
+/// CFITSIO lets more than one `fitsfile` refer to the same `FITSfile`, keeping
+/// a use count in its `open_count` field. `Box` cannot express that: two live
+/// `Box`es to one allocation is aliasing UB, and because `Box` is `noalias`
+/// every write through one invalidates pointers derived from the other, which
+/// is what invalidated the entries in `FPTR_TABLE`.
+///
+/// This is a non-owning handle. Exactly one place frees the `FITSfile`:
+/// `ffclos`, once `open_count` reaches zero. There is deliberately no `Drop`
+/// impl, because closing has to flush and close the driver before the free and
+/// a refcount-on-drop would fight the decrement already done there.
+///
+/// `#[repr(transparent)]` over a `NonNull`, so the layout is a single non-null
+/// pointer exactly as `Box<FITSfile>` was and `fitsfile` keeps its C ABI.
+#[repr(transparent)]
+pub struct FptrRef(ptr::NonNull<FITSfile>);
+
+impl FptrRef {
+    /// Allocate a new `FITSfile` and take the first handle to it.
+    pub fn new(f: Box<FITSfile>) -> Self {
+        // SAFETY: Box::into_raw never returns null.
+        FptrRef(unsafe { ptr::NonNull::new_unchecked(Box::into_raw(f)) })
+    }
+
+    /// Another handle to the same `FITSfile`.
+    ///
+    /// The caller is responsible for the `open_count` bookkeeping.
+    pub fn share(&self) -> Self {
+        FptrRef(self.0)
+    }
+
+    /// The address of the `FITSfile`.
+    ///
+    /// Callers that stash this (`FPTR_TABLE`) get the same pointer this handle
+    /// derefs through, not a reference-derived child of it, so it stays valid
+    /// across writes made through any handle.
+    pub fn as_ptr(&self) -> *mut FITSfile {
+        self.0.as_ptr()
+    }
+
+    /// Build a handle from a pointer obtained from [`FptrRef::as_ptr`].
+    ///
+    /// # Safety
+    /// `p` must be non-null and point to a live `FITSfile`.
+    pub unsafe fn from_ptr(p: *mut FITSfile) -> Self {
+        FptrRef(unsafe { ptr::NonNull::new_unchecked(p) })
+    }
+
+    /// Free the `FITSfile`. Only valid once `open_count` has reached zero and
+    /// no other handle remains.
+    ///
+    /// # Safety
+    /// No other `FptrRef` to this `FITSfile` may be used afterwards.
+    pub unsafe fn free(self) {
+        drop(unsafe { Box::from_raw(self.0.as_ptr()) });
+    }
+}
+
+impl Deref for FptrRef {
+    type Target = FITSfile;
+
+    fn deref(&self) -> &FITSfile {
+        // SAFETY: the FITSfile outlives every handle to it; see `free`.
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl DerefMut for FptrRef {
+    fn deref_mut(&mut self) -> &mut FITSfile {
+        // SAFETY: as above.
+        unsafe { self.0.as_mut() }
+    }
+}
+
+// SAFETY: matches the Send/Sync story Box<FITSfile> had; the handle adds no
+// interior mutability of its own.
+unsafe impl Send for FptrRef {}
+
 #[repr(C)]
 /// Structure used to store basic HDU information
 pub struct fitsfile {
@@ -1079,7 +1160,7 @@ pub struct fitsfile {
     pub HDUposition: c_int,
 
     /// Pointer to FITS file structure
-    pub Fptr: Box<FITSfile>,
+    pub Fptr: FptrRef,
 }
 
 /// Do not change this as it is part of the public API
