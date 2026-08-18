@@ -1546,7 +1546,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         if YYDEBUG {
                             eprintln!("Read a token");
                         }
-                        yychar = fits_parser_yylex(&mut yylval, scanner);
+                        yychar = fits_parser_yylex(&mut yylval, scanner, lParse);
                     }
 
                     if yychar <= fits_parser_yytokentype::FITS_PARSER_YYEOF as c_int {

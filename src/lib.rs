@@ -427,20 +427,23 @@ impl NullValue {
             return None;
         }
 
+        /* `value` is a caller-supplied void*, as in the C, and carries no
+           alignment guarantee for the target type -- it commonly points into
+           a byte buffer. Read unaligned rather than dereferencing. */
         match datatype {
-            TFLOAT => Some(NullValue::Float(unsafe { *value.cast::<f32>() })),
-            TDOUBLE => Some(NullValue::Double(unsafe { *value.cast::<f64>() })),
-            TLONG => Some(NullValue::Long(unsafe { *value.cast::<c_long>() })),
-            TULONG => Some(NullValue::ULong(unsafe { *value.cast::<c_ulong>() })),
-            TLONGLONG => Some(NullValue::LONGLONG(unsafe { *value.cast::<LONGLONG>() })),
-            TULONGLONG => Some(NullValue::ULONGLONG(unsafe { *value.cast::<ULONGLONG>() })),
-            TINT => Some(NullValue::Int(unsafe { *value.cast::<c_int>() })),
-            TUINT => Some(NullValue::UInt(unsafe { *value.cast::<c_uint>() })),
-            TSHORT => Some(NullValue::Short(unsafe { *value.cast::<c_short>() })),
-            TUSHORT => Some(NullValue::UShort(unsafe { *value.cast::<c_ushort>() })),
-            TBYTE => Some(NullValue::UByte(unsafe { *value.cast::<c_uchar>() })),
-            TSBYTE => Some(NullValue::Byte(unsafe { *value.cast::<i8>() })),
-            TLOGICAL => Some(NullValue::Logical(unsafe { *value.cast::<c_char>() })),
+            TFLOAT => Some(NullValue::Float(unsafe { value.cast::<f32>().read_unaligned() })),
+            TDOUBLE => Some(NullValue::Double(unsafe { value.cast::<f64>().read_unaligned() })),
+            TLONG => Some(NullValue::Long(unsafe { value.cast::<c_long>().read_unaligned() })),
+            TULONG => Some(NullValue::ULong(unsafe { value.cast::<c_ulong>().read_unaligned() })),
+            TLONGLONG => Some(NullValue::LONGLONG(unsafe { value.cast::<LONGLONG>().read_unaligned() })),
+            TULONGLONG => Some(NullValue::ULONGLONG(unsafe { value.cast::<ULONGLONG>().read_unaligned() })),
+            TINT => Some(NullValue::Int(unsafe { value.cast::<c_int>().read_unaligned() })),
+            TUINT => Some(NullValue::UInt(unsafe { value.cast::<c_uint>().read_unaligned() })),
+            TSHORT => Some(NullValue::Short(unsafe { value.cast::<c_short>().read_unaligned() })),
+            TUSHORT => Some(NullValue::UShort(unsafe { value.cast::<c_ushort>().read_unaligned() })),
+            TBYTE => Some(NullValue::UByte(unsafe { value.cast::<c_uchar>().read_unaligned() })),
+            TSBYTE => Some(NullValue::Byte(unsafe { value.cast::<i8>().read_unaligned() })),
+            TLOGICAL => Some(NullValue::Logical(unsafe { value.cast::<c_char>().read_unaligned() })),
             TSTRING => {
                 let cstr = unsafe { CStr::from_ptr(value.cast::<c_char>()) };
                 Some(NullValue::String(cstr.to_owned()))

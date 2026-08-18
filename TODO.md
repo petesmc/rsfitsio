@@ -22,16 +22,17 @@
       also reaches that buffer; and yy_init_buffer flushed before its own
       writes, so yy_load_buffer_state invalidated them. `b` is a raw pointer
       now and the comparisons go through yy_current_buffer_ptr.
-- [ ] Fix the yyextra_r aliasing in the eval engine. `yyscanner.yyextra_r` is
-      a raw pointer to the same ParseData that ffiprs and fits_parser_yyparse
-      hold as `&mut`, so `&mut *yyscanner.yyextra_r` (eval_l.rs, in
-      yy_get_next_buffer) aliases a strongly-protected argument. This is now
-      the only root cause left in the eval engine, and it accounts for all 258
-      of the tests that used to fail in the buffer stack. Fixing it means
-      ParseData reaching the scanner one way only: either yyparse/ffiprs stop
-      taking `&mut ParseData` and read it back out of yyextra_r, or the
-      scanner stops holding the pointer. Same shape as the FPTR_TABLE and
-      infptr/outfptr entries below.
+- [X] Fix the yyextra_r aliasing in the eval engine. ParseData is passed to
+      yylex as an argument and the yyextra_r field is gone, so the scanner no
+      longer refers to it and cannot alias the `&mut ParseData` that ffiprs
+      and yyparse hold.
+- [ ] Fix the Info.parseData aliasing in the eval engine. `eval_f.rs` stores
+      `Info.parseData = &mut lParse` and then invalidates it two lines later
+      with `&mut lParse.colData[..]`, so the iterator work function's later
+      `as_mut()` on it is UB. This is the front of the queue for the eval
+      engine now that yyextra_r is gone. Same shape as the FPTR_TABLE and
+      infptr/outfptr entries below: a struct holding a pointer to something
+      that is also reached through a `&mut`.
 - [ ] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
       as both input and output; see the infptr/outfptr entry below.
 - [ ] Clean up all warnings

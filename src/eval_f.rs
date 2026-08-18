@@ -71,7 +71,7 @@ use crate::eval_defs::{
     ValueSort, parseInfo,
 };
 use crate::eval_l::{
-    fits_parser_yylex_destroy, fits_parser_yylex_init_extra, fits_parser_yyrestart, yyguts_t,
+    fits_parser_yylex_destroy, fits_parser_yylex_init, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
 use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, funcOp};
@@ -1468,7 +1468,7 @@ pub(crate) fn ffiprs(
 
     let mut yylex_scanner: Option<Box<yyguts_t>> = None; /* Used internally by FLEX lexer */
 
-    fits_parser_yylex_init_extra(lParse, &mut yylex_scanner);
+    fits_parser_yylex_init(&mut yylex_scanner);
     fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
     *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
     fits_parser_yylex_destroy(yylex_scanner.unwrap());
