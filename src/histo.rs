@@ -4048,13 +4048,7 @@ pub(crate) fn fits_make_histde(
         /* Now make iterator columns for input, as well as any calculated values */
         numAllocCols = 5;
         iterCols = unsafe {
-            fits_recalloc(
-                ptr::null_mut(),
-                0,
-                numAllocCols as usize,
-                core::mem::size_of::<iteratorCol>(),
-            )
-            .cast::<iteratorCol>()
+            fits_recalloc::<iteratorCol>(ptr::null_mut(), 0, numAllocCols as usize)
         };
         if iterCols.is_null() {
             ffpmsg_str("memory allocation failure (fits_make_histde)");
@@ -4187,12 +4181,10 @@ pub(crate) fn fits_make_histde(
                 /* Copy iterator columns from the parser to the master iterator columns */
                 iterCols = unsafe {
                     fits_recalloc(
-                        iterCols.cast::<c_void>(),
+                        iterCols,
                         numAllocCols as usize,
                         (numAllocCols + parsers[ii].nCols) as usize,
-                        core::mem::size_of::<iteratorCol>(),
                     )
-                    .cast::<iteratorCol>()
                 };
                 if iterCols.is_null() {
                     *status = MEMORY_ALLOCATION;
@@ -4273,12 +4265,10 @@ pub(crate) fn fits_make_histde(
             /* Copy iterator columns from the parser to the master iterator columns */
             iterCols = unsafe {
                 fits_recalloc(
-                    iterCols.cast::<c_void>(),
+                    iterCols,
                     numAllocCols as usize,
                     (numAllocCols + parsers[4].nCols) as usize,
-                    core::mem::size_of::<iteratorCol>(),
                 )
-                .cast::<iteratorCol>()
             };
             if iterCols.is_null() {
                 *status = MEMORY_ALLOCATION;
