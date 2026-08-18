@@ -965,8 +965,8 @@ pub(crate) fn fits_parser_yylex(
                                         CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
                                     );
 
-                                    let get_data = (lParse.getData)
-                                        .expect("non-null function pointer");
+                                    let get_data =
+                                        (lParse.getData).expect("non-null function pointer");
                                     result = get_data(
                                         lParse,
                                         yytext_r_slice,
@@ -1449,7 +1449,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int
         (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize] =
             YY_END_OF_BUFFER_CHAR;
         /* Take the slice pointer directly rather than round-tripping it
-           through a place expression. */
+        through a place expression. */
         yyscanner.yytext_r = (top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
         ret_val
     }
@@ -1892,9 +1892,9 @@ pub(crate) fn fits_parser_yylex_destroy(mut yyscanner: Box<yyguts_t>) -> c_int {
             fits_parser_yypop_buffer_state(&mut yyscanner);
         }
         /* Destroy the stack itself. yyensure_buffer_stack builds it as a Rust
-           Vec, so reconstruct and drop it: handing it to libc free is an
-           allocator mismatch. len == capacity == yy_buffer_stack_max, the same
-           convention the grow path in yyensure_buffer_stack uses. */
+        Vec, so reconstruct and drop it: handing it to libc free is an
+        allocator mismatch. len == capacity == yy_buffer_stack_max, the same
+        convention the grow path in yyensure_buffer_stack uses. */
         if !(yyscanner.yy_buffer_stack).is_null() {
             drop(Vec::from_raw_parts(
                 yyscanner.yy_buffer_stack,

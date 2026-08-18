@@ -31,6 +31,7 @@ pub unsafe extern "C" fn ffmbyt(
     err_mode: c_int,     /* I - 1=ignore error, 0 = return error */
     status: *mut c_int,  /* IO - error status                    */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -729,6 +730,7 @@ pub unsafe extern "C" fn ffflus(
     fptr: *mut fitsfile, /* I - FITS file pointer                       */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -775,6 +777,7 @@ pub unsafe extern "C" fn ffflsh(
     clearbuf: c_int,     /* I - also clear buffer contents? */
     status: *mut c_int,  /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -944,6 +947,7 @@ pub unsafe extern "C" fn ffgrsz(
     ndata: *mut c_long,  /* O - optimal amount of data to access         */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1007,6 +1011,7 @@ pub unsafe extern "C" fn ffgtbb(
     values: *mut c_uchar, /* I - array of bytes to read            */
     status: *mut c_int,   /* IO - error status                     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1322,6 +1327,7 @@ pub unsafe extern "C" fn ffptbb(
     values: *const c_uchar, /* I - array of bytes to write           */
     status: *mut c_int,     /* IO - error status                     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

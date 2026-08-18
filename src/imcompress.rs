@@ -183,6 +183,7 @@ pub(crate) fn fits_init_randoms() -> c_int {
 /*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub extern "C" fn bz_internal_error(_errcode: c_int) {
+    // FFI WRAPPER
     /* external function declared by the bzip2 code in bzlib_private.h */
     ffpmsg_str("bzip2 returned an internal error");
     ffpmsg_str("This should never happen");
@@ -201,6 +202,7 @@ pub unsafe extern "C" fn fits_set_compression_type(
     /*  HCOMPRESS_1, BZIP2_1, and NOCOMPRESS               */
     status: *mut c_int, /* IO - error status                                   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -252,6 +254,7 @@ pub unsafe extern "C" fn fits_set_tile_dim(
     /* default tile size = (NAXIS1, 1, 1, ...)            */
     status: *mut c_int, /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -302,6 +305,7 @@ pub unsafe extern "C" fn fits_set_quantize_level(
     qlevel: f32,         /* floating point quantization level      */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -343,6 +347,7 @@ pub unsafe extern "C" fn fits_set_quantize_method(
     method: c_int,       /* quantization method       */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -387,6 +392,7 @@ pub unsafe extern "C" fn fits_set_quantize_dither(
     dither: c_int,       /* dither type      */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -423,6 +429,7 @@ pub unsafe extern "C" fn fits_set_dither_seed(
     seed: c_int,         /* random dithering seed value (1 to 10000) */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -467,6 +474,7 @@ pub unsafe extern "C" fn fits_set_dither_offset(
     offset: c_int,       /* random dithering offset value (1 to 10000) */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -510,6 +518,7 @@ pub unsafe extern "C" fn fits_set_noise_bits(
     /* (default = 4)                    */
     status: *mut c_int, /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -560,6 +569,7 @@ pub unsafe extern "C" fn fits_set_hcomp_scale(
     /* (default = 0.0)                    */
     status: *mut c_int, /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -592,6 +602,7 @@ pub unsafe extern "C" fn fits_set_hcomp_smooth(
     /* by the lossy compression    */
     status: *mut c_int, /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -622,6 +633,7 @@ pub unsafe extern "C" fn fits_set_lossy_int(
     lossy_int: c_int,    /* I - True (!= 0) or False (0) */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -655,6 +667,7 @@ pub unsafe extern "C" fn fits_set_huge_hdu(
     huge: c_int,         /* I - True (!= 0) or False (0) */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -690,6 +703,7 @@ pub unsafe extern "C" fn fits_get_compression_type(
     /* RICE_1, GZIP_1, GZIP_2, PLIO_1, HCOMPRESS_1, BZIP2_1 */
     status: *mut c_int, /* IO - error status                                   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -742,6 +756,7 @@ pub unsafe extern "C" fn fits_get_tile_dim(
     /* default tile size = (NAXIS1, 1, 1, ...)           */
     status: *mut c_int, /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -787,6 +802,7 @@ pub unsafe extern "C" fn fits_unset_compression_param(
     fptr: *mut fitsfile,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -816,6 +832,7 @@ pub unsafe extern "C" fn fits_unset_compression_request(
     fptr: *mut fitsfile,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -852,6 +869,7 @@ pub unsafe extern "C" fn fits_set_compression_pref(
     outfptr: *mut fitsfile,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -1063,6 +1081,7 @@ pub unsafe extern "C" fn fits_get_noise_bits(
     /* (default = 4)                    */
     status: *mut c_int, /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1100,6 +1119,7 @@ pub unsafe extern "C" fn fits_get_quantize_level(
     qlevel: *mut f32,    /* quantize level parameter value       */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1139,6 +1159,7 @@ pub unsafe extern "C" fn fits_get_dither_seed(
     offset: *mut c_int,  /* dithering offset parameter value       */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1173,6 +1194,7 @@ pub unsafe extern "C" fn fits_get_hcomp_scale(
     scale: *mut f32,     /* Hcompress scale parameter value       */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1200,6 +1222,7 @@ pub unsafe extern "C" fn fits_get_hcomp_smooth(
     smooth: *mut c_int,  /* Hcompress smooth parameter value       */
     status: *mut c_int,  /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1236,6 +1259,7 @@ pub unsafe extern "C" fn fits_img_compress(
                             FITS compression utilities.
                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -5443,6 +5467,7 @@ pub unsafe extern "C" fn fits_img_decompress(
     outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -5543,6 +5568,7 @@ pub unsafe extern "C" fn fits_decompress_img(
     outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -5711,6 +5737,7 @@ pub unsafe extern "C" fn fits_img_decompress_header(
     outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -10823,6 +10850,7 @@ pub unsafe extern "C" fn fits_compress_table(
     outfptr: *mut fitsfile,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -11868,6 +11896,7 @@ pub unsafe extern "C" fn fits_uncompress_table(
     outfptr: *mut fitsfile,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);

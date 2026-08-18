@@ -37,6 +37,7 @@ pub unsafe extern "C" fn ffgcvl(
     anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -110,6 +111,7 @@ pub unsafe extern "C" fn ffgcl(
     array: *mut c_char,  /* O - array of values                         */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -175,6 +177,7 @@ pub unsafe extern "C" fn ffgcfl(
     anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -415,6 +418,7 @@ pub unsafe extern "C" fn ffgcx(
     larray: *mut c_char, /* O - array of logicals corresponding to bits */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -597,6 +601,7 @@ pub unsafe extern "C" fn ffgcxui(
     array: *mut c_ushort,    /* O - array of integer values            */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -794,6 +799,7 @@ pub unsafe extern "C" fn ffgcxuk(
     array: *mut c_uint,      /* O - array of integer values            */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

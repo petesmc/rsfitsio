@@ -32,6 +32,7 @@ pub unsafe extern "C" fn ffpcls(
     array: *const *const c_char, /* I - array of pointers to strings            */
     status: *mut c_int,          /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -345,6 +346,7 @@ pub unsafe extern "C" fn ffpcns(
     nulvalue: *const c_char,     /* I - string representing a null value        */
     status: *mut c_int,          /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

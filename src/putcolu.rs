@@ -35,6 +35,7 @@ pub unsafe extern "C" fn ffppru(
     nelem: LONGLONG,     /* I - number of values to write              */
     status: *mut c_int,  /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -92,6 +93,7 @@ pub unsafe extern "C" fn ffpprn(
     nelem: LONGLONG,     /* I - number of values to write              */
     status: *mut c_int,  /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -156,6 +158,7 @@ pub unsafe extern "C" fn ffpclu(
     nelempar: LONGLONG,  /* I - number of values to write               */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -720,6 +723,7 @@ pub unsafe extern "C" fn ffprwu(
     nrows: LONGLONG,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

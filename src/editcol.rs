@@ -57,6 +57,7 @@ pub unsafe extern "C" fn ffrsim(
     naxes: *const c_long, /* I - size of each axis           */
     status: *mut c_int,   /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -105,6 +106,7 @@ pub unsafe extern "C" fn ffrsimll(
     naxes: *const LONGLONG, /* I - size of each axis           */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -386,6 +388,7 @@ pub unsafe extern "C" fn ffirow(
     nrows: LONGLONG,    /* I - number of rows to insert                 */
     status: *mut c_int, /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -510,6 +513,7 @@ pub unsafe extern "C" fn ffdrow(
     nrows: LONGLONG,     /* I - number of rows to delete                 */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -643,6 +647,7 @@ pub unsafe extern "C" fn ffdrrg(
     ranges: *const c_char, /* I - ranges of rows to delete (1 = first)     */
     status: *mut c_int,    /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -766,6 +771,7 @@ pub unsafe extern "C" fn ffdrws(
     nrows: c_long,         /* I - number of rows to delete                 */
     status: *mut c_int,    /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -922,6 +928,7 @@ pub unsafe extern "C" fn ffdrwsll(
     nrows: LONGLONG,         /* I - number of rows to delete                 */
     status: *mut c_int,      /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1088,6 +1095,7 @@ pub unsafe extern "C" fn ffrwrg(
     maxrow: *mut c_long,    /* O - last row in each range */
     status: *mut c_int,     /* IO - status value */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let numranges = numranges.as_mut().expect(NULL_MSG);
@@ -1283,6 +1291,7 @@ pub unsafe extern "C" fn ffrwrgll(
     maxrow: *mut LONGLONG,  /* O - last row in each range */
     status: *mut c_int,     /* IO - status value */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let numranges = numranges.as_mut().expect(NULL_MSG);
@@ -1471,6 +1480,7 @@ pub unsafe extern "C" fn fficol(
     tform: *const c_char, /* I - format of column (TFORM keyword)         */
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1513,6 +1523,7 @@ pub unsafe extern "C" fn fficls(
     tform: *const *const c_char, /* I - array of formats of column (TFORM)       */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1889,6 +1900,7 @@ pub unsafe extern "C" fn ffmvec(
     newveclen: LONGLONG, /* I - new vector length of column (TFORM)       */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2142,6 +2154,7 @@ pub unsafe extern "C" fn ffcpcl(
     create_col: c_int,      /* I - create new col if TRUE, else overwrite */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -2721,6 +2734,7 @@ pub unsafe extern "C" fn ffccls(
     create_col: c_int,      /* I - create new col if TRUE, else overwrite */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -2984,6 +2998,7 @@ pub unsafe extern "C" fn ffcprw(
     nrows: LONGLONG,        /* I - number of rows to copy  */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -3257,6 +3272,7 @@ pub unsafe extern "C" fn ffcpsr(
     row_status: *const c_char, /* I - quality list of rows to keep (1) or not keep (0) */
     status: *mut c_int,        /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -3568,6 +3584,7 @@ pub unsafe extern "C" fn ffcpky(
     rootname: *const c_char, /* I - root name of the keyword to be copied */
     status: *mut c_int,      /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -3620,6 +3637,7 @@ pub unsafe extern "C" fn ffdcol(
     colnum: c_int,       /* I - column to delete (1 = 1st)               */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3801,6 +3819,7 @@ pub unsafe extern "C" fn ffcins(
     bytepos: LONGLONG,   /* I - rel. position in row to insert bytes     */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3979,6 +3998,7 @@ pub unsafe extern "C" fn ffcdel(
     bytepos: LONGLONG,   /* I - rel. position in row to delete bytes     */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4105,6 +4125,7 @@ pub unsafe extern "C" fn ffkshf(
     incre: c_int,        /* I - shift index number by this amount        */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4222,6 +4243,7 @@ pub unsafe extern "C" fn fffvcl(
     colnums: *mut c_int,  /* O - 1-based variable column positions       */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4299,6 +4321,7 @@ pub unsafe extern "C" fn ffshft(
     nshift: LONGLONG,    /* I - size of shift in bytes (+ or -)          */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

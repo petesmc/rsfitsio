@@ -648,6 +648,7 @@ pub unsafe extern "C" fn ffbins(
     recip: *mut c_int,                       /* the reciprocal of the weight? */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(binspec);
 
@@ -983,6 +984,7 @@ pub unsafe extern "C" fn ffbinr(
     binname: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let minin = minin.as_mut().expect(NULL_MSG);
         let maxin = maxin.as_mut().expect(NULL_MSG);
@@ -1352,6 +1354,7 @@ pub unsafe extern "C" fn ffhist2(
     /* is equal to NULL.                           */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = (fptr).as_mut().expect(NULL_MSG);
         raw_to_slice!(outfile);
@@ -1442,6 +1445,7 @@ pub unsafe extern "C" fn ffhist3(
     /* is equal to NULL.                           */
     status: *mut c_int,
 ) -> *mut fitsfile {
+    // FFI WRAPPER
     unsafe {
         let fptr = &mut ((*fptr).as_mut()).expect(NULL_MSG);
         raw_to_slice!(outfile);
@@ -1694,6 +1698,7 @@ pub unsafe extern "C" fn ffhist(
     /* is equal to NULL.                           */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = (fptr).as_mut().expect(NULL_MSG);
         raw_to_slice!(outfile);
@@ -2747,6 +2752,7 @@ pub unsafe extern "C" fn fits_calc_binning(
     binsize: *mut f32,  /* O - width of histogram bins/pixels on each axis */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let colname = colname.as_mut().expect(NULL_MSG);
@@ -3437,6 +3443,7 @@ pub unsafe extern "C" fn fits_calc_binningd(
     binsize: *mut f64,  /* O - width of histogram bins/pixels on each axis */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let colname = colname
@@ -3624,6 +3631,7 @@ pub unsafe extern "C" fn fits_write_keys_histo(
     colnum: *const c_int,   /* I - column numbers (array length = naxis)      */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let histptr = histptr.as_mut().expect(NULL_MSG);
@@ -3655,6 +3663,7 @@ pub unsafe extern "C" fn fits_rebin_wcs(
     binsize: *mut f32,   /* I - binning factor for each axis            */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let amin = slice::from_raw_parts_mut(amin, naxis as usize);
@@ -3701,6 +3710,7 @@ pub unsafe extern "C" fn fits_rebin_wcsd(
     binsize: *mut f64,   /* I - binning factor for each axis            */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let amin = slice::from_raw_parts_mut(amin, naxis as usize);
@@ -3867,6 +3877,7 @@ pub unsafe extern "C" fn fits_make_hist(
     /* is equal to NULL.                           */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let histptr = histptr.as_mut().expect(NULL_MSG);
@@ -4047,9 +4058,8 @@ pub(crate) fn fits_make_histde(
     'cleanup: loop {
         /* Now make iterator columns for input, as well as any calculated values */
         numAllocCols = 5;
-        iterCols = unsafe {
-            fits_recalloc::<iteratorCol>(ptr::null_mut(), 0, numAllocCols as usize)
-        };
+        iterCols =
+            unsafe { fits_recalloc::<iteratorCol>(ptr::null_mut(), 0, numAllocCols as usize) };
         if iterCols.is_null() {
             ffpmsg_str("memory allocation failure (fits_make_histde)");
             *status = MEMORY_ALLOCATION;
@@ -4422,6 +4432,7 @@ pub unsafe extern "C" fn fits_make_histd(
     /* is equal to NULL.                           */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let histptr = histptr.as_mut().expect(NULL_MSG);

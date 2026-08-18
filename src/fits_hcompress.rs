@@ -29,6 +29,7 @@ pub unsafe extern "C" fn fits_hcompress(
     nbytes: *mut c_long,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -91,6 +92,7 @@ pub unsafe extern "C" fn fits_hcompress64(
     nbytes: *mut c_long,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let nbytes = nbytes.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);

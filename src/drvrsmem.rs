@@ -218,6 +218,7 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
 /// This must (should) be called during exit/abort
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub extern "C" fn shared_cleanup() {
+    // FFI WRAPPER
     unsafe {
         let i: c_int = 0;
         let j: c_int = 0;
@@ -351,6 +352,7 @@ pub extern "C" fn shared_cleanup() {
 /// Initialize shared memory stuff, you have to call this routine once
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_init(debug_msgs: c_int) -> c_int {
+    // FFI WRAPPER
     unsafe { shared_init_safer(debug_msgs) }
 }
 
@@ -544,6 +546,7 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
 /// try to recover dormant segments after applic crash
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_recover(id: c_int) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -864,6 +867,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
     let mut key: c_int = 0;
     let filler: semun = semun { val: 0 };
 
+    // FFI WRAPPER
     unsafe {
         /* delayed initialization */
         if !SHARED_INIT_CALLED {
@@ -994,6 +998,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
@@ -1164,6 +1169,7 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P /* realloc shared memory segment */
 {
+    // FFI WRAPPER
     unsafe {
         let mut h: c_int = 0;
         let mut key: c_int = 0;
@@ -1269,6 +1275,7 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if last process & !PERSIST, destroy segment */
 {
+    // FFI WRAPPER
     unsafe {
         let mut cnt: c_int = 0;
         let r: c_int = 0;
@@ -1327,6 +1334,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* lock given segment for exclusive access */
 {
+    // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
 
@@ -1381,6 +1389,7 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segment, assumes seg is locked !! */
 {
+    // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
         let mut r2: c_int = 0;
@@ -1422,6 +1431,7 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes of the shared memory segment */
 {
+    // FFI WRAPPER
     unsafe {
         if shared_check_locked_index(idx) != 0 {
             return SHARED_INVALID;
@@ -1436,6 +1446,7 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /* get the attributes of the shared memory segment */
 {
+    // FFI WRAPPER
     unsafe {
         if shared_check_locked_index(idx) != 0 {
             return SHARED_INVALID;
@@ -1460,6 +1471,7 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset debug mode */ {
+    // FFI WRAPPER
     unsafe {
         let r: c_int = SHARED_DEBUG as c_int;
 
@@ -1470,6 +1482,7 @@ pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset deb
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/reset debug mode */ {
+    // FFI WRAPPER
     unsafe {
         let r: c_int = SHARED_CREATE_MODE;
 
@@ -1480,6 +1493,7 @@ pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/rese
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;
@@ -1555,6 +1569,7 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let mut i: c_int = 0;
         let mut segname: [c_char; 10] = [0; 10];
@@ -1586,6 +1601,7 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let i: c_int = 0;
         let mut r: c_int = 0;

@@ -43,6 +43,7 @@ pub unsafe extern "C" fn ffpprd(
     array: *const f64,   /* I - array of values that are written        */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -122,6 +123,7 @@ pub unsafe extern "C" fn ffppnd(
     nulval: f64,         /* I - undefined pixel value                   */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -201,6 +203,7 @@ pub unsafe extern "C" fn ffp2dd(
     array: *const f64,   /* I - array to be written                   */
     status: *mut c_int,  /* IO - error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -251,6 +254,7 @@ pub unsafe extern "C" fn ffp3dd(
     array: *const f64,   /* I - array to be written                   */
     status: *mut c_int,  /* IO - error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -378,6 +382,7 @@ pub unsafe extern "C" fn ffpssd(
     array: *const f64,     /* I - array to be written                     */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -558,6 +563,7 @@ pub unsafe extern "C" fn ffpgpd(
     array: *const f64,   /* I - array of values that are written       */
     status: *mut c_int,  /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -621,6 +627,7 @@ pub unsafe extern "C" fn ffpcld(
     array: *const f64,   /* I - array of values to write                */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -994,6 +1001,7 @@ pub unsafe extern "C" fn ffpclm(
     array: *const f64,   /* I - array of values to write                */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1069,6 +1077,7 @@ pub unsafe extern "C" fn ffpcnd(
     nulvalue: f64,       /* I - value used to flag undefined pixels     */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

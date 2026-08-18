@@ -48,6 +48,7 @@ pub unsafe extern "C" fn ffgcvs(
     anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -132,6 +133,7 @@ pub unsafe extern "C" fn ffgcfs(
     anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -794,6 +796,7 @@ pub unsafe extern "C" fn ffgcdw(
     width: *mut c_int,   /* O - display width                       */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

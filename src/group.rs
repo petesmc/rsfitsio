@@ -85,6 +85,7 @@ pub unsafe extern "C" fn ffgtcr(
     grouptype: c_int,       /* code specifying the type of  */
     status: *mut c_int,     /* return status code                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -166,6 +167,7 @@ pub unsafe extern "C" fn ffgtis(
     grouptype: c_int,       /* code specifying the type of  */
     status: *mut c_int,     /* return status code                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -395,6 +397,7 @@ pub unsafe extern "C" fn ffgtch(
     grouptype: c_int,     /* code specifying the type of  */
     status: *mut c_int,   /* return status code                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -766,6 +769,7 @@ pub unsafe extern "C" fn ffgtrm(
                           and their members (if groups)                */
     status: *mut c_int, /* return status code                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -890,6 +894,7 @@ pub unsafe extern "C" fn ffgtcp(
                             and their members (if  groups)                  */
     status: *mut c_int, /* return status code                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -975,6 +980,7 @@ pub unsafe extern "C" fn ffgtmg(
                             OPT_MRG_MOV  (1) ==> move members to target group, source group is deleted after merge    */
     status: *mut c_int, /* return status code                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -1066,6 +1072,7 @@ pub unsafe extern "C" fn ffgtcm(
                           OPT_CMT_MBR_DEL (11) ==> (1) + delete all compacted groups    */
     status: *mut c_int, /* return status code                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -1206,6 +1213,7 @@ pub unsafe extern "C" fn ffgtvf(
     firstfailed: *mut c_long, /* Member ID (if positive) of first failed member HDU verify check or GRPID index (if negitive) of first failed group link verify check.                     */
     status: *mut c_int,       /* return status code                     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -1338,6 +1346,7 @@ pub unsafe extern "C" fn ffgtop(
     gfptr: *mut *mut fitsfile, /* FITS file pointer to grouping table HDU      */
     status: *mut c_int,        /* return status code                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let mfptr = mfptr.as_mut().expect(NULL_MSG);
@@ -1736,6 +1745,7 @@ pub unsafe extern "C" fn ffgtam(
     hdupos: c_int, /* member HDU position IF in the same file as the grouping table AND mfptr == NULL        */
     status: *mut c_int, /* return status code                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -2627,6 +2637,7 @@ pub unsafe extern "C" fn ffgtnm(
     nmembers: *mut c_long, /* member count of the grouping table         */
     status: *mut c_int,    /* return status code                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -2691,6 +2702,7 @@ pub unsafe extern "C" fn ffgmng(
     ngroups: *mut c_long, /* total number of groups linked to HDU       */
     status: *mut c_int,   /* return status code                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let mfptr = mfptr.as_mut().expect(NULL_MSG);
@@ -2856,6 +2868,7 @@ pub unsafe extern "C" fn ffgmop(
     mfptr: *mut *mut fitsfile, /* FITS file pointer to member HDU              */
     status: *mut c_int,        /* return status code                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
@@ -3546,6 +3559,7 @@ pub unsafe extern "C" fn ffgmcp(
                                               entry with member copy  */
     status: *mut c_int, /* return status code                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let mfptr = mfptr.as_mut().expect(NULL_MSG);
@@ -3825,6 +3839,7 @@ pub unsafe extern "C" fn ffgmtf(
                             OPT_MCP_MOV (3) ==> move member to dest.   */
     status: *mut c_int, /* return status code                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -3906,6 +3921,7 @@ pub unsafe extern "C" fn ffgmrm(
                           OPT_RM_MBR   ==> delete entry and member HDU */
     status: *mut c_int, /* return status code                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let gfptr = gfptr.as_mut().expect(NULL_MSG);
