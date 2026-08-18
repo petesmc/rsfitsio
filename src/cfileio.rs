@@ -8897,8 +8897,11 @@ pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
 
     CURSOR.set(cursor);
 
-    /* the returned pointer is into the caller's own buffer, as in the C */
-    core::ptr::from_mut::<c_char>(&mut buf[start])
+    /* The returned pointer is into the caller's own buffer, as in the C, and
+       the caller reads the whole NUL-terminated name from it. Derive it from
+       the remaining slice: `&mut buf[start]` borrows a single element, so the
+       pointer would only carry provenance over that one byte. */
+    buf[start..].as_mut_ptr()
 }
 
 /*--------------------------------------------------------------------------*/
