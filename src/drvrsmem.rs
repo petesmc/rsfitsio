@@ -2,12 +2,10 @@
 
 /* configuration parameters */
 
-use core::slice;
-use std::{
-    cmp,
+use core::{
     ffi::{CStr, c_void},
     mem::MaybeUninit,
-    ptr,
+    ptr, slice,
 };
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -171,7 +169,7 @@ static mut SHARED_LT: Vec<SHARED_LTAB> = Vec::new(); /* local table pointer */
 
 unsafe fn shared_clear_entry(idx: usize) -> c_int /* unconditionally clear entry */ {
     unsafe {
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -194,7 +192,7 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
         let mut r2: c_int = 0;
         let filler: semun = semun { val: 0 };
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -205,7 +203,7 @@ unsafe fn shared_destroy_entry(idx: usize) -> c_int /* unconditionally destroy s
             r = semctl(SHARED_GT[idx].sem, 0, IPC_RMID, filler); /* destroy semaphore */
         }
         if SHARED_INVALID != SHARED_GT[idx].handle {
-            r2 = shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()); /* destroy shared memory segment */
+            r2 = shmctl(SHARED_GT[idx].handle, IPC_RMID, ptr::null_mut()); /* destroy shared memory segment */
         }
         if SHARED_OK == r {
             r = r2; /* accumulate error code in r, free r2 */
@@ -308,7 +306,7 @@ pub extern "C" fn shared_cleanup() {
                 }
             }
 
-            let _ = shmdt(SHARED_GT.as_ptr() as *const _); /* detach global table */
+            let _ = shmdt(SHARED_GT.as_ptr().cast()); /* detach global table */
 
             /* delete global table from system, if no shm seg present */
             if oktodelete {
@@ -475,7 +473,7 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
                     return SHARED_IPCERR; /* means deleted ID residing in system, shared mem unusable ... */
                 }
 
-                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
+                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0).cast::<SHARED_GTAB>(); /* attach segment */
 
                 if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
                     return SHARED_IPCERR;
@@ -487,7 +485,7 @@ pub unsafe fn shared_init_safer(debug_msgs: c_int) -> c_int {
                     print!("slave");
                 }
             } else {
-                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0) as *mut SHARED_GTAB; /* attach segment */
+                SHARED_GT_PTR = shmat(SHARED_GT_H, ptr::null(), 0).cast::<SHARED_GTAB>(); /* attach segment */
 
                 if (SHARED_INVALID as *mut SHARED_GTAB) == SHARED_GT_PTR {
                     return SHARED_IPCERR;
@@ -634,7 +632,7 @@ unsafe fn shared_mux(idx: usize, mode: c_int) -> c_int {
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -703,7 +701,7 @@ unsafe fn shared_demux(idx: usize, mode: c_int) -> c_int /* free exclusive acces
             return SHARED_NOTINIT;
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -766,7 +764,7 @@ unsafe fn shared_delta_process(sem: c_int, delta: c_int) -> c_int /* change numb
         sb.sem_op = delta as c_short;
         sb.sem_flg = SEM_UNDO as c_short;
 
-        if -1 == semop(sem, &mut sb, 1) {
+        if -1 == semop(sem, &raw mut sb, 1) {
             SHARED_IPCERR
         } else {
             SHARED_OK
@@ -927,7 +925,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
                 continue; /* segment already accupied */
             }
 
-            let bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD; /* try attach */
+            let bp = shmat(h, ptr::null(), 0).cast::<BLKHEAD>(); /* try attach */
 
             if SHARED_DEBUG {
                 print!(" p={bp:p}");
@@ -935,7 +933,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 
             /* cannot attach, delete segment, try with another key */
             if (SHARED_INVALID as *mut BLKHEAD) == bp {
-                shmctl(h, IPC_RMID, std::ptr::null_mut());
+                shmctl(h, IPC_RMID, ptr::null_mut());
                 i += 1;
                 continue;
             } /* now create semaphor counting number of processes attached */
@@ -956,7 +954,7 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
             if shared_attach_process(SHARED_GT[idx as usize].sem) != 0 {
                 semctl(SHARED_GT[idx as usize].sem, 0, IPC_RMID, filler); /* destroy semaphore */
                 shmdt(bp as *const c_void); /* detach shared mem segment */
-                shmctl(h, IPC_RMID, std::ptr::null_mut()); /* destroy shared mem segment */
+                shmctl(h, IPC_RMID, ptr::null_mut()); /* destroy shared mem segment */
                 i += 1;
                 continue; /* try with another key */
             }
@@ -1019,7 +1017,7 @@ pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
 
         /* try attach process */
         if shared_attach_process(SHARED_GT[idx].sem) != 0 {
-            shmdt(SHARED_LT[idx].p.unwrap() as *const c_void); /* cannot attach process, detach everything */
+            shmdt(SHARED_LT[idx].p.unwrap().cast::<c_void>()); /* cannot attach process, detach everything */
             SHARED_LT[idx].p = None;
             shared_demux(idx, SHARED_RDWRITE);
             return SHARED_BADARG;
@@ -1029,7 +1027,7 @@ pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
 
         /* if resizeable, detach and return special pointer */
         if SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
-            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap().cast::<c_void>()) != 0 {
                 r = SHARED_IPCERR; /* if segment is resizable, then detach segment */
             }
             SHARED_LT[idx].p = None;
@@ -1053,7 +1051,7 @@ unsafe fn shared_check_locked_index(idx: usize) -> c_int /* verify that given id
             }
         }
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -1086,7 +1084,7 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
     unsafe {
         /* have to obtain excl. access before calling shared_map */
 
-        if (idx < 0) || (idx >= SHARED_MAXSEG.try_into().unwrap()) {
+        if idx >= SHARED_MAXSEG.try_into().unwrap() {
             return SHARED_BADARG;
         }
 
@@ -1100,7 +1098,7 @@ unsafe fn shared_map(idx: usize) -> c_int /* map all tables for given idx, check
             return SHARED_BADARG;
         }
 
-        let bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD;
+        let bp = shmat(h, ptr::null(), 0).cast::<BLKHEAD>();
 
         if (SHARED_INVALID as *const BLKHEAD) == bp {
             return SHARED_BADARG;
@@ -1227,11 +1225,11 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
                 continue; /* segment already accupied */
             }
 
-            bp = shmat(h, std::ptr::null(), 0) as *mut BLKHEAD; /* try attach */
+            bp = shmat(h, ptr::null(), 0).cast::<BLKHEAD>(); /* try attach */
 
             /* cannot attach, delete segment, try with another key */
             if (SHARED_INVALID as *mut BLKHEAD) == bp {
-                shmctl(h, IPC_RMID, std::ptr::null_mut());
+                shmctl(h, IPC_RMID, ptr::null_mut());
                 i += 1;
                 continue;
             }
@@ -1246,18 +1244,17 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
 
             if transfersize > 0 {
                 memcpy(
-                    bp.add(1) as *mut c_void,
-                    (SHARED_LT[idx].p.unwrap()).add(1) as *const c_void,
+                    bp.add(1).cast::<c_void>(),
+                    SHARED_LT[idx].p.unwrap().add(1).cast::<c_void>(),
                     transfersize.try_into().unwrap(),
                 );
             }
 
-            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap().cast::<c_void>()) != 0 {
                 r = SHARED_IPCERR; /* try to detach old segment */
             }
 
-            if shmctl(SHARED_GT[idx].handle, IPC_RMID, std::ptr::null_mut()) != 0 && SHARED_OK == r
-            {
+            if shmctl(SHARED_GT[idx].handle, IPC_RMID, ptr::null_mut()) != 0 && SHARED_OK == r {
                 r = SHARED_IPCERR; /* destroy old shared memory segment */
             }
 
@@ -1307,7 +1304,7 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
         }
 
         /* if, we are the last thread, try to detach segment */
-        if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
+        if shmdt(SHARED_LT[idx].p.unwrap().cast::<c_void>()) != 0 {
             shared_demux(idx, SHARED_RDWRITE);
             return SHARED_IPCERR;
         }
@@ -1416,7 +1413,7 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
         }
 
         if 0 == SHARED_LT[idx].lkcnt && SHARED_GT[idx].attr as c_int & SHARED_RESIZE != 0 {
-            if shmdt(SHARED_LT[idx].p.unwrap() as *const c_void) != 0 {
+            if shmdt(SHARED_LT[idx].p.unwrap().cast::<c_void>()) != 0 {
                 r = SHARED_IPCERR; /* segment is resizable, then detach segment */
             }
             SHARED_LT[idx].p = None; /* signal detachment in local table */
@@ -1592,8 +1589,14 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
             return SHARED_BADARG;
         }
 
-        *address = (((SHARED_LT[i as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD).add(1))
-            as *mut c_char;
+        *address = SHARED_LT[i as usize]
+            .p
+            .unwrap()
+            .add(1)
+            .cast::<DAL_SHM_SEGHEAD>()
+            .add(1)
+            .cast::<c_char>()
+            .cast_mut();
         /*  smem_close(i); */
         SHARED_OK
     }
@@ -1695,7 +1698,7 @@ pub(crate) fn smem_open(filename: &mut [c_char], rwmode: c_int, driverhandle: &m
             return SHARED_NULPTR;
         }
 
-        nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
+        nitems = sscanf_d(filename, cs!(c"h%d"), &raw mut h);
 
         if 1 != nitems {
             return SHARED_BADARG;
@@ -1746,7 +1749,7 @@ pub(crate) fn smem_create(
             return SHARED_NULPTR; /* currently ignored */
         }
 
-        nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
+        nitems = sscanf_d(filename, cs!(c"h%d"), &raw mut h);
         if 1 != nitems {
             return SHARED_BADARG;
         }
@@ -1797,7 +1800,7 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
             return SHARED_NULPTR;
         }
 
-        nitems = sscanf_d(filename, cs!(c"h%d"), &mut h);
+        nitems = sscanf_d(filename, cs!(c"h%d"), &raw mut h);
 
         if 1 != nitems {
             return SHARED_BADARG;
@@ -1827,7 +1830,7 @@ pub(crate) fn smem_remove(filename: &[c_char]) -> c_int {
 
             // WARNING: This is bad! We are just converting a immutable slice to a mutable
             // SAFETY: Absolutely none.
-            let f = slice::from_raw_parts_mut(filename.as_ptr() as *mut c_char, filename.len());
+            let f = slice::from_raw_parts_mut(filename.as_ptr().cast_mut(), filename.len());
 
             r = smem_open(f, READWRITE, &mut h);
             if SHARED_OK != r {
@@ -1902,10 +1905,6 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
             return SHARED_INVALID;
         }
 
-        if nbytes < 0 {
-            return SHARED_BADARG;
-        }
-
         if SHARED_LT.is_empty() {
             return SHARED_NOTINIT; /* not initialized */
         }
@@ -1919,11 +1918,16 @@ pub(crate) fn smem_read(driverhandle: c_int, buffer: &mut [u8], nbytes: usize) -
         }
 
         memcpy(
-            buffer.as_mut_ptr() as *mut c_void,
-            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
-                .add(1)) as *const c_char)
+            buffer.as_mut_ptr().cast::<c_void>(),
+            SHARED_LT[driverhandle as usize]
+                .p
+                .unwrap()
+                .add(1)
+                .cast::<DAL_SHM_SEGHEAD>()
+                .add(1)
+                .cast::<c_char>()
                 .add(SHARED_LT[driverhandle as usize].seekpos as usize)
-                as *const c_void,
+                .cast::<c_void>(),
             nbytes,
         );
 
@@ -1952,10 +1956,6 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
             return SHARED_INVALID; /* are we locked RW ? */
         }
 
-        if nbytes < 0 {
-            return SHARED_BADARG;
-        }
-
         if (SHARED_LT[driverhandle as usize].seekpos + nbytes as c_long) as c_ulong
             > (SHARED_GT[driverhandle as usize].size - size_of::<DAL_SHM_SEGHEAD>() as c_int)
                 as c_ulong
@@ -1976,10 +1976,17 @@ pub(crate) fn smem_write(driverhandle: c_int, buffer: &[u8], nbytes: usize) -> c
         }
 
         memcpy(
-            ((((SHARED_LT[driverhandle as usize].p.unwrap().add(1)) as *const DAL_SHM_SEGHEAD)
-                .add(1)) as *const c_char)
-                .add(SHARED_LT[driverhandle as usize].seekpos as usize) as *mut c_void,
-            buffer.as_ptr() as *mut c_void,
+            SHARED_LT[driverhandle as usize]
+                .p
+                .unwrap()
+                .add(1)
+                .cast::<DAL_SHM_SEGHEAD>()
+                .add(1)
+                .cast::<c_char>()
+                .add(SHARED_LT[driverhandle as usize].seekpos as usize)
+                .cast::<c_void>()
+                .cast_mut(),
+            buffer.as_ptr().cast::<c_void>(),
             nbytes,
         );
 
@@ -2258,7 +2265,7 @@ mod tests {
         unsafe {
             assert!(!(shared_list(-1) != 0));
             assert!(!(shared_list(6) != 0));
-            let mut addr: *mut c_char = std::ptr::null_mut();
+            let mut addr: *mut c_char = ptr::null_mut();
             assert!(!(shared_getaddr(6, &mut addr) != 0));
             assert!(!(addr.is_null()));
             assert!(!(shared_recover(-1) != 0));

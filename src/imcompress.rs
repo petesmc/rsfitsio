@@ -13143,7 +13143,7 @@ fn unshuffle_bytes<const NBYTES: usize>(heap: &mut [c_char], length: usize) {
 
     let planes = heap.to_vec();
     for (byte_index, plane) in planes.chunks_exact(length).enumerate() {
-        for (value, &byte) in heap.chunks_exact_mut(NBYTES).zip(plane) {
+        for (value, &byte) in heap.as_chunks_mut::<NBYTES>().0.iter_mut().zip(plane) {
             value[byte_index] = byte;
         }
     }
@@ -14317,8 +14317,10 @@ mod tests {
         // aligned, so decode explicitly rather than reinterpreting the slice).
         fn load_f64_le(bytes: &[u8]) -> Vec<f64> {
             bytes
-                .chunks_exact(8)
-                .map(|c| f64::from_le_bytes(c.try_into().unwrap()))
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|c| f64::from_le_bytes(*c))
                 .collect()
         }
 

@@ -4,6 +4,7 @@ use crate::c_types::{c_int, c_uint};
 
 static SHOW_FITS_DOWNLOAD_PROGRESS: Mutex<c_int> = Mutex::new(0);
 static NET_TIMEOUT: Mutex<c_uint> = Mutex::new(360); /* in seconds */
+static CURL_VERBOSE: Mutex<c_int> = Mutex::new(0);
 
 pub(crate) fn fits_net_timeout(sec: c_int) -> c_int {
     let mut net_timeout = NET_TIMEOUT.lock().unwrap();
@@ -21,5 +22,14 @@ pub(crate) fn fits_dwnld_prog_bar(flag: c_int) {
         *download_progress = 0;
     } else {
         *download_progress = 1;
+    }
+}
+
+pub(crate) fn https_set_verbose(flag: c_int) {
+    let mut curl_verbose = CURL_VERBOSE.lock().unwrap();
+    if flag == 0 {
+        *curl_verbose = 0;
+    } else {
+        *curl_verbose = 1;
     }
 }
