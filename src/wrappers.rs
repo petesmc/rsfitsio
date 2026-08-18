@@ -276,7 +276,15 @@ pub fn atol_safe(cs: &[c_char]) -> c_long {
         return if negative { c_long::MIN } else { c_long::MAX };
     }
 
-    if negative { acc } else { -acc }
+    /* acc is accumulated negatively so that c_long::MIN is representable, but
+       that means a positive value of exactly |MIN| lands on MIN without the
+       checked arithmetic above noticing. Negating it would overflow, so
+       saturate as the C does. */
+    if negative {
+        acc
+    } else {
+        acc.checked_neg().unwrap_or(c_long::MAX)
+    }
 }
 
 pub fn atof_safe(cs: &[c_char]) -> f64 {
@@ -956,6 +964,20 @@ mod libc_parity_tests {
         assert_eq!(atof_safe(&cc("12345.6789")), 12345.6789);
         assert_eq!(atof_safe(&cc("0.000123456789")), 0.000123456789);
         assert_eq!(atof_safe(&cc("1234567.891011")), 1234567.891011);
+    }
+
+    /// A positive value equal to |c_long::MIN| accumulates to MIN without
+    /// tripping the checked arithmetic, so negating it at the end overflows.
+    /// Computed rather than hardcoded: c_long is 32-bit on Windows.
+    #[test]
+    fn test_atol_safe_at_the_negation_boundary() {
+        let magnitude = (c_long::MIN as i128).unsigned_abs().to_string();
+        assert_eq!(atol_safe(&cc(&magnitude)), c_long::MAX, "{magnitude}");
+        assert_eq!(
+            atol_safe(&cc(&format!("-{magnitude}"))),
+            c_long::MIN,
+            "-{magnitude}"
+        );
     }
 
     /// C saturates on overflow rather than failing.
