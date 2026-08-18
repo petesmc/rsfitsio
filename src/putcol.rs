@@ -3974,7 +3974,10 @@ pub fn ffiter_safe(
         /*----------------------------------*/
 
         for jj in 0..n_cols as usize {
-            if cols[jj].datatype == TSTRING && cols[jj].array.is_null() {
+            /* The C guards these on `if (cols[jj].array)`, i.e. non-null.
+               Testing is_null() instead meant the frees only ran for columns
+               that had nothing to free, so every allocated work array leaked. */
+            if cols[jj].datatype == TSTRING && !cols[jj].array.is_null() {
                 stringptr = cols[jj].array.cast::<*mut c_char>();
 
                 free((*stringptr).cast::<c_void>()); /* free the block of strings */
@@ -3982,7 +3985,7 @@ pub fn ffiter_safe(
                     free(ptr.cast::<c_void>()); /* free the null string */
                 }
             }
-            if cols[jj].array.is_null() {
+            if !cols[jj].array.is_null() {
                 free(cols[jj].array);
                 /* memory for the array of values from the col */
             }
