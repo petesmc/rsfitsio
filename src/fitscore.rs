@@ -42,7 +42,7 @@ use core::{slice, str};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
-use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void, off_t};
+use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, off_t};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
 use crate::wrappers::strcpy_safe;
 
@@ -12441,74 +12441,76 @@ pub(crate) fn fits_strncasecmp(s1: &[c_char], s2: &[c_char], n: usize) -> c_int 
  * RETURNS: newly allocated storage
  *
  * */
-pub(crate) unsafe fn fits_recalloc(
-    ptr: *mut c_void,
-    old_num: usize,
-    new_num: usize,
-    size: usize,
-) -> *mut c_void {
+/// Grow, shrink or free a zero-initialised array of `T`, as the C's realloc
+/// idiom in the iterator/histogram code.
+///
+/// Generic over the element type rather than taking a byte size: the layout has
+/// to carry `align_of::<T>()`. The previous version built every layout with
+/// `Layout::array::<u8>(n * size)`, so the allocation was only ever 1-byte
+/// aligned and taking a `&mut T` out of it was UB for any `T` needing more
+/// (Miri rejected `&mut *iterCols.add(n)` for `iteratorCol`, which wants 8).
+///
+/// Returns null on allocation failure, freeing the old block, and returns null
+/// for `new_num == 0` after freeing.
+pub(crate) unsafe fn fits_recalloc<T>(ptr: *mut T, old_num: usize, new_num: usize) -> *mut T {
     unsafe {
         use alloc::alloc::{alloc_zeroed, dealloc, realloc};
         use core::alloc::Layout;
         use core::ptr;
 
+        let old_layout = match Layout::array::<T>(old_num) {
+            Ok(l) => l,
+            Err(_) => return ptr::null_mut(),
+        };
+
         if ptr.is_null() || old_num == 0 {
             /* Starting from nothing */
-            let layout = match Layout::array::<u8>(new_num * size) {
+            if new_num == 0 {
+                return ptr::null_mut();
+            }
+            let layout = match Layout::array::<T>(new_num) {
                 Ok(l) => l,
                 Err(_) => return ptr::null_mut(),
             };
-            return alloc_zeroed(layout).cast::<c_void>();
-        } else if new_num == old_num {
-            /* Same size, do nothing */
-            return ptr;
-        } else if new_num == 0 {
-            /* Freeing */
-            if !ptr.is_null() {
-                let layout = match Layout::array::<u8>(old_num * size) {
-                    Ok(l) => l,
-                    Err(_) => return ptr::null_mut(),
-                };
-                dealloc(ptr.cast::<u8>(), layout);
-            }
-            return ptr::null_mut();
-        } else if new_num < old_num {
-            /* Shrinking */
-            let old_layout = match Layout::array::<u8>(old_num * size) {
-                Ok(l) => l,
-                Err(_) => {
-                    let layout =
-                        Layout::array::<u8>(old_num * size).unwrap_or_else(|_| Layout::new::<u8>());
-                    dealloc(ptr.cast::<u8>(), layout);
-                    return ptr::null_mut();
-                }
-            };
-            let newptr = realloc(ptr.cast::<u8>(), old_layout, new_num * size);
-            if newptr.is_null() {
-                dealloc(ptr.cast::<u8>(), old_layout);
-            }
-            return newptr.cast::<c_void>();
+            return alloc_zeroed(layout).cast::<T>();
         }
 
-        /* Growing */
-        let old_layout = match Layout::array::<u8>(old_num * size) {
+        if new_num == old_num {
+            /* Same size, do nothing */
+            return ptr;
+        }
+
+        if new_num == 0 {
+            /* Freeing */
+            dealloc(ptr.cast::<u8>(), old_layout);
+            return ptr::null_mut();
+        }
+
+        let new_layout = match Layout::array::<T>(new_num) {
             Ok(l) => l,
             Err(_) => {
-                let layout =
-                    Layout::array::<u8>(old_num * size).unwrap_or_else(|_| Layout::new::<u8>());
-                dealloc(ptr.cast::<u8>(), layout);
+                dealloc(ptr.cast::<u8>(), old_layout);
                 return ptr::null_mut();
             }
         };
-        let newptr = realloc(ptr.cast::<u8>(), old_layout, new_num * size);
+
+        /* realloc keeps the alignment of old_layout, which is align_of::<T>() */
+        let newptr = realloc(ptr.cast::<u8>(), old_layout, new_layout.size());
         if newptr.is_null() {
             dealloc(ptr.cast::<u8>(), old_layout);
-            return newptr.cast::<c_void>();
+            return ptr::null_mut();
         }
 
-        /* Zero the new portion of the array */
-        ptr::write_bytes(newptr.add(old_num * size), 0, (new_num - old_num) * size);
-        newptr.cast::<c_void>()
+        if new_num > old_num {
+            /* Zero the new portion of the array */
+            ptr::write_bytes(
+                newptr.add(old_layout.size()),
+                0,
+                new_layout.size() - old_layout.size(),
+            );
+        }
+
+        newptr.cast::<T>()
     }
 }
 
