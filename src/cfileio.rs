@@ -12,7 +12,7 @@ use std::io::{Read, Seek, Write};
 use std::sync::{Mutex, OnceLock};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_short, c_void};
-use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout};
+use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout, https_set_verbose};
 use crate::grparser::fits_execute_template;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
@@ -9657,8 +9657,7 @@ pub unsafe extern "C" fn ffvhtps(flag: c_int) {
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
 pub fn ffvhtps_safe(flag: c_int) {
-    #[cfg(feature = "net_services")]
-    {
+    if cfg!(feature = "net_services") {
         https_set_verbose(flag);
     }
 }
@@ -9727,9 +9726,7 @@ pub fn ffstmo_safe(sec: c_int, status: &mut c_int) -> c_int {
             return *status;
         }
 
-        unsafe {
-            fits_net_timeout(sec);
-        }
+        fits_net_timeout(sec);
     }
 
     *status
