@@ -39,6 +39,7 @@ pub unsafe extern "C" fn ffcsum(
     sum: *mut c_ulong,   /* IO - accumulated checksum              */
     status: *mut c_int,  /* IO - error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         if fptr.is_null() {
             *status = NULL_INPUT_PTR;
@@ -131,6 +132,7 @@ pub unsafe extern "C" fn ffesum(
     complm: c_int,            /* I - = 1 to encode complement of the sum */
     ascii: *mut [c_char; 17], /* O - 16-char ASCII encoded checksum      */
 ) {
+    // FFI WRAPPER
     unsafe {
         let ascii = ascii.as_mut().expect(NULL_MSG);
         ffesum_safe(sum, complm == 1, ascii)
@@ -223,6 +225,7 @@ pub unsafe extern "C" fn ffdsum(
     complm: c_int,        /* I - =1 to decode complement of the   */
     sum: *mut c_ulong,    /* O - 32-bit checksum           */
 ) -> c_ulong {
+    // FFI WRAPPER
     unsafe {
         let sum = sum.as_mut().expect(NULL_MSG);
         let ascii = slice::from_raw_parts(ascii, 17).try_into().unwrap();
@@ -281,6 +284,7 @@ pub unsafe extern "C" fn ffpcks(
     fptr: *mut fitsfile, /* I - FITS file pointer                  */
     status: *mut c_int,  /* IO - error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -465,6 +469,7 @@ pub unsafe extern "C" fn ffupck(
     fptr: *mut fitsfile, /* I - FITS file pointer                  */
     status: *mut c_int,  /* IO - error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -600,6 +605,7 @@ pub unsafe extern "C" fn ffvcks(
     /*    -1 verification not correct         */
     status: *mut c_int, /* IO - error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -694,6 +700,7 @@ pub unsafe extern "C" fn ffgcks(
     hdusum: *mut c_ulong,  /* O - hdu checksum                  */
     status: *mut c_int,    /* IO - error status                 */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

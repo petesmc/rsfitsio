@@ -61,6 +61,7 @@ pub unsafe extern "C" fn ffgpxv(
     anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -146,6 +147,7 @@ pub unsafe extern "C" fn ffgpxvll(
     anynul: *mut c_int,        /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,        /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -783,6 +785,7 @@ pub unsafe extern "C" fn ffgpxf(
     anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -872,6 +875,7 @@ pub unsafe extern "C" fn ffgpxfll(
     anynul: *mut c_int,        /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,        /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1192,6 +1196,7 @@ pub unsafe extern "C" fn ffgsv(
     anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1636,6 +1641,7 @@ pub unsafe extern "C" fn ffgpv(
     anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1988,6 +1994,7 @@ pub unsafe extern "C" fn ffgpf(
     anynul: *mut c_int,     /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,     /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2107,6 +2114,7 @@ pub unsafe extern "C" fn ffgcv(
     anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2871,6 +2879,7 @@ pub unsafe extern "C" fn ffgcvn(
     anynul: *mut c_int, /* O - anynul[i] set to 1 if any values in column i are null; else 0 */
     status: *mut c_int, /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3110,6 +3119,7 @@ pub unsafe extern "C" fn ffgcf(
     anynul: *mut c_int,     /* O - set to 1 if any values are null; else 0 */
     status: *mut c_int,     /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

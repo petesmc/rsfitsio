@@ -277,9 +277,9 @@ pub fn atol_safe(cs: &[c_char]) -> c_long {
     }
 
     /* acc is accumulated negatively so that c_long::MIN is representable, but
-       that means a positive value of exactly |MIN| lands on MIN without the
-       checked arithmetic above noticing. Negating it would overflow, so
-       saturate as the C does. */
+    that means a positive value of exactly |MIN| lands on MIN without the
+    checked arithmetic above noticing. Negating it would overflow, so
+    saturate as the C does. */
     if negative {
         acc
     } else {
@@ -314,11 +314,11 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     }
 
     /* Start of the literal itself, sign included: the digit-by-digit
-       accumulation below is not correctly rounded (it compounds a rounding
-       error per fractional digit, so e.g. 12345.6789 comes out as
-       12345.678899999999), so once the extent of the literal is known the
-       decimal case re-parses this span with Rust's correctly-rounded parser
-       and only falls back to the accumulated value if that fails. */
+    accumulation below is not correctly rounded (it compounds a rounding
+    error per fractional digit, so e.g. 12345.6789 comes out as
+    12345.678899999999), so once the extent of the literal is known the
+    decimal case re-parses this span with Rust's correctly-rounded parser
+    and only falls back to the accumulated value if that fails. */
     let literal_start = si;
 
     let mut result: f64 = 0.0;
@@ -409,9 +409,9 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
                     };
 
                     /* Saturate rather than panic: `1e400` overflows a u128
-                       pow, and the C just returns inf/0 for out-of-range
-                       exponents. The correctly-rounded re-parse below produces
-                       the real value whenever the literal is well-formed. */
+                    pow, and the C just returns inf/0 for out-of-range
+                    exponents. The correctly-rounded re-parse below produces
+                    the real value whenever the literal is well-formed. */
                     let magnitude = exponent_base
                         .checked_pow(exponent_value)
                         .map_or(f64::INFINITY, |m| m as f64);
@@ -920,16 +920,58 @@ mod libc_parity_tests {
     /// digit-by-digit accumulation gets wrong, signs, whitespace, exponents,
     /// trailing junk, and the no-digits case.
     const FLOAT_CASES: &[&str] = &[
-        "0", "1", "1.5", "2.", ".5", "-1.5", "+1.5", "  3.75", "1e3", "1E3", "1.5e-3", "1.5E+3",
-        "3.25", "0.1", "0.2", "0.3", "12345.6789", "1234567.891011", "0.000123456789",
-        "9007199254740993", "1.7976931348623157e308", "2.2250738585072014e-308", "1e-400",
-        "1e400", "123abc", "abc", "", "   ", "-0", "0.0000000000000001",
+        "0",
+        "1",
+        "1.5",
+        "2.",
+        ".5",
+        "-1.5",
+        "+1.5",
+        "  3.75",
+        "1e3",
+        "1E3",
+        "1.5e-3",
+        "1.5E+3",
+        "3.25",
+        "0.1",
+        "0.2",
+        "0.3",
+        "12345.6789",
+        "1234567.891011",
+        "0.000123456789",
+        "9007199254740993",
+        "1.7976931348623157e308",
+        "2.2250738585072014e-308",
+        "1e-400",
+        "1e400",
+        "123abc",
+        "abc",
+        "",
+        "   ",
+        "-0",
+        "0.0000000000000001",
     ];
 
     const LONG_CASES: &[&str] = &[
-        "0", "1", "-1", "+1", "  42", "42abc", "abc", "", "   ", "-0", "2147483647",
-        "-2147483648", "9223372036854775807", "-9223372036854775808",
-        "99999999999999999999", "-99999999999999999999", "007", "-  5", "1 2",
+        "0",
+        "1",
+        "-1",
+        "+1",
+        "  42",
+        "42abc",
+        "abc",
+        "",
+        "   ",
+        "-0",
+        "2147483647",
+        "-2147483648",
+        "9223372036854775807",
+        "-9223372036854775808",
+        "99999999999999999999",
+        "-99999999999999999999",
+        "007",
+        "-  5",
+        "1 2",
     ];
 
     #[test]

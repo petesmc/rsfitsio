@@ -1946,6 +1946,7 @@ pub unsafe extern "C" fn fits_execute_template(
     ngp_template: *const c_char, /* I - template string */
     status: *mut c_int,          /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
         let mut exit_flg: c_int = 0;

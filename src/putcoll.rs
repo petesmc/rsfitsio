@@ -32,6 +32,7 @@ pub unsafe extern "C" fn ffpcll(
     array: *const c_char, /* I - array of values to write                */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -188,6 +189,7 @@ pub unsafe extern "C" fn ffpcnl(
     nulvalue: c_char,     /* I - array flagging undefined pixels if true */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -352,6 +354,7 @@ pub unsafe extern "C" fn ffpclx(
     larray: *const c_char, /* I - array of logicals corresponding to bits */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

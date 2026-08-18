@@ -145,6 +145,7 @@ pub unsafe extern "C" fn fffrow(
     row_status: *mut c_char,  /* O - Array of boolean results          */
     status: *mut c_int,       /* O - Error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -282,6 +283,7 @@ pub unsafe extern "C" fn ffsrow(
     expr: *const c_char,    /* I - Boolean expression                   */
     status: *mut c_int,     /* O - Error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -691,6 +693,7 @@ pub unsafe extern "C" fn ffcrow(
     anynul: *mut c_int,    /* O - Were any UNDEFs encountered?         */
     status: *mut c_int,    /* O - Error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -803,6 +806,7 @@ pub unsafe extern "C" fn ffcalc(
     parInfo: *const c_char, /* I - Extra information on parameter       */
     status: *mut c_int,     /* O - Error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let outfptr = outfptr.as_mut().expect(NULL_MSG);
@@ -869,6 +873,7 @@ pub unsafe extern "C" fn ffcalc_rng(
     end: *const c_long,     /* I - Row range info                   */
     status: *mut c_int,     /* O - Error status                     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(expr);
         raw_to_slice!(parName);
@@ -1290,6 +1295,7 @@ pub unsafe extern "C" fn fftexp(
     naxes: *mut c_long,   /* O - Size of each dimension              */
     status: *mut c_int,   /* O - Error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3240,6 +3246,7 @@ pub unsafe extern "C" fn fffrwc(
     time_status: *mut c_char, /* O - Array of boolean results           */
     status: *mut c_int,       /* O - Error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3501,6 +3508,7 @@ pub unsafe extern "C" fn ffffrw(
     rownum: *mut c_long, /* O - First row of table to eval to T   */
     status: *mut c_int,  /* O - Error status                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3927,6 +3935,7 @@ pub unsafe extern "C" fn fits_pixel_filter(
     filter: *mut PixelFilter, /* I - pixel filter structure */
     status: *mut c_int,       /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect("Null status pointer");
         let filter = filter.as_mut().expect("Null filter pointer");

@@ -48,6 +48,7 @@ pub unsafe extern "C" fn ffcrim(
     naxes: *const c_long, /* I - size of each axis           */
     status: *mut c_int,   /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -116,6 +117,7 @@ pub unsafe extern "C" fn ffcrimll(
     naxes: *const LONGLONG, /* I - size of each axis           */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -182,6 +184,7 @@ pub unsafe extern "C" fn ffcrtb(
     extnm: *const c_char,        /* I - value of EXTNAME keyword, if any         */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -265,6 +268,7 @@ pub unsafe extern "C" fn ffphps(
     naxes: *const c_long, /* I - length of each data axis                 */
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -310,6 +314,7 @@ pub unsafe extern "C" fn ffphpsll(
     naxes: *const LONGLONG, /* I - length of each data axis                 */
     status: *mut c_int,     /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -354,6 +359,7 @@ pub unsafe extern "C" fn ffphpr(
     extend: c_int,        /* I - may FITS file have extensions?           */
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -414,6 +420,7 @@ pub unsafe extern "C" fn ffphprll(
     extend: c_int,          /* I - may FITS file have extensions?           */
     status: *mut c_int,     /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -690,6 +697,7 @@ pub unsafe extern "C" fn ffphtb(
     extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -974,6 +982,7 @@ pub unsafe extern "C" fn ffphbn(
     pcount: LONGLONG,            /* I - size of the variable length heap area    */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1380,6 +1389,7 @@ pub unsafe extern "C" fn ffphext(
     gcount: LONGLONG,         /* I - value for the GCOUNT keyword            */
     status: *mut c_int,       /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1499,6 +1509,7 @@ pub unsafe extern "C" fn ffprec(
     card: *const c_char, /* I - string to be written     */
     status: *mut c_int,  /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1603,6 +1614,7 @@ pub unsafe extern "C" fn ffpkyu(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1649,6 +1661,7 @@ pub unsafe extern "C" fn ffpkys(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1702,6 +1715,7 @@ pub unsafe extern "C" fn ffpkyuj(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1750,6 +1764,7 @@ pub unsafe extern "C" fn ffpkyf(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1799,6 +1814,7 @@ pub unsafe extern "C" fn ffpkye(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1848,6 +1864,7 @@ pub unsafe extern "C" fn ffpkyg(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1897,6 +1914,7 @@ pub unsafe extern "C" fn ffpkyd(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1946,6 +1964,7 @@ pub unsafe extern "C" fn ffpkyc(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2017,6 +2036,7 @@ pub unsafe extern "C" fn ffpkym(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2088,6 +2108,7 @@ pub unsafe extern "C" fn ffpkfc(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2158,6 +2179,7 @@ pub unsafe extern "C" fn ffpkfm(
     comm: *const c_char,    /* I - keyword comment                     */
     status: *mut c_int,     /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2233,6 +2255,7 @@ pub unsafe extern "C" fn ffpkls(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2574,6 +2597,7 @@ pub unsafe extern "C" fn ffplsw(
     fptr: *mut fitsfile, /* I - FITS file pointer  */
     status: *mut c_int,  /* IO - error status       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2660,6 +2684,7 @@ pub unsafe extern "C" fn ffpkyl(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2707,6 +2732,7 @@ pub unsafe extern "C" fn ffpkyj(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2756,6 +2782,7 @@ pub unsafe extern "C" fn ffpkyt(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
@@ -2821,6 +2848,7 @@ pub unsafe extern "C" fn ffpcom(
     comm: *const c_char, /* I - comment string      */
     status: *mut c_int,  /* IO - error status       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2870,6 +2898,7 @@ pub unsafe extern "C" fn ffphis(
     history: *const c_char, /* I - history string     */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2917,6 +2946,7 @@ pub unsafe extern "C" fn ffpdat(
     fptr: *mut fitsfile, /* I - FITS file pointer  */
     status: *mut c_int,  /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2980,6 +3010,7 @@ pub unsafe extern "C" fn ffpkns(
     comm: *const *const c_char,  /* I - array of pointers to keyword comment */
     status: *mut c_int,          /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3088,6 +3119,7 @@ pub unsafe extern "C" fn ffpknl(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3191,6 +3223,7 @@ pub unsafe extern "C" fn ffpknj(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3299,6 +3332,7 @@ pub unsafe extern "C" fn ffpknf(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3402,6 +3436,7 @@ pub unsafe extern "C" fn ffpkne(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3505,6 +3540,7 @@ pub unsafe extern "C" fn ffpkng(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3608,6 +3644,7 @@ pub unsafe extern "C" fn ffpknd(
     comm: *const *const c_char, /* I - array of pointers to keyword comment */
     status: *mut c_int,         /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -3710,6 +3747,7 @@ pub unsafe extern "C" fn ffpky(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3814,6 +3852,7 @@ pub unsafe extern "C" fn ffpktp(
     filename: *const c_char, /* I - name of template file   */
     status: *mut c_int,      /* IO - error status           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3916,6 +3955,7 @@ pub unsafe extern "C" fn ffptdm(
     naxes: *const c_long, /* I - length of each data axis                 */
     status: *mut c_int,   /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4042,6 +4082,7 @@ pub unsafe extern "C" fn ffptdmll(
     naxes: *const LONGLONG, /* I - length of each data axis               */
     status: *mut c_int,     /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4170,6 +4211,7 @@ pub unsafe extern "C" fn ffgstm(
     timeref: *mut c_int,  /* O - GMT = 0, Local time = 1  */
     status: *mut c_int,   /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let timestr = timestr.as_mut().expect(NULL_MSG);
@@ -4217,6 +4259,7 @@ pub unsafe extern "C" fn ffdt2s(
     datestr: *mut c_char, /* O - date string: "YYYY-MM-DD" */
     status: *mut c_int,   /* IO - error status             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -4268,6 +4311,7 @@ pub unsafe extern "C" fn ffs2dt(
     day: *mut c_int,        /* O - day (1 - 31)                            */
     status: *mut c_int,     /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let year = year.as_mut();
@@ -4411,6 +4455,7 @@ pub unsafe extern "C" fn fftm2s(
     datestr: *mut c_char, /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
     status: *mut c_int,   /* IO - error status             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let datestr = datestr.as_mut().expect(NULL_MSG);
@@ -4556,6 +4601,7 @@ pub unsafe extern "C" fn ffs2tm(
     second: *mut c_double, /* O - second (0. - 60.9999999)     */
     status: *mut c_int,    /* IO - error status                */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let year = year.as_mut();
@@ -4776,6 +4822,7 @@ pub unsafe extern "C" fn ffgsdt(
     year: *mut c_int,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let day = day.as_mut().expect(NULL_MSG);
@@ -5242,6 +5289,7 @@ pub unsafe extern "C" fn ffverifydate(
     day: c_int,         /* I - day (1-31) */
     status: *mut c_int, /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         ffverifydate_safe(year, month, day, status)
@@ -5352,6 +5400,7 @@ pub unsafe extern "C" fn ffpknjj(
     comm: *const *const c_char, /* I - array of keyword comments */
     status: *mut c_int,         /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

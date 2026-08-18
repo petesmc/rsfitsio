@@ -133,7 +133,7 @@ unsafe fn owned_realloc(ptr: *mut c_char, newsize: usize) -> *mut c_char {
 
         let Some((len, capacity)) = allocations.remove(&(ptr as usize)) else {
             /* Not one of ours; refuse rather than free it with the wrong
-               allocator. */
+            allocator. */
             return ptr::null_mut();
         };
 
@@ -1547,7 +1547,7 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
             );
 
             /* call the realloc function; see owned_realloc for why a
-               driver-owned buffer cannot go through the C one */
+            driver-owned buffer cannot go through the C one */
             let ptr = if m[hdl].owned_cell.is_null() {
                 (m[hdl].mem_realloc.unwrap())((*(m[hdl].memaddrptr)).cast::<c_void>(), newsize)
                     .cast::<c_char>()

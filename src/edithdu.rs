@@ -38,6 +38,7 @@ pub unsafe extern "C" fn ffcopy(
     morekeys: c_int,        /* I - reserve space in output header   */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -114,6 +115,7 @@ pub unsafe extern "C" fn ffcpfl(
     following: c_int,       /* I - copy any following HDUs?   */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -197,6 +199,7 @@ pub unsafe extern "C" fn ffcphd(
     outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -408,6 +411,7 @@ pub unsafe extern "C" fn ffcpht(
     nrows: LONGLONG,        /* I - number of rows to copy  */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -465,6 +469,7 @@ pub unsafe extern "C" fn ffcpdt(
     outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -554,6 +559,7 @@ pub unsafe extern "C" fn ffwrhdu(
     outstream: *mut FILE,  /* I - stream to write HDU to */
     status: *mut c_int,    /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -605,6 +611,7 @@ pub unsafe extern "C" fn ffiimg(
     naxes: *const c_long, /* I - size of each axis           */
     status: *mut c_int,   /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -657,6 +664,7 @@ pub unsafe extern "C" fn ffiimgll(
     naxes: *const LONGLONG, /* I - size of each axis           */
     status: *mut c_int,     /* IO - error status               */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -910,6 +918,7 @@ pub unsafe extern "C" fn ffitab(
     extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1141,6 +1150,7 @@ pub unsafe extern "C" fn ffibin(
     pcount: LONGLONG,            /* I - size of special data area (heap)         */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1356,6 +1366,7 @@ pub unsafe extern "C" fn ffdhdu(
     hdutype: *mut c_int, /* O - type of the new CHDU after deletion */
     status: *mut c_int,  /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

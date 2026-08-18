@@ -42,6 +42,7 @@ pub unsafe extern "C" fn ffuky(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -136,6 +137,7 @@ pub unsafe extern "C" fn ffukyu(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -177,6 +179,7 @@ pub unsafe extern "C" fn ffukys(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -224,6 +227,7 @@ pub unsafe extern "C" fn ffukls(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -274,6 +278,7 @@ pub unsafe extern "C" fn ffukyl(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -316,6 +321,7 @@ pub unsafe extern "C" fn ffukyj(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -358,6 +364,7 @@ pub unsafe extern "C" fn ffukyuj(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -401,6 +408,7 @@ pub unsafe extern "C" fn ffukyf(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -445,6 +453,7 @@ pub unsafe extern "C" fn ffukye(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -489,6 +498,7 @@ pub unsafe extern "C" fn ffukyg(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -533,6 +543,7 @@ pub unsafe extern "C" fn ffukyd(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -577,6 +588,7 @@ pub unsafe extern "C" fn ffukfc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -621,6 +633,7 @@ pub unsafe extern "C" fn ffukyc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -666,6 +679,7 @@ pub unsafe extern "C" fn ffukfm(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -711,6 +725,7 @@ pub unsafe extern "C" fn ffukym(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -754,6 +769,7 @@ pub unsafe extern "C" fn ffucrd(
     card: *const c_char,    /* I - card string value  */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -795,6 +811,7 @@ pub unsafe extern "C" fn ffmrec(
     card: *const c_char, /* I - card string value               */
     status: *mut c_int,  /* IO - error status                   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -830,6 +847,7 @@ pub unsafe extern "C" fn ffmcrd(
     card: *const c_char,    /* I - card string value  */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -910,6 +928,7 @@ pub unsafe extern "C" fn ffmnam(
     newname: *const c_char, /* I - new name for keyword  */
     status: *mut c_int,     /* IO - error status         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -955,6 +974,7 @@ pub unsafe extern "C" fn ffmcom(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1006,6 +1026,7 @@ pub unsafe extern "C" fn ffpunt(
     unit: *const c_char,    /* I - keyword unit string */
     status: *mut c_int,     /* IO - error status       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1091,6 +1112,7 @@ pub unsafe extern "C" fn ffmkyu(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1151,6 +1173,7 @@ pub unsafe extern "C" fn ffmkys(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1266,6 +1289,7 @@ pub unsafe extern "C" fn ffmkls(
     incomm: *const c_char,  /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1376,6 +1400,7 @@ pub unsafe extern "C" fn ffmkyl(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1437,6 +1462,7 @@ pub unsafe extern "C" fn ffmkyj(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1494,6 +1520,7 @@ pub unsafe extern "C" fn ffmkyuj(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1554,6 +1581,7 @@ pub unsafe extern "C" fn ffmkyf(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1617,6 +1645,7 @@ pub unsafe extern "C" fn ffmkye(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1680,6 +1709,7 @@ pub unsafe extern "C" fn ffmkyg(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1743,6 +1773,7 @@ pub unsafe extern "C" fn ffmkyd(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1806,6 +1837,7 @@ pub unsafe extern "C" fn ffmkfc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1881,6 +1913,7 @@ pub unsafe extern "C" fn ffmkyc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1956,6 +1989,7 @@ pub unsafe extern "C" fn ffmkfm(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2031,6 +2065,7 @@ pub unsafe extern "C" fn ffmkym(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2105,6 +2140,7 @@ pub unsafe extern "C" fn ffikyu(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2148,6 +2184,7 @@ pub unsafe extern "C" fn ffikys(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2200,6 +2237,7 @@ pub unsafe extern "C" fn ffikls(
     comm: *const c_char,    /* I - keyword comment          */
     status: *mut c_int,     /* IO - error status            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2332,6 +2370,7 @@ pub unsafe extern "C" fn ffikyl(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2376,6 +2415,7 @@ pub unsafe extern "C" fn ffikyj(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2444,6 +2484,7 @@ pub unsafe extern "C" fn ffikyf(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2465,6 +2506,7 @@ pub unsafe extern "C" fn ffikye(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2511,6 +2553,7 @@ pub unsafe extern "C" fn ffikyg(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2557,6 +2600,7 @@ pub unsafe extern "C" fn ffikyd(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2603,6 +2647,7 @@ pub unsafe extern "C" fn ffikfc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2668,6 +2713,7 @@ pub unsafe extern "C" fn ffikyc(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2733,6 +2779,7 @@ pub unsafe extern "C" fn ffikfm(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.cast_mut().as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2798,6 +2845,7 @@ pub unsafe extern "C" fn ffikym(
     comm: *const c_char,    /* I - keyword comment    */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -2861,6 +2909,7 @@ pub unsafe extern "C" fn ffirec(
     card: *const c_char, /* I - card string value              */
     status: *mut c_int,  /* IO - error status                  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2897,6 +2946,7 @@ pub unsafe extern "C" fn ffikey(
     card: *const c_char, /* I - card string value  */
     status: *mut c_int,  /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3017,6 +3067,7 @@ pub unsafe extern "C" fn ffdkey(
     keyname: *const c_char, /* I - keyword name       */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3105,6 +3156,7 @@ pub unsafe extern "C" fn ffdstr(
     string: *const c_char, /* I - keyword name       */
     status: *mut c_int,    /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -3198,6 +3250,7 @@ pub unsafe extern "C" fn ffdrec(
     keypos: c_int,       /* I - position in header of keyword to delete */
     status: *mut c_int,  /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);

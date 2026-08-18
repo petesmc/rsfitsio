@@ -156,6 +156,7 @@ pub unsafe extern "C" fn ffomem(
     mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
     status: *mut c_int, /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -456,6 +457,7 @@ pub unsafe extern "C" fn ffdkopn(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -494,6 +496,7 @@ pub unsafe extern "C" fn ffdopn(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -534,6 +537,7 @@ pub unsafe extern "C" fn ffeopn(
     hdutype: *mut c_int,              /* O - type of extension that is moved to  */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -636,6 +640,7 @@ pub unsafe extern "C" fn fftopn(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -684,6 +689,7 @@ pub unsafe extern "C" fn ffiopn(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -737,6 +743,7 @@ pub unsafe extern "C" fn ffopentest(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -787,6 +794,7 @@ pub unsafe extern "C" fn ffopen(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1816,6 +1824,7 @@ pub unsafe extern "C" fn ffreopen(
     newfptr: *mut *mut fitsfile, /* O - pointer to new re opened file   */
     status: *mut c_int,          /* IO - error status                   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let newfptr = newfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1892,6 +1901,7 @@ pub unsafe extern "C" fn fits_clear_Fptr(
     Fptr: *mut FITSfile, /* O - FITS file pointer               */
     status: *mut c_int,  /* IO - error status                   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let lock = FFLOCK();
         for ii in 0..NMAXFILES {
@@ -3341,6 +3351,7 @@ pub unsafe extern "C" fn fits_copy_cell2image(
     rownum: c_long,        /* I - number of the row containing the image */
     status: *mut c_int,    /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let newptr = newptr.as_mut().expect(NULL_MSG);
@@ -3647,6 +3658,7 @@ pub unsafe extern "C" fn fits_copy_image2cell(
     copykeyflag: c_int,     /* I - controls which keywords to copy */
     status: *mut c_int,     /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4002,6 +4014,7 @@ pub unsafe extern "C" fn fits_select_image_section(
     expr: *const c_char,    /* I - Image section expression    */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -4130,6 +4143,7 @@ pub unsafe extern "C" fn fits_copy_image_section(
     expr: *const c_char,   /* I - Image section expression    */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let newptr = newptr.as_mut().expect(NULL_MSG);
@@ -4631,6 +4645,7 @@ pub unsafe extern "C" fn fits_get_section_range(
     incre: *mut c_long,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let ptr = ptr.as_mut().expect(NULL_MSG);
         let secmin = secmin.as_mut().expect(NULL_MSG);
@@ -5174,6 +5189,7 @@ pub unsafe extern "C" fn ffdkinit(
     name: *const c_char,              /* I - name of file to create              */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5218,6 +5234,7 @@ pub unsafe extern "C" fn ffinit(
     name: *const c_char,              /* I - name of file to create              */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5450,6 +5467,7 @@ pub unsafe extern "C" fn ffimem(
     mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
     status: *mut c_int, /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let buffptr = buffptr.as_mut().expect(NULL_MSG);
@@ -5586,6 +5604,7 @@ pub fn ffimem_safer(
 /// Initialize anything that is required before using the CFITSIO routines
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_init_cfitsio() -> c_int {
+    // FFI WRAPPER
     fits_init_cfitsio_safer()
 }
 
@@ -6138,6 +6157,7 @@ pub unsafe extern "C" fn ffiurl(
     colspec: *mut c_char,    /* column or keyword modifier expression */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(url);
 
@@ -6208,6 +6228,7 @@ pub unsafe extern "C" fn ffifile(
     pixfilter: *mut c_char,  /* pixel filter expression */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(url);
@@ -6280,6 +6301,7 @@ pub unsafe extern "C" fn ffifile2(
     compspec: *mut c_char,   /* image compression specification */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(url);
 
@@ -7516,6 +7538,7 @@ pub unsafe extern "C" fn ffexist(
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
     status: *mut c_int, /* I/O  status  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let exists = exists.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -7594,6 +7617,7 @@ pub unsafe extern "C" fn ffrtnm(
     rootname: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(url);
@@ -7993,6 +8017,7 @@ pub unsafe extern "C" fn ffexts(
     rowexpress: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let extnum = extnum.as_mut().expect(NULL_MSG);
         let extvers = extvers.as_mut().expect(NULL_MSG);
@@ -8295,6 +8320,7 @@ pub unsafe extern "C" fn ffextn(
     extension_num: *mut c_int, /* O - returned extension number */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let extension_num = extension_num.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8468,6 +8494,7 @@ pub unsafe extern "C" fn ffurlt(
     urlType: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_ref().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8500,6 +8527,7 @@ pub unsafe extern "C" fn ffimport_file(
     contents: *mut *mut c_char, /* Pointer to pointer to hold file     */
     status: *mut c_int,         /* CFITSIO error code                  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(filename);
@@ -8629,6 +8657,7 @@ pub unsafe extern "C" fn fits_get_token(
     token: *mut c_char,
     isanumber: *mut c_int, /* O - is this token a number? */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let ptr = ptr.as_mut().expect(NULL_MSG);
         let isanumber = isanumber.as_mut();
@@ -8735,6 +8764,7 @@ pub unsafe extern "C" fn fits_get_token2(
     isanumber: *mut c_int, /* O - is this token a number? */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let isanumber = isanumber.as_mut();
         let status = status.as_mut().expect(NULL_MSG);
@@ -8800,6 +8830,7 @@ pub unsafe extern "C" fn fits_split_names(
     list: *mut c_char, /* IO  - list of names; the name returned is terminated */
                        /*       in place by overwriting its delimiter with a NUL */
 ) -> *mut c_char {
+    // FFI WRAPPER
     unsafe { fits_split_names_safer(list) }
 }
 
@@ -8898,9 +8929,9 @@ pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
     CURSOR.set(cursor);
 
     /* The returned pointer is into the caller's own buffer, as in the C, and
-       the caller reads the whole NUL-terminated name from it. Derive it from
-       the remaining slice: `&mut buf[start]` borrows a single element, so the
-       pointer would only carry provenance over that one byte. */
+    the caller reads the whole NUL-terminated name from it. Derive it from
+    the remaining slice: `&mut buf[start]` borrows a single element, so the
+    pointer would only carry provenance over that one byte. */
     buf[start..].as_mut_ptr()
 }
 
@@ -8931,6 +8962,7 @@ pub unsafe extern "C" fn ffclos(
     fptr: Option<Box<fitsfile>>, /* I - FITS file pointer */
     status: *mut c_int,          /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -9015,6 +9047,7 @@ pub unsafe extern "C" fn ffdelt(
     mut fptr: *mut fitsfile, /* I - FITS file pointer */
     status: *mut c_int,      /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -9260,6 +9293,7 @@ pub unsafe extern "C" fn fftplt(
     tempname: *const c_char,          /* I - name of template file               */
     status: *mut c_int,               /* IO - error status                       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9385,6 +9419,7 @@ pub(crate) fn ffoptplt(
 /// Uses C FILE stream.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrprt(stream: *mut FILE, status: c_int) {
+    // FFI WRAPPER
     ffrprt_safe(stream, status)
 }
 
@@ -9582,6 +9617,7 @@ pub fn pixel_filter_helper(
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffihtps() {
+    // FFI WRAPPER
     ffihtps_safe()
 }
 
@@ -9597,6 +9633,7 @@ pub fn ffihtps_safe() {
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffchtps() {
+    // FFI WRAPPER
     ffchtps_safe()
 }
 
@@ -9612,6 +9649,7 @@ pub fn ffchtps_safe() {
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffvhtps(flag: c_int) {
+    // FFI WRAPPER
     ffvhtps_safe(flag)
 }
 
@@ -9630,6 +9668,7 @@ pub fn ffvhtps_safe(flag: c_int) {
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffshdwn(flag: c_int) {
+    // FFI WRAPPER
     ffshdwn_safe(flag)
 }
 
@@ -9646,6 +9685,7 @@ pub fn ffshdwn_safe(flag: c_int) {
 /// Get the current network timeout value in seconds
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtmo() -> c_int {
+    // FFI WRAPPER
     ffgtmo_safer()
 }
 
@@ -9665,6 +9705,7 @@ pub fn ffgtmo_safer() -> c_int {
 /// Set the network timeout value in seconds
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffstmo(sec: c_int, status: *mut c_int) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         ffstmo_safe(sec, status)

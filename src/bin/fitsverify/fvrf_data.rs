@@ -630,6 +630,7 @@ pub extern "C" fn iterdata(
     iter_col: *mut iteratorCol,
     usrdata: *mut c_void,
 ) -> c_int {
+    // FFI WRAPPER
     let mut i: c_int;
     let mut j: c_long;
     let mut k: c_long;

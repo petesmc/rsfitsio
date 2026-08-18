@@ -76,6 +76,7 @@ pub unsafe extern "C" fn ffppx(
     array: *const c_void,    /* I - array of values that are written        */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -197,6 +198,7 @@ pub unsafe extern "C" fn ffppxll(
     array: *const c_void,      /* I - array of values that are written        */
     status: *mut c_int,        /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -318,6 +320,7 @@ pub unsafe extern "C" fn ffppxn(
     nulval: *const c_void, /* I - pointer to the null value               */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -548,6 +551,7 @@ pub unsafe extern "C" fn ffppxnll(
     nulval: *const c_void,     /* I - pointer to the null value               */
     status: *mut c_int,        /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -775,6 +779,7 @@ pub unsafe extern "C" fn ffppr(
     array: *const c_void, /* I - array of values that are written        */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -870,6 +875,7 @@ pub unsafe extern "C" fn ffppn(
     nulval: *const c_void, /* I - pointer to the null value               */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1125,6 +1131,7 @@ pub unsafe extern "C" fn ffpss(
     array: *const c_void, /* I - array of values that are written        */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1242,6 +1249,7 @@ pub unsafe extern "C" fn ffpcl(
     array: *const c_void, /* I - array of values that are written        */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -1531,6 +1539,7 @@ pub unsafe extern "C" fn ffpcn(
     nulval: *const c_void, /* I - pointer to the null value               */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -1890,6 +1899,7 @@ pub unsafe extern "C" fn ffpcln(
     nulval: *const *const c_void, /* I - array of pointers to values for undefined pixels */
     status: *mut c_int,           /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2084,6 +2094,7 @@ pub unsafe extern "C" fn fits_iter_set_by_name(
     datatype: c_int,        /* I - column datatype                        */
     iotype: c_int,          /* I - InputCol, InputOutputCol, or OutputCol */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2123,6 +2134,7 @@ pub unsafe extern "C" fn fits_iter_set_by_num(
     datatype: c_int,       /* I - column datatype                        */
     iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2155,6 +2167,7 @@ pub unsafe extern "C" fn fits_iter_set_file(
     col: *mut iteratorCol, /* I - iterator column structure   */
     fptr: *mut fitsfile,   /* I - FITS file pointer                      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -2180,6 +2193,7 @@ pub unsafe extern "C" fn fits_iter_set_colname(
     col: *mut iteratorCol,  /* I - iterator col structure  */
     colname: *const c_char, /* I - column name                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         raw_to_slice!(colname);
@@ -2206,6 +2220,7 @@ pub unsafe extern "C" fn fits_iter_set_colnum(
     col: *mut iteratorCol, /* I - iterator column structure */
     colnum: c_int,         /* I - column number                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_set_colnum_safe(col, colnum)
@@ -2229,6 +2244,7 @@ pub unsafe extern "C" fn fits_iter_set_datatype(
     col: *mut iteratorCol, /* I - iterator col structure */
     datatype: c_int,       /* I - column datatype                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_set_datatype_safe(col, datatype)
@@ -2252,6 +2268,7 @@ pub unsafe extern "C" fn fits_iter_set_iotype(
     col: *mut iteratorCol, /* I - iterator column structure */
     iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_set_iotype_safe(col, iotype)
@@ -2274,6 +2291,7 @@ pub fn fits_iter_set_iotype_safe(
 pub unsafe extern "C" fn fits_iter_get_file(
     col: *mut iteratorCol, /* I -iterator col structure */
 ) -> *mut fitsfile {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_file_safe(col)
@@ -2294,6 +2312,7 @@ pub fn fits_iter_get_file_safe(
 pub unsafe extern "C" fn fits_iter_get_colname(
     col: *mut iteratorCol, /* I -iterator col structure */
 ) -> *const c_char {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_colname_safe(col).as_ptr()
@@ -2314,6 +2333,7 @@ pub fn fits_iter_get_colname_safe(
 pub unsafe extern "C" fn fits_iter_get_colnum(
     col: *mut iteratorCol, /* I - iterator column structure */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_colnum_safe(col)
@@ -2334,6 +2354,7 @@ pub fn fits_iter_get_colnum_safe(
 pub unsafe extern "C" fn fits_iter_get_datatype(
     col: *mut iteratorCol, /* I - iterator col structure */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_datatype_safe(col)
@@ -2354,6 +2375,7 @@ pub fn fits_iter_get_datatype_safe(
 pub unsafe extern "C" fn fits_iter_get_iotype(
     col: *mut iteratorCol, /* I - iterator column structure */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_iotype_safe(col)
@@ -2374,6 +2396,7 @@ pub fn fits_iter_get_iotype_safe(
 pub unsafe extern "C" fn fits_iter_get_array(
     col: *mut iteratorCol, /* I - iterator col structure */
 ) -> *const c_void {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_array_safe(col)
@@ -2394,6 +2417,7 @@ pub fn fits_iter_get_array_safe(
 pub unsafe extern "C" fn fits_iter_get_tlmin(
     col: *mut iteratorCol, /* I - iterator column structure */
 ) -> c_long {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_tlmin_safe(col)
@@ -2414,6 +2438,7 @@ pub fn fits_iter_get_tlmin_safe(
 pub unsafe extern "C" fn fits_iter_get_tlmax(
     col: *mut iteratorCol, /* I - iterator column structure */
 ) -> c_long {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_tlmax_safe(col)
@@ -2434,6 +2459,7 @@ pub fn fits_iter_get_tlmax_safe(
 pub unsafe extern "C" fn fits_iter_get_repeat(
     col: *mut iteratorCol, /* I - iterator col structure */
 ) -> c_long {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_repeat_safe(col)
@@ -2454,6 +2480,7 @@ pub fn fits_iter_get_repeat_safe(
 pub unsafe extern "C" fn fits_iter_get_tunit(
     col: *mut iteratorCol, /* I - iterator col structure */
 ) -> *const c_char {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_tunit_safe(col).as_ptr()
@@ -2474,6 +2501,7 @@ pub fn fits_iter_get_tunit_safe(
 pub unsafe extern "C" fn fits_iter_get_tdisp(
     col: *mut iteratorCol, /* I -iterator col structure   */
 ) -> *const c_char {
+    // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
         fits_iter_get_tdisp_safe(col).as_ptr()
@@ -2513,6 +2541,7 @@ pub unsafe extern "C" fn ffiter(
     userPointer: *mut c_void,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let cols = slice::from_raw_parts_mut(cols, n_cols as usize);
@@ -3975,8 +4004,8 @@ pub fn ffiter_safe(
 
         for jj in 0..n_cols as usize {
             /* The C guards these on `if (cols[jj].array)`, i.e. non-null.
-               Testing is_null() instead meant the frees only ran for columns
-               that had nothing to free, so every allocated work array leaked. */
+            Testing is_null() instead meant the frees only ran for columns
+            that had nothing to free, so every allocated work array leaked. */
             if cols[jj].datatype == TSTRING && !cols[jj].array.is_null() {
                 stringptr = cols[jj].array.cast::<*mut c_char>();
 

@@ -142,6 +142,7 @@ pub unsafe extern "C" fn fits_delete_iraf_file(
     filename: *const c_char, /* name of input file      */
     status: *mut c_int,      /* IO - error status       */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(filename);

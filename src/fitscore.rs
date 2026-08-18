@@ -90,6 +90,7 @@ static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| Mutex::new(Er
 ///  Note that this method of calculation limits minor/micro fields to < 100.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffvers(version: *mut f32 /* IO - version number */) -> f32 {
+    // FFI WRAPPER
     unsafe {
         if version.is_null() {
             return 0.0;
@@ -242,6 +243,7 @@ pub unsafe extern "C" fn ffflnm(
     filename: *mut c_char, /* O - name of the file   */
     status: *mut c_int,    /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -270,6 +272,7 @@ pub unsafe extern "C" fn ffflmd(
     filemode: *mut c_int, /* O - open mode of the file  */
     status: *mut c_int,   /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
@@ -292,6 +295,7 @@ pub unsafe extern "C" fn ffgerr(
     status: c_int,        /* I - error status value */
     errtext: *mut c_char, /* O - error message (max 30 char long + null) */
 ) {
+    // FFI WRAPPER
     unsafe {
         let errtext = slice::from_raw_parts_mut(errtext, 31);
 
@@ -576,6 +580,7 @@ impl ErrorStack {
 /// put message on to error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
+    // FFI WRAPPER
     ffxmsg(PUT_MESG, err_message.cast_mut());
 }
 
@@ -616,6 +621,7 @@ pub(crate) fn ffpmsg_str(err_message: &str) {
 ///  The marker is ignored by the ffgmsg routine.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpmrk() {
+    // FFI WRAPPER
     ffpmrk_safe();
 }
 
@@ -634,6 +640,7 @@ pub fn ffpmrk_safe() {
 /// get oldest message from error stack, ignoring markers
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
+    // FFI WRAPPER
     unsafe {
         ffxmsg(GET_MESG, err_message);
         c_int::from(*err_message)
@@ -666,6 +673,7 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
 ///  erase all messages in the error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmsg() {
+    // FFI WRAPPER
     let dummy = ptr::null_mut();
     ffxmsg(DEL_ALL, dummy);
 }
@@ -682,6 +690,7 @@ pub fn ffcmsg_safe() {
 /// The marker is also erased in this case.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmrk() {
+    // FFI WRAPPER
     ffcmrk_safe();
 }
 
@@ -845,6 +854,7 @@ pub unsafe extern "C" fn fftkey(
     keyword: *const c_char, /* I -  keyword name */
     status: *mut c_int,     /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(keyword);
@@ -944,6 +954,7 @@ pub unsafe extern "C" fn fftrec(
     card: *mut c_char,  /* I -  keyword card to test */
     status: *mut c_int, /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(card);
@@ -1012,6 +1023,7 @@ pub fn fftrec_safe(
 /// convert string to upper case, in place.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffupch(string: *mut c_char) {
+    // FFI WRAPPER
     unsafe {
         if !string.is_null() {
             // SAFETY: the C contract is a writable, NUL-terminated string.
@@ -1043,6 +1055,7 @@ pub unsafe extern "C" fn ffmkky(
     card: *mut c_char,      /* O - constructed keyword card */
     status: *mut c_int,     /* IO - status value   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
 
@@ -1426,6 +1439,7 @@ pub unsafe extern "C" fn ffkeyn(
     keyname: *mut c_char,   /* O - output root + index keyword name */
     status: *mut c_int,     /* IO - error status  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let keyname = slice::from_raw_parts_mut(keyname, FLEN_KEYWORD);
@@ -1446,6 +1460,7 @@ pub unsafe extern "C" fn ffnkey(
     keyname: *mut c_char,   /* O - output root + index keyword name */
     status: *mut c_int,     /* IO - error status  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let keyname = slice::from_raw_parts_mut(keyname, 9); //Max 8 characters from bottom condition statement
@@ -1496,6 +1511,7 @@ pub unsafe extern "C" fn ffpsvc(
     comm: *mut c_char,   /* O - comment string parsed from the card */
     status: *mut c_int,  /* IO - error status   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let card: &[c_char] = slice::from_raw_parts(card, FLEN_CARD);
         let value: &mut [c_char] = slice::from_raw_parts_mut(value, FLEN_VALUE);
@@ -1766,6 +1782,7 @@ pub unsafe extern "C" fn ffgthd(
     */
     status: *mut c_int, /* IO - error status   */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let hdtype = hdtype.as_mut().expect(NULL_MSG);
@@ -2186,6 +2203,7 @@ pub unsafe extern "C" fn fits_translate_keyword(
 
     status: *mut c_int, /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let pat_num = pat_num.as_mut();
@@ -2529,6 +2547,7 @@ pub unsafe extern "C" fn fits_translate_keywords(
     n_range: c_int,  /* I - controls range of 'n' template values of interest (-1,0, or +1) */
     status: *mut c_int, /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -2679,6 +2698,7 @@ pub unsafe extern "C" fn fits_copy_pixlist2image(
     colnum: *const c_int,   /* I - numbers of the columns to be binned  */
     status: *mut c_int,     /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -3204,6 +3224,7 @@ pub unsafe extern "C" fn ffasfm(
     decimals: *mut c_int, /* O - number of decimal places (F, E, D format) */
     status: *mut c_int,   /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let dtcode = dtcode.as_mut();
@@ -3400,6 +3421,7 @@ pub unsafe extern "C" fn ffbnfm(
     twidth: *mut c_long,  /* O - width  of the field, in chars */
     status: *mut c_int,   /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let dtcode = dtcode.as_mut();
@@ -3648,6 +3670,7 @@ pub unsafe extern "C" fn ffbnfmll(
     twidth: *mut c_long,    /* O - width of the field, in chars */
     status: *mut c_int,     /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let dtcode = dtcode.as_mut();
@@ -3994,6 +4017,7 @@ pub unsafe extern "C" fn ffgcno(
     colnum: *mut c_int,    /* O - number of the named column; 1=first col */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -4038,6 +4062,7 @@ pub unsafe extern "C" fn ffgcnn(
     colnum: *mut c_int,    /* O - number of the named column; 1=first col */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4198,6 +4223,7 @@ pub unsafe extern "C" fn ffcmps(
     matchi: *mut c_int,     /* O - do template and colname match? 1=yes     */
     exact: *mut c_int,      /* O - do strings exactly match, or wildcards   */
 ) {
+    // FFI WRAPPER
     unsafe {
         let matchi = matchi.as_mut().expect(NULL_MSG);
         let exact = exact.as_mut().expect(NULL_MSG);
@@ -4384,6 +4410,7 @@ pub unsafe extern "C" fn ffgtcl(
     width: *mut c_long,   /* O - if ASCII, width of field or unit string */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4455,6 +4482,7 @@ pub unsafe extern "C" fn ffgtclll(
     width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4566,6 +4594,7 @@ pub unsafe extern "C" fn ffeqty(
     width: *mut c_long,   /* O - if ASCII, width of field or unit string */
     status: *mut c_int,   /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -4647,6 +4676,7 @@ pub unsafe extern "C" fn ffeqtyll(
     width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
     status: *mut c_int,    /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4854,6 +4884,7 @@ pub unsafe extern "C" fn ffgncl(
     ncols: *mut c_int,   /* O - number of columns in the table          */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4901,6 +4932,7 @@ pub unsafe extern "C" fn ffgnrw(
     nrows: *mut c_long,  /* O - number of rows in the table             */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -4949,6 +4981,7 @@ pub unsafe extern "C" fn ffgnrwll(
     nrows: *mut LONGLONG, /* O - number of rows in the table           */
     status: *mut c_int,   /* IO - error status                         */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5004,6 +5037,7 @@ pub unsafe extern "C" fn ffgacl(
     tdisp: *mut c_char,  /* O - TDISPn keyword value                   */
     status: *mut c_int,  /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -5142,6 +5176,7 @@ pub unsafe extern "C" fn ffgbcl(
     tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
     status: *mut c_int,      /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -5239,6 +5274,7 @@ pub unsafe extern "C" fn ffgbclll(
     tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
     status: *mut c_int,      /* IO - error status                          */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5400,6 +5436,7 @@ pub unsafe extern "C" fn ffghdn(
     fptr: *mut fitsfile, /* I - FITS file pointer                      */
     chdunum: *mut c_int, /* O - number of the CHDU; 1 = primary array  */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
@@ -5431,6 +5468,7 @@ pub unsafe extern "C" fn ffghadll(
     dataend: *mut LONGLONG,   /* O - byte offset to beginning of next HDU  */
     status: *mut c_int,       /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5490,6 +5528,7 @@ pub unsafe extern "C" fn ffghof(
     dataend: *mut off_t,   /* O - byte offset to beginning of next HDU  */
     status: *mut c_int,    /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -5552,6 +5591,7 @@ pub unsafe extern "C" fn ffghad(
     dataend: *mut c_long,   /* O - byte offset to beginning of next HDU  */
     status: *mut c_int,     /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -5625,6 +5665,7 @@ pub unsafe extern "C" fn ffrhdu(
     hdutype: *mut c_int, /* O - type of HDU       */
     status: *mut c_int,  /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -6577,6 +6618,7 @@ pub unsafe extern "C" fn ffgabc(
     tbcol: *mut c_long,          /* O - starting byte in row for each column     */
     status: *mut c_int,          /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let rowlen = rowlen.as_mut().expect(NULL_MSG);
@@ -7661,6 +7703,7 @@ pub unsafe extern "C" fn fftheap(
     valid: *mut c_int,      /* O - are all the heap addresses valid?         */
     status: *mut c_int,     /* IO - error status                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -7833,6 +7876,7 @@ pub unsafe extern "C" fn ffcmph(
     fptr: *mut fitsfile, /* I -FITS file pointer                         */
     status: *mut c_int,  /* IO - error status                            */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8090,6 +8134,7 @@ pub unsafe extern "C" fn ffgdes(
     heapaddr: *mut c_long, /* O - heap pointer to the data                  */
     status: *mut c_int,    /* IO - error status                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8159,6 +8204,7 @@ pub unsafe extern "C" fn ffgdesll(
     heapaddr: *mut LONGLONG, /* O - heap pointer to the data                */
     status: *mut c_int,      /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -8244,6 +8290,7 @@ pub unsafe extern "C" fn ffgdess(
     heapaddr: *mut c_long, /* O - heap pointer to the data                  */
     status: *mut c_int,    /* IO - error status                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8377,6 +8424,7 @@ pub unsafe extern "C" fn ffgdessll(
     heapaddr: *mut LONGLONG, /* O - heap pointer to the data              */
     status: *mut c_int,      /* IO - error status                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -8503,6 +8551,7 @@ pub unsafe extern "C" fn ffpdes(
     heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
     status: *mut c_int,  /* IO - error status                             */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -8775,6 +8824,7 @@ pub unsafe extern "C" fn ffrdef(
     fptr: *mut fitsfile, /* I - FITS file pointer */
     status: *mut c_int,  /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -8890,6 +8940,7 @@ pub unsafe extern "C" fn ffhdef(
     morekeys: c_int,     /* I - reserve space for this many keywords */
     status: *mut c_int,  /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9147,6 +9198,7 @@ pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
     if fptr.is_null() || status.is_null() {
         return NULL_INPUT_PTR;
     }
+    // FFI WRAPPER
     unsafe { ffchfl_safe(&mut *fptr, &mut *status) }
 }
 
@@ -9218,6 +9270,7 @@ pub fn ffchfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
 **********************************************************************/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -9338,6 +9391,7 @@ pub unsafe extern "C" fn ffcrhd(
     fptr: *mut fitsfile, /* I - FITS file pointer */
     status: *mut c_int,  /* IO - error status     */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -9486,6 +9540,7 @@ pub unsafe extern "C" fn ffghdt(
     /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
     status: *mut c_int, /* IO - error status                 */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9542,6 +9597,7 @@ pub fn ffghdt_safe(
 /// environoment.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_is_reentrant() -> c_int {
+    // FFI WRAPPER
     fits_is_reentrant_safe()
 }
 
@@ -9564,6 +9620,7 @@ pub unsafe extern "C" fn fits_is_compressed_image(
     fptr: *mut fitsfile, /* I - FITS file pointer  */
     status: *mut c_int,  /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9603,6 +9660,7 @@ pub unsafe extern "C" fn ffgipr(
     naxes: *mut c_long,    /* O - size of image dimensions              */
     status: *mut c_int,    /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let infptr = infptr.as_mut().expect(NULL_MSG);
@@ -9660,6 +9718,7 @@ pub unsafe extern "C" fn ffgiprll(
     naxes: *mut LONGLONG,  /* O - size of image dimensions              */
     status: *mut c_int,    /* IO - error status      */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let infptr = infptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
@@ -9714,6 +9773,7 @@ pub unsafe extern "C" fn ffgidt(
     imgtype: *mut c_int, /* O - image data type                         */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9778,6 +9838,7 @@ pub unsafe extern "C" fn ffgiet(
     imgtype: *mut c_int, /* O - image data type                         */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9938,6 +9999,7 @@ pub unsafe extern "C" fn ffgidm(
     naxis: *mut c_int,   /* O - image dimension (NAXIS value)           */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9990,6 +10052,7 @@ pub unsafe extern "C" fn ffgisz(
     naxes: *mut c_long,  /* O - size of image dimensions                */
     status: *mut c_int,  /* IO - error status                           */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10076,6 +10139,7 @@ pub unsafe extern "C" fn ffgiszll(
     naxes: *mut LONGLONG, /* O - size of image dimensions              */
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10141,6 +10205,7 @@ pub unsafe extern "C" fn ffmahd(
     exttype: *mut c_int, /* O - type of extension, 0, 1, or 2 */
     status: *mut c_int,  /* IO - error status                 */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10242,6 +10307,7 @@ pub unsafe extern "C" fn ffmrhd(
     exttype: *mut c_int, /* O - type of extension, 0, 1, or 2        */
     status: *mut c_int,  /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10284,6 +10350,7 @@ pub unsafe extern "C" fn ffmnhd(
     hduver: c_int,
     status: *mut c_int,
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10456,6 +10523,7 @@ pub unsafe extern "C" fn ffthdu(
     nhdu: *mut c_int,    /* O - number of HDUs in the file           */
     status: *mut c_int,  /* IO - error status                        */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -10748,6 +10816,7 @@ pub(crate) fn ffiblk(
 /// ```
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkcl(tcard: *mut c_char) -> c_int {
+    // FFI WRAPPER
     unsafe {
         raw_to_slice!(tcard);
 
@@ -11295,6 +11364,7 @@ pub unsafe extern "C" fn ffdtyp(
     dtype: *mut c_char,  /* O - datatype code: C, L, F, I, or X */
     status: *mut c_int,  /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let dtype = dtype.as_mut().expect(NULL_MSG);
@@ -11348,6 +11418,7 @@ pub unsafe extern "C" fn ffinttyp(
     negative: *mut c_int, /* O - is cval negative? */
     status: *mut c_int,   /* IO - error status */
 ) -> c_int {
+    // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
         let dtype = dtype.as_mut().expect(NULL_MSG);
