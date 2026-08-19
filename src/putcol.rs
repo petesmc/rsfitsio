@@ -2568,6 +2568,61 @@ pub unsafe extern "C" fn ffiter(
 pub fn ffiter_safe(
     n_cols: c_int,
     cols: &mut [iteratorCol],
+    offset: c_long,
+    n_per_loop: c_long,
+    workfn: extern "C" fn(
+        total_n: c_long,
+        offset: c_long,
+        first_n: c_long,
+        n_values: c_long,
+        n_cols: c_int,
+        cols: *mut iteratorCol,
+        userPointer: *mut c_void,
+    ) -> c_int,
+    userPointer: *mut c_void,
+    status: &mut c_int,
+) -> c_int {
+    let cols_len = cols.len();
+    ffiter_internal(
+        n_cols,
+        cols.as_mut_ptr(),
+        cols_len,
+        offset,
+        n_per_loop,
+        workfn,
+        userPointer,
+        status,
+    )
+}
+
+/*--------------------------------------------------------------------------*/
+/// The body of [`ffiter_safe`], with the column array passed as a raw pointer
+/// instead of as a `&mut [iteratorCol]`.
+///
+/// The work function is free to reach the very same `iteratorCol` array by a
+/// second route -- the parser's work function does exactly that, because
+/// `ParseData::colData` *is* the array handed to the iterator. A `&mut` slice
+/// parameter cannot express that: it is exclusive for the whole call, so the
+/// work function's own access to the array would invalidate it.
+///
+/// `cols_ptr` is therefore kept as a raw pointer for the lifetime of the
+/// iteration and re-borrowed as a slice only between work-function calls; the
+/// pointer handed to the work function is `cols_ptr` itself, not a pointer
+/// derived from the local re-borrow, so that the two routes to the array are
+/// siblings rather than parent and child. Every work-function call is followed
+/// by a fresh re-borrow, because the call may have written to the array through
+/// the other route.
+///
+/// # Safety
+/// `cols_ptr` must point at `cols_len` initialised `iteratorCol`s that stay put
+/// (and stay allocated) for the whole call, and no `&mut` derived from it may
+/// be live in the caller across the call. `cols_len` must be at least
+/// `max(n_cols, 1)`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ffiter_internal(
+    n_cols: c_int,
+    cols_ptr: *mut iteratorCol,
+    cols_len: usize,
     mut offset: c_long,
     n_per_loop: c_long,
     workfn: extern "C" fn(
@@ -2582,6 +2637,9 @@ pub fn ffiter_safe(
     userPointer: *mut c_void,
     status: &mut c_int,
 ) -> c_int {
+    /* Re-borrowed from `cols_ptr` again after every work-function call. */
+    let mut cols: &mut [iteratorCol] = unsafe { slice::from_raw_parts_mut(cols_ptr, cols_len) };
+
     // Structure to store the column null value
     #[derive(Default, Clone, Copy)]
     struct ColNulls {
@@ -3796,26 +3854,16 @@ pub fn ffiter_safe(
                 /* call work function */
 
                 if hdutype == IMAGE_HDU {
-                    *status = workfn(
-                        totaln,
-                        offset,
-                        felement,
-                        ntodo,
-                        n_cols,
-                        cols.as_mut_ptr(),
-                        userPointer,
-                    );
+                    *status =
+                        workfn(totaln, offset, felement, ntodo, n_cols, cols_ptr, userPointer);
                 } else {
-                    *status = workfn(
-                        totaln,
-                        offset,
-                        frow,
-                        ntodo,
-                        n_cols,
-                        cols.as_mut_ptr(),
-                        userPointer,
-                    );
+                    *status = workfn(totaln, offset, frow, ntodo, n_cols, cols_ptr, userPointer);
                 }
+
+                /* The work function may have reached the column array by its
+                own route, so the previous re-borrow is stale: take a fresh
+                one from `cols_ptr` before touching the columns again. */
+                cols = slice::from_raw_parts_mut(cols_ptr, cols_len);
 
                 if *status > 0 || *status < -1 {
                     break; /* looks like an error occurred; quit immediately */
