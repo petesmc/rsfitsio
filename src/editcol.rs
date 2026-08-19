@@ -2324,7 +2324,7 @@ pub fn ffcpcl_safe(
             return *status;
         }
 
-        if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
+        if core::ptr::eq(infptr.Fptr.as_ptr(), outfptr.Fptr.as_ptr())
             && (infptr.HDUposition == outfptr.HDUposition)
             && (colnum <= incol)
         {
@@ -2823,7 +2823,7 @@ pub fn ffccls_safe(
 
     /* Do not allow copying multiple columns in the same HDU because the
     permutations of possible overlapping copies is mind-bending */
-    if core::ptr::eq(infptr.Fptr.as_mut(), outfptr.Fptr.as_mut())
+    if core::ptr::eq(infptr.Fptr.as_ptr(), outfptr.Fptr.as_ptr())
         && (infptr.HDUposition == outfptr.HDUposition)
     {
         ffpmsg_str("Copying multiple columns in same HDU is not supported (ffccls)");

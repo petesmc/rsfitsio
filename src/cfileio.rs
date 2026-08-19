@@ -318,7 +318,7 @@ pub fn ffomem_safer(
 
     let f_fitsfile = box_try_new(fitsfile {
         HDUposition: 0,
-        Fptr,
+        Fptr: FptrRef::new(Fptr),
     });
 
     if f_fitsfile.is_err() {
@@ -334,7 +334,7 @@ pub fn ffomem_safer(
 
     ffldrc(&mut f_fitsfile, 0, REPORT_EOF, status); /* load first record */
 
-    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+    fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
 
     if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
         /* determine HDU structure */
@@ -1210,7 +1210,7 @@ pub fn ffopen_safe(
             /* allocate fitsfile structure and initialize = 0 */
             let f_fitsfile = box_try_new(fitsfile {
                 HDUposition: 0,
-                Fptr,
+                Fptr: FptrRef::new(Fptr),
             });
 
             if f_fitsfile.is_err() {
@@ -1228,7 +1228,7 @@ pub fn ffopen_safe(
 
             ffldrc(&mut f_fitsfile, 0, REPORT_EOF, status); /* load first record */
 
-            fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+            fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
 
             if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
                 /* determine HDU structure */
@@ -1860,7 +1860,7 @@ pub fn ffreopen_safer(
     // HEAP ALLOCATION
     let mut n = Box::new(fitsfile {
         HDUposition: 0, /* set initial position to primary array */
-        Fptr: unsafe { Box::from_raw(core::ptr::from_mut::<FITSfile>(&mut *openfptr.Fptr)) }, /* both point to the same structure */ // TODO this is very unsafe!
+        Fptr: openfptr.Fptr.share(), /* both point to the same structure */
     });
 
     n.Fptr.open_count += 1; /* increment the file usage counter */
@@ -1872,8 +1872,11 @@ pub fn ffreopen_safer(
 
 /*--------------------------------------------------------------------------*/
 /// store the new Fptr address for future use by fits_already_open
+/// Takes the address rather than a `&mut FITSfile`: the table has to hold the
+/// same pointer the handles deref through, not a reference-derived child of it,
+/// or the entry is invalidated by the next write through any handle.
 pub(crate) fn fits_store_Fptr(
-    Fptr: &mut FITSfile, /* O - FITS file pointer               */
+    Fptr: *mut FITSfile, /* O - FITS file pointer               */
     status: &mut c_int,  /* IO - error status                   */
 ) -> c_int {
     if *status > 0 {
@@ -1918,7 +1921,7 @@ pub unsafe extern "C" fn fits_clear_Fptr(
 /*--------------------------------------------------------------------------*/
 ///  clear the Fptr address from the Fptr Table  
 fn fits_clear_Fptr_safer(
-    Fptr: &mut FITSfile, /* O - FITS file pointer               */
+    Fptr: *mut FITSfile, /* O - FITS file pointer               */
     status: &mut c_int,  /* IO - error status                   */
 ) -> c_int {
     let lock = FFLOCK();
@@ -2130,7 +2133,7 @@ pub(crate) fn fits_already_open(
             // HEAP ALLOCATION
             let f = box_try_new(fitsfile {
                 HDUposition: 0,               /* set initial position */
-                Fptr: Box::from_raw(oldFptr), /* point to the structure */
+                Fptr: FptrRef::from_ptr(oldFptr), /* point to the structure */
             });
 
             if f.is_err() {
@@ -5421,7 +5424,7 @@ pub fn ffinit_safe(
     /* allocate fitsfile structure and initialize = 0 */
     let f_fitsfile = box_try_new(fitsfile {
         HDUposition: 0,
-        Fptr,
+        Fptr: FptrRef::new(Fptr),
     });
 
     if f_fitsfile.is_err() {
@@ -5437,7 +5440,7 @@ pub fn ffinit_safe(
 
     ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
 
-    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+    fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
 
     /* if template file was given, use it to define structure of new file */
 
@@ -5579,7 +5582,7 @@ pub fn ffimem_safer(
 
     let f_fitsfile = box_try_new(fitsfile {
         HDUposition: 0,
-        Fptr,
+        Fptr: FptrRef::new(Fptr),
     });
 
     if f_fitsfile.is_err() {
@@ -5593,7 +5596,7 @@ pub fn ffimem_safer(
     let mut f_fitsfile = f_fitsfile.unwrap();
 
     ffldrc(&mut f_fitsfile, 0, IGNORE_EOF, status); /* initialize first record */
-    fits_store_Fptr(&mut f_fitsfile.Fptr, status); /* store Fptr address */
+    fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
 
     *fptr = Some(f_fitsfile);
 
@@ -9012,9 +9015,12 @@ pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
             ffpmsg_cstr(fptr.Fptr.get_filename_as_cstr());
         };
 
-        fits_clear_Fptr_safer(&mut fptr.Fptr, status); /* clear Fptr address */
+        fits_clear_Fptr_safer(fptr.Fptr.as_ptr(), status); /* clear Fptr address */
 
-        drop(fptr);
+        /* Last handle: release the FITSfile itself. FptrRef is a non-owning
+           handle, so this is the one place that frees it. */
+        let fitsfile { HDUposition: _, Fptr } = *fptr;
+        unsafe { Fptr.free() };
     } else {
         /*
            to minimize the fallout from any previous error (e.g., trying to
@@ -9029,13 +9035,10 @@ pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
             ffflsh_safe(&mut fptr, false, status);
         }
 
-        // WARNING: In the C version of this code, the inner FITSfile can be shared many times
-        // and as such, given the open_count > 0, the inner FITSfile is not dropped.
-        // To replicate this, we need to deconstruct the fitsfile struct and
-        // drop the inner FITSfile struct, but not the outer one.
-
-        let fitsfile { HDUposition, Fptr } = *fptr;
-        let _ = Box::into_raw(Fptr); // WARNING: Dangling pointer
+        /* Other handles still refer to this FITSfile, so only the outer
+           fitsfile goes away. Dropping the FptrRef is a no-op, which is why
+           this no longer has to leak a Box to avoid a double free. */
+        drop(fptr);
     }
     *status
 }
@@ -9141,10 +9144,17 @@ pub fn ffdelt_safe(
         }
     }
 
-    fits_clear_Fptr_safer(&mut local_fptr.Fptr, status); /* clear Fptr address */
+    fits_clear_Fptr_safer(local_fptr.Fptr.as_ptr(), status); /* clear Fptr address */
     local_fptr.Fptr.validcode = 0; /* magic value to indicate invalid fptr */
 
-    *fptr = None;
+    /* Release the FITSfile. ffdelt deletes the file outright, so unlike ffclos
+       there is no use count to consult; the C frees it here unconditionally.
+       FptrRef is a non-owning handle, so dropping the outer fitsfile below is
+       not enough on its own. */
+    if let Some(f) = fptr.take() {
+        let fitsfile { HDUposition: _, Fptr } = *f;
+        unsafe { Fptr.free() };
+    }
 
     *status
 }

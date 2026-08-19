@@ -194,7 +194,7 @@ pub(crate) fn ffpbyt(
             /* read next record */
 
             ffread_int(&mut fptr.Fptr, IOBUFLEN as usize, nbuff, status);
-            // ffread(fptr.Fptr.as_mut(), IOBUFLEN, tmp, status);
+            // ffread(fptr.Fptr.as_ptr(), IOBUFLEN, tmp, status);
             fptr.Fptr.io_pos += IOBUFLEN;
         }
 
@@ -227,7 +227,8 @@ pub(crate) fn ffpbyt(
             ntodo -= nwrite; /* decrement remaining number of bytes */
             j += nwrite as usize;
             fptr.Fptr.bytepos += nwrite; /* increment file position pointer */
-            fptr.Fptr.dirty[fptr.Fptr.curbuf as usize] = TRUE as c_int; /* mark record as modified */
+            let curbuf = fptr.Fptr.curbuf as usize;
+            fptr.Fptr.dirty[curbuf] = TRUE as c_int; /* mark record as modified */
             if ntodo != 0 {
                 /* load next record into a buffer */
                 ffldrc(
