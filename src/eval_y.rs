@@ -147,6 +147,7 @@ use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::{ffgcno_safe, ffghdn_safe, ffmahd_safe, ffmnhd_safe, ffupch_safe};
 use crate::fitsio::{
     LONG_MAX, LONG_MIN, LONGLONG, MEMORY_ALLOCATION, NO_WCS_KEY, PARSE_SYNTAX_ERR, fitsfile,
+    iteratorCol,
 };
 use crate::getcold::ffgcvd_safe;
 use crate::getkey::{ffgkyd_safe, ffgkyj_safe, ffgkys_safe};
@@ -970,7 +971,13 @@ fn New_Offset(lParse: &mut ParseData, ColNum: c_int, offsetNode: c_int) -> c_int
     n
 }
 
-fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_int) -> c_int {
+fn New_Unary(
+    lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
+    returnType: c_int,
+    mut Op: c_int,
+    Node1: c_int,
+) -> c_int {
     let mut this_node_idx: usize;
 
     let mut i: c_int = 0;
@@ -1027,7 +1034,7 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
         }
 
         if (that_node).is_const() {
-            ((this_node).DoOp).expect("non-null function pointer")(lParse, n as usize);
+            ((this_node).DoOp).expect("non-null function pointer")(lParse, colData, n as usize);
         }
     }
     n
@@ -1035,6 +1042,7 @@ fn New_Unary(lParse: &mut ParseData, returnType: c_int, mut Op: c_int, Node1: c_
 
 fn New_BinOp(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     returnType: c_int,
     Node1: c_int,
     Op: c_int,
@@ -1118,7 +1126,7 @@ fn New_BinOp(
 
         if constant != 0 {
             ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
-                lParse, n as usize,
+                lParse, colData, n as usize,
             );
         }
     }
@@ -1127,6 +1135,7 @@ fn New_BinOp(
 
 fn New_Func(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     returnType: c_int,
     Op: funcOp,
     nNodes: c_int,
@@ -1139,7 +1148,7 @@ fn New_Func(
     Node7: c_int,
 ) -> c_int {
     New_FuncSize(
-        lParse, returnType, Op, nNodes, Node1, Node2, Node3, Node4, Node5, Node6, Node7, 0,
+        lParse, colData, returnType, Op, nNodes, Node1, Node2, Node3, Node4, Node5, Node6, Node7, 0,
     )
 }
 
@@ -1353,6 +1362,7 @@ fn yydestruct(
 /* else return a single value of type returnType                       */
 fn New_FuncSize(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     returnType: c_int,
     Op: funcOp,
     nNodes: c_int,
@@ -1436,7 +1446,7 @@ fn New_FuncSize(
 
         if constant != 0 {
             ((lParse.Nodes[n as usize]).DoOp).expect("non-null function pointer")(
-                lParse, n as usize,
+                lParse, colData, n as usize,
             );
         }
     }
@@ -1445,7 +1455,11 @@ fn New_FuncSize(
 
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
-pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int {
+pub(crate) fn fits_parser_yyparse(
+    scanner: &mut yyguts_t,
+    lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
+) -> c_int {
     unsafe {
         let mut current_block: u64;
         let mut yychar: c_int = 0;
@@ -1546,7 +1560,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         if YYDEBUG {
                             eprintln!("Read a token");
                         }
-                        yychar = fits_parser_yylex(&mut yylval, scanner, lParse);
+                        yychar = fits_parser_yylex(&mut yylval, scanner, lParse, colData);
                     }
 
                     if yychar <= fits_parser_yytokentype::FITS_PARSER_YYEOF as c_int {
@@ -1765,6 +1779,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                                 if yyvs[yyvsp - 2].node() < 0 {
@@ -1820,6 +1835,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                                 if yyvs[yyvsp - 2].node() < 0 {
@@ -1859,6 +1875,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                                 if yyvs[yyvsp - 2].node() < 0 {
@@ -1900,6 +1917,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 2].node(),
                                 ));
                                 if yyvs[yyvsp - 2].node() < 0 {
@@ -1936,6 +1954,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: vector '}'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 1].node(),
                             ));
                             if yyval.node() < 0 {
@@ -1948,6 +1967,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bvector '}'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(Close_Vec(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 1].node(),
                             ));
                             if yyval.node() < 0 {
@@ -2015,6 +2035,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '&' bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 '&' as i32,
@@ -2041,6 +2062,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '|' bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 '|' as i32,
@@ -2077,6 +2099,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::BITSTR as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     '+' as i32,
@@ -2100,6 +2123,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 3].node(),
                                 1,
                                 yyvs[yyvsp - 1].node(),
@@ -2118,6 +2142,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 5].node(),
                                 2,
                                 yyvs[yyvsp - 3].node(),
@@ -2136,6 +2161,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 7].node(),
                                 3 as c_int,
                                 yyvs[yyvsp - 5].node(),
@@ -2154,6 +2180,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 9].node(),
                                 4 as c_int,
                                 yyvs[yyvsp - 7].node(),
@@ -2172,6 +2199,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: bits '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 11].node(),
                                 5 as c_int,
                                 yyvs[yyvsp - 9].node(),
@@ -2190,6 +2218,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bits: NOT bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
                                 yyvs[yyvsp].node(),
@@ -2276,6 +2305,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: ROWREF  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::LONG as c_int,
                                 funcOp::ROW_FCT,
                                 0,
@@ -2293,6 +2323,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: NULLREF  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::LONG as c_int,
                                 funcOp::NULL_FCT,
                                 0,
@@ -2313,6 +2344,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2324,6 +2356,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2331,6 +2364,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '%' as i32,
@@ -2349,6 +2383,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2360,6 +2395,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2367,6 +2403,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '+' as i32,
@@ -2385,6 +2422,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2396,6 +2434,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2403,6 +2442,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '-' as i32,
@@ -2421,6 +2461,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2432,6 +2473,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2439,6 +2481,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
@@ -2457,6 +2500,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2468,6 +2512,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2475,6 +2520,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '/' as i32,
@@ -2498,6 +2544,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2520,6 +2567,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2542,6 +2590,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2559,6 +2608,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2570,6 +2620,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2577,6 +2628,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::POWER as c_int,
@@ -2597,6 +2649,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: '-' expr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 fits_parser_yytokentype::UMINUS as c_int,
                                 yyvs[yyvsp].node(),
@@ -2616,12 +2669,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '*' bexpr  */
                             yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 0,
                                 yyvs[yyvsp].node(),
                             ));
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp - 2].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
@@ -2637,12 +2692,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: bexpr '*' expr  */
                             yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 0,
                                 yyvs[yyvsp - 2].node(),
                             ));
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                 yyvs[yyvsp - 2].node(),
                                 '*' as i32,
@@ -2661,6 +2718,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2672,6 +2730,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2686,6 +2745,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
@@ -2738,6 +2798,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2749,6 +2810,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2763,6 +2825,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
@@ -2815,6 +2878,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -2826,6 +2890,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -2840,6 +2905,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
@@ -2902,6 +2968,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 /* Scalar RANDOM() */
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     funcOp::RND_FCT,
                                     0,
@@ -2929,6 +2996,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 /*Scalar RANDOMN()*/
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     funcOp::GASRND_FCT,
                                     0,
@@ -2972,6 +3040,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     funcOp::SUM_FCT,
                                     1,
@@ -3030,6 +3099,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
@@ -3096,6 +3166,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
                                             yyvs[yyvsp - 1].node(),
@@ -3103,6 +3174,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::AXISELEM_FCT,
                                         2,
@@ -3169,6 +3241,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
                                             yyvs[yyvsp - 1].node(),
@@ -3220,6 +3293,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 /* NAXES(bexpr,n) */
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Array(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 3].node(),
                                     yyvs[yyvsp - 1].node(),
                                 ));
@@ -3286,6 +3360,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     funcOp::NONNULL_FCT,
                                     1,
@@ -3378,6 +3453,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     funcOp::SUM_FCT,
                                     1,
@@ -3404,6 +3480,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(), /* Force 1D result */
@@ -3444,6 +3521,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
@@ -3464,6 +3542,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(), /* Force 1D result */
@@ -3513,6 +3592,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(),
@@ -3541,6 +3621,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     funcOp::AVERAGE_FCT,
                                     1,
@@ -3567,6 +3648,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     funcOp::STDDEV_FCT,
                                     1,
@@ -3593,6 +3675,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(),
@@ -3645,6 +3728,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     funcOp::NONNULL_FCT,
                                     1,
@@ -3684,6 +3768,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
@@ -3714,6 +3799,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::ACCUM as c_int,
@@ -3744,6 +3830,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
@@ -3774,6 +3861,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     yyvs[yyvsp - 1].node(),
                                     fits_parser_yytokentype::DIFF as c_int,
@@ -3794,6 +3882,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::ABS_FCT,
                                     1,
@@ -3820,6 +3909,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(), /* Force 1D result */
@@ -3848,6 +3938,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                         .ntype
                                         .code(), /* Force 1D result */
@@ -3877,6 +3968,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 /* Vector RANDOM() */
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::RND_FCT,
                                     1,
@@ -3909,6 +4001,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::GASRND_FCT,
                                     1,
@@ -3953,6 +4046,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 } else {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ELEMNUM_FCT,
                                         1,
@@ -4023,6 +4117,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 1].node(),
@@ -4042,6 +4137,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::SIN_FCT,
                                         1,
@@ -4068,6 +4164,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::COS_FCT,
                                         1,
@@ -4094,6 +4191,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::TAN_FCT,
                                         1,
@@ -4131,6 +4229,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ASIN_FCT,
                                         1,
@@ -4168,6 +4267,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ACOS_FCT,
                                         1,
@@ -4205,6 +4305,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ATAN_FCT,
                                         1,
@@ -4231,6 +4332,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::SINH_FCT,
                                         1,
@@ -4257,6 +4359,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::COSH_FCT,
                                         1,
@@ -4283,6 +4386,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::TANH_FCT,
                                         1,
@@ -4309,6 +4413,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::EXP_FCT,
                                         1,
@@ -4335,6 +4440,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::LOG_FCT,
                                         1,
@@ -4361,6 +4467,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::LOG10_FCT,
                                         1,
@@ -4387,6 +4494,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::SQRT_FCT,
                                         1,
@@ -4413,6 +4521,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ROUND_FCT,
                                         1,
@@ -4439,6 +4548,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::FLOOR_FCT,
                                         1,
@@ -4465,6 +4575,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::CEIL_FCT,
                                         1,
@@ -4491,6 +4602,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::POIRND_FCT,
                                         1,
@@ -4539,6 +4651,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::LONG as c_int,
                                     funcOp::STRPOS_FCT,
                                     2,
@@ -4596,6 +4709,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                                 .ntype
                                                 .code(),
@@ -4608,6 +4722,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .ntype
                                                 .code(),
@@ -4617,6 +4732,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::DEFNULL_FCT,
                                         2,
@@ -4657,6 +4773,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 3].node(),
@@ -4667,6 +4784,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 1].node(),
@@ -4677,6 +4795,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ATAN2_FCT,
                                         2,
@@ -4726,6 +4845,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .ntype
                                             .code(),
@@ -4737,6 +4857,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .ntype
                                             .code(),
@@ -4749,6 +4870,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::MIN2_FCT,
                                         2,
@@ -4798,6 +4920,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         ((lParse.Nodes)[yyvs[yyvsp - 3].node() as usize])
                                             .ntype
                                             .code(),
@@ -4809,6 +4932,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                             .ntype
                                             .code(),
@@ -4821,6 +4945,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::MAX2_FCT,
                                         2,
@@ -4884,6 +5009,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             ((lParse.Nodes)[yyvs[yyvsp - 1].node() as usize])
                                                 .ntype
                                                 .code(),
@@ -4893,6 +5019,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::SETNULL_FCT,
                                         2,
@@ -4949,6 +5076,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
                                             yyvs[yyvsp - 1].node(),
@@ -4956,6 +5084,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     }
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::AXISELEM_FCT,
                                         2,
@@ -5022,6 +5151,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     {
                                         yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                             lParse,
+                                            colData,
                                             fits_parser_yytokentype::LONG as c_int,
                                             0,
                                             yyvs[yyvsp - 1].node(),
@@ -5074,6 +5204,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 /* NAXES(expr,n) */
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Array(
                                     lParse,
+                                    colData,
                                     yyvs[yyvsp - 3].node(),
                                     yyvs[yyvsp - 1].node(),
                                 ));
@@ -5115,6 +5246,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 7].node(),
@@ -5125,6 +5257,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 5].node(),
@@ -5135,6 +5268,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 3].node(),
@@ -5145,6 +5279,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::DOUBLE as c_int,
                                         0,
                                         yyvs[yyvsp - 1].node(),
@@ -5165,6 +5300,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::ANGSEP_FCT,
                                         4 as c_int,
@@ -5227,6 +5363,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIOVER_FCT,
                                 yyvs[yyvsp - 5].text_mut_ptr(),
                                 yyvs[yyvsp - 3].node(),
@@ -5244,6 +5381,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIOVER_FCT,
                                 yyvs[yyvsp - 9].text_mut_ptr(),
                                 yyvs[yyvsp - 7].node(),
@@ -5261,6 +5399,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 3].node(),
                                 1,
                                 yyvs[yyvsp - 1].node(),
@@ -5279,6 +5418,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 5].node(),
                                 2,
                                 yyvs[yyvsp - 3].node(),
@@ -5297,6 +5437,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 7].node(),
                                 3 as c_int,
                                 yyvs[yyvsp - 5].node(),
@@ -5315,6 +5456,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 9].node(),
                                 4 as c_int,
                                 yyvs[yyvsp - 7].node(),
@@ -5333,6 +5475,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: expr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 11].node(),
                                 5 as c_int,
                                 yyvs[yyvsp - 9].node(),
@@ -5351,6 +5494,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: INTCAST expr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
                                 yyvs[yyvsp].node(),
@@ -5365,6 +5509,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: INTCAST bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::LONG as c_int,
                                 fits_parser_yytokentype::INTCAST as c_int,
                                 yyvs[yyvsp].node(),
@@ -5379,6 +5524,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: FLTCAST expr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
                                 yyvs[yyvsp].node(),
@@ -5393,6 +5539,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* expr: FLTCAST bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::DOUBLE as c_int,
                                 fits_parser_yytokentype::FLTCAST as c_int,
                                 yyvs[yyvsp].node(),
@@ -5459,6 +5606,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits EQ bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
@@ -5475,6 +5623,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits NE bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
@@ -5491,6 +5640,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits LT bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
@@ -5507,6 +5657,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits LTE bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
@@ -5523,6 +5674,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits GT bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
@@ -5539,6 +5691,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bits GTE bits  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
@@ -5558,6 +5711,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5569,6 +5723,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5576,6 +5731,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
@@ -5594,6 +5750,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5605,6 +5762,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5612,6 +5770,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
@@ -5630,6 +5789,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5641,6 +5801,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5648,6 +5809,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
@@ -5666,6 +5828,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5677,6 +5840,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5684,6 +5848,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
@@ -5702,6 +5867,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5713,6 +5879,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5720,6 +5887,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 '~' as i32,
@@ -5738,6 +5906,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5749,6 +5918,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5756,6 +5926,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
@@ -5774,6 +5945,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5785,6 +5957,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -5792,6 +5965,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
@@ -5807,6 +5981,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr EQ sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
@@ -5823,6 +5998,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr NE sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
@@ -5839,6 +6015,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr GT sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GT as c_int,
@@ -5855,6 +6032,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr GTE sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::GTE as c_int,
@@ -5871,6 +6049,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr LT sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LT as c_int,
@@ -5887,6 +6066,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: sexpr LTE sexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
@@ -5903,6 +6083,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr AND bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
@@ -5918,6 +6099,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr OR bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::OR as c_int,
@@ -5933,6 +6115,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr EQ bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::EQ as c_int,
@@ -5948,6 +6131,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr NE bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::NE as c_int,
@@ -5966,6 +6150,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                         .ntype
                                         .code(),
@@ -5977,6 +6162,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -5989,6 +6175,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 4].node() as usize])
                                         .ntype
                                         .code(),
@@ -6000,6 +6187,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 4] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 4].node(),
@@ -6010,6 +6198,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     ((lParse.Nodes)[yyvs[yyvsp - 2].node() as usize])
                                         .ntype
                                         .code(),
@@ -6021,6 +6210,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     (lParse.Nodes[yyvs[yyvsp].node() as usize]).ntype.code(),
                                     0,
                                     yyvs[yyvsp - 2].node(),
@@ -6028,6 +6218,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             }
                             yyvs[yyvsp - 2] = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::LTE as c_int,
@@ -6035,6 +6226,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             ));
                             yyvs[yyvsp] = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 4].node(),
                                 fits_parser_yytokentype::LTE as c_int,
@@ -6042,6 +6234,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             ));
                             yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 yyvs[yyvsp - 2].node(),
                                 fits_parser_yytokentype::AND as c_int,
@@ -6064,6 +6257,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
@@ -6121,6 +6315,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::ISNULL_FCT,
                                     1,
@@ -6164,6 +6359,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::ISNULL_FCT,
                                     1,
@@ -6207,6 +6403,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     funcOp::ISNULL_FCT,
                                     1,
@@ -6259,6 +6456,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         0,
                                         funcOp::DEFNULL_FCT,
                                         2,
@@ -6297,6 +6495,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 5].node(),
@@ -6307,6 +6506,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 3].node(),
@@ -6317,6 +6517,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 1].node(),
@@ -6349,6 +6550,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     funcOp::NEAR_FCT,
                                     3 as c_int,
@@ -6402,6 +6604,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 9].node(),
@@ -6412,6 +6615,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 7].node(),
@@ -6422,6 +6626,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 5].node(),
@@ -6432,6 +6637,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 3].node(),
@@ -6442,6 +6648,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 1].node(),
@@ -6484,6 +6691,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::BOOLEAN as c_int,
                                     funcOp::CIRCLE_FCT,
                                     5 as c_int,
@@ -6555,6 +6763,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 13] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 13].node(),
@@ -6565,6 +6774,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 11] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 11].node(),
@@ -6575,6 +6785,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 9] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 9].node(),
@@ -6585,6 +6796,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 7] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 7].node(),
@@ -6595,6 +6807,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 5] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 5].node(),
@@ -6605,6 +6818,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 3] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 3].node(),
@@ -6615,6 +6829,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 yyvs[yyvsp - 1] = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::DOUBLE as c_int,
                                     0,
                                     yyvs[yyvsp - 1].node(),
@@ -6668,6 +6883,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
                                         funcOp::BOX_FCT,
                                         7 as c_int,
@@ -6694,6 +6910,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 {
                                     yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                         lParse,
+                                        colData,
                                         fits_parser_yytokentype::BOOLEAN as c_int,
                                         funcOp::ELPS_FCT,
                                         7 as c_int,
@@ -6819,6 +7036,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all elements */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFILT_FCT,
                                 c"".as_ptr().cast_mut(),
                                 -99,
@@ -6837,6 +7055,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all except filename */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
@@ -6854,6 +7073,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
@@ -6871,6 +7091,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFILT_FCT,
                                 yyvs[yyvsp - 7].text_mut_ptr(),
                                 yyvs[yyvsp - 5].node(),
@@ -6890,6 +7111,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* Use defaults for all elements */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFIND_FCT,
                                 c"".as_ptr().cast_mut(),
                                 -99,
@@ -6907,6 +7129,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ')'  *//* Use defaults for all except filename */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
@@ -6924,6 +7147,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 3].text_mut_ptr(),
                                 yyvs[yyvsp - 1].node(),
@@ -6941,6 +7165,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ',' STRING ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
+                                colData,
                                 funcOp::GTIFIND_FCT,
                                 yyvs[yyvsp - 7].text_mut_ptr(),
                                 yyvs[yyvsp - 5].node(),
@@ -6959,6 +7184,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let mut dummy = [0];
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 1].text_mut_ptr(),
                                 -99,
                                 -99,
@@ -6975,6 +7201,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let mut dummy = [0];
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 5].text_mut_ptr(),
                                 yyvs[yyvsp - 3].node(),
                                 yyvs[yyvsp - 1].node(),
@@ -6990,6 +7217,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ',' STRING ')'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 7].text_mut_ptr(),
                                 yyvs[yyvsp - 5].node(),
                                 yyvs[yyvsp - 3].node(),
@@ -7005,6 +7233,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 3].node(),
                                 1,
                                 yyvs[yyvsp - 1].node(),
@@ -7023,6 +7252,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 5].node(),
                                 2,
                                 yyvs[yyvsp - 3].node(),
@@ -7041,6 +7271,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 7].node(),
                                 3 as c_int,
                                 yyvs[yyvsp - 5].node(),
@@ -7059,6 +7290,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 9].node(),
                                 4 as c_int,
                                 yyvs[yyvsp - 7].node(),
@@ -7077,6 +7309,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: bexpr '[' expr ',' expr ',' expr ',' expr ',' expr ']'  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Deref(
                                 lParse,
+                                colData,
                                 yyvs[yyvsp - 11].node(),
                                 5 as c_int,
                                 yyvs[yyvsp - 9].node(),
@@ -7095,6 +7328,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: NOT bexpr  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Unary(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::BOOLEAN as c_int,
                                 fits_parser_yytokentype::NOT as c_int,
                                 yyvs[yyvsp].node(),
@@ -7169,6 +7403,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* sexpr: SNULLREF  */
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Func(
                                 lParse,
+                                colData,
                                 fits_parser_yytokentype::STRING as c_int,
                                 funcOp::NULL_FCT,
                                 0,
@@ -7201,6 +7436,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             } else {
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_BinOp(
                                     lParse,
+                                    colData,
                                     fits_parser_yytokentype::STRING as c_int,
                                     yyvs[yyvsp - 2].node(),
                                     '+' as i32,
@@ -7249,6 +7485,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 }
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::IFTHENELSE_FCT,
                                     3 as c_int,
@@ -7309,6 +7546,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                 }
                                 yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                     lParse,
+                                    colData,
                                     0,
                                     funcOp::DEFNULL_FCT,
                                     2,
@@ -7402,6 +7640,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                                     } else {
                                         yyval = FITS_PARSER_YYSTYPE::Node(New_FuncSize(
                                             lParse,
+                                            colData,
                                             0,
                                             funcOp::STRMID_FCT,
                                             3 as c_int,
@@ -7579,6 +7818,7 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
 
 fn New_Deref(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     Var: c_int,
     nDim: c_int,
     Dim1: c_int,
@@ -7687,6 +7927,7 @@ fn New_Deref(
         if constant != 0 {
             ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                 lParse,
+                colData,
                 this_node_idx,
             );
         }
@@ -8040,6 +8281,7 @@ fn load_gti(
 
 fn New_GTI(
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
     Op: funcOp,
     fname: *mut c_char,
     mut Node1: c_int,
@@ -8075,7 +8317,7 @@ fn New_GTI(
             || Op as c_uint == funcOp::GTIFIND_FCT as c_int as c_uint)
             && Node1 == -99
         {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"TIME"), &mut colVal);
+            type_0 = fits_parser_yyGetVariable(lParse, colData, cs!(c"TIME"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
                 Node1 = New_Column(lParse, colVal.lng() as c_int);
             } else {
@@ -8096,14 +8338,26 @@ fn New_GTI(
                 return -(1);
             }
             /* Also case TIME_STOP to double precision */
-            Node2 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node2);
+            Node2 = New_Unary(
+                lParse,
+                colData,
+                fits_parser_yytokentype::DOUBLE as c_int,
+                0,
+                Node2,
+            );
             if Node2 < 0 {
                 return -(1);
             }
         }
 
         /* Type cast TIME to double precision */
-        Node1 = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, Node1);
+        Node1 = New_Unary(
+            lParse,
+            colData,
+            fits_parser_yytokentype::DOUBLE as c_int,
+            0,
+            Node1,
+        );
         Node0 = Alloc_Node(lParse); /* This will hold the START/STOP times */
 
         if Node1 < 0 || Node0 < 0 {
@@ -8198,6 +8452,7 @@ fn New_GTI(
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
+                    colData,
                     this_node_idx,
                 );
             }
@@ -8275,6 +8530,7 @@ fn load_region(
 
 fn New_REG(
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
     fname: *mut c_char,
     mut NodeX: c_int,
     mut NodeY: c_int,
@@ -8292,7 +8548,7 @@ fn New_REG(
         let mut cY: *mut c_char = ptr::null_mut();
         let mut colVal: FITS_PARSER_YYSTYPE = FITS_PARSER_YYSTYPE::Empty;
         if NodeX == -99 {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"X"), &mut colVal);
+            type_0 = fits_parser_yyGetVariable(lParse, colData, cs!(c"X"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
                 NodeX = New_Column(lParse, colVal.lng() as c_int);
             } else {
@@ -8301,7 +8557,7 @@ fn New_REG(
             }
         }
         if NodeY == -99 {
-            type_0 = fits_parser_yyGetVariable(lParse, cs!(c"Y"), &mut colVal);
+            type_0 = fits_parser_yyGetVariable(lParse, colData, cs!(c"Y"), &mut colVal);
             if type_0 == fits_parser_yytokentype::COLUMN as c_int {
                 NodeY = New_Column(lParse, colVal.lng() as c_int);
             } else {
@@ -8309,8 +8565,20 @@ fn New_REG(
                 return -(1);
             }
         }
-        NodeX = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, NodeX);
-        NodeY = New_Unary(lParse, fits_parser_yytokentype::DOUBLE as c_int, 0, NodeY);
+        NodeX = New_Unary(
+            lParse,
+            colData,
+            fits_parser_yytokentype::DOUBLE as c_int,
+            0,
+            NodeX,
+        );
+        NodeY = New_Unary(
+            lParse,
+            colData,
+            fits_parser_yytokentype::DOUBLE as c_int,
+            0,
+            NodeY,
+        );
         Node0 = Alloc_Node(lParse); /* This will hold the Region Data */
         if NodeX < 0 || NodeY < 0 || Node0 < 0 {
             return -(1);
@@ -8409,8 +8677,8 @@ fn New_REG(
                 }
             } else {
                 /*  Try to find columns used in X/Y expressions  */
-                Xcol = Locate_Col(lParse, &(lParse.Nodes)[NodeX as usize]);
-                Ycol = Locate_Col(lParse, &(lParse.Nodes)[NodeY as usize]);
+                Xcol = Locate_Col(lParse, colData, &(lParse.Nodes)[NodeX as usize]);
+                Ycol = Locate_Col(lParse, colData, &(lParse.Nodes)[NodeY as usize]);
                 if Xcol < 0 || Ycol < 0 {
                     fits_parser_yyerror(
                         lParse,
@@ -8445,6 +8713,7 @@ fn New_REG(
             {
                 ((lParse.Nodes[this_node_idx]).DoOp).expect("non-null function pointer")(
                     lParse,
+                    colData,
                     this_node_idx,
                 );
             }
@@ -8468,7 +8737,7 @@ fn New_Vector(lParse: &mut ParseData, subNode: c_int) -> c_int {
     n
 }
 
-fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
+fn Close_Vec(lParse: &mut ParseData, colData: &mut [iteratorCol], vecNode: c_int) -> c_int {
     let mut n: c_int = 0;
     let mut nelem: c_int = 0;
 
@@ -8482,6 +8751,7 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
 
             subnode = New_Unary(
                 lParse,
+                colData,
                 (lParse.Nodes[this_node_idx]).ntype.code(),
                 0,
                 (lParse.Nodes[this_node_idx]).SubNodes[n as usize] as c_int,
@@ -8506,7 +8776,12 @@ fn Close_Vec(lParse: &mut ParseData, vecNode: c_int) -> c_int {
     vecNode
 }
 
-fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_int {
+fn New_Array(
+    lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
+    valueNode: c_int,
+    mut dimNode: c_int,
+) -> c_int {
     let mut naxis: c_long = 0;
     let mut nelem: c_long = 0;
     let mut naxes: [c_long; 5] = [0; 5];
@@ -8534,7 +8809,13 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
         /* ARRAY(V,n) is a constant integer */
 
         if ((lParse.Nodes)[dimNode as usize]).ntype != ValueSort::Long {
-            dimNode = New_Unary(lParse, fits_parser_yytokentype::LONG as c_int, 0, dimNode);
+            dimNode = New_Unary(
+                lParse,
+                colData,
+                fits_parser_yytokentype::LONG as c_int,
+                0,
+                dimNode,
+            );
         }
         if dimNode < 0 {
             return -(1);
@@ -8559,6 +8840,7 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
             {
                 (lParse.Nodes[dims]).SubNodes[i as usize] = New_Unary(
                     lParse,
+                    colData,
                     fits_parser_yytokentype::LONG as c_int,
                     0,
                     (lParse.Nodes[dims]).SubNodes[i as usize] as c_int,
@@ -8635,21 +8917,21 @@ fn New_Array(lParse: &mut ParseData, valueNode: c_int, mut dimNode: c_int) -> c_
 
 /*  Locate the TABLE column number of any columns in "this" calculation.  */
 /*  Return ZERO if none found, or negative if more than 1 found.          */
-fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
+fn Locate_Col(lParse: &ParseData, colData: &[iteratorCol], this: &Node) -> c_int {
     let mut i: c_int = 0;
     let mut col: c_int = 0;
     let mut newCol: c_int = 0;
     let mut nfound: c_int = 0;
 
     if this.nSubNodes == 0 && this.is_column() {
-        return ((lParse.colData)[this.column() as usize]).colnum;
+        return (colData[this.column() as usize]).colnum;
     }
 
     i = 0;
     while i < this.nSubNodes {
         let that = &(lParse.Nodes)[this.SubNodes[i as usize] as usize];
         if that.is_computed() {
-            newCol = Locate_Col(lParse, that);
+            newCol = Locate_Col(lParse, colData, that);
             if newCol <= 0 {
                 nfound += -newCol;
             } else if nfound == 0 {
@@ -8660,7 +8942,7 @@ fn Locate_Col(lParse: &ParseData, this: &Node) -> c_int {
             }
         } else if !that.is_const() {
             /*  Found a Column  */
-            newCol = ((lParse.colData)[that.column() as usize]).colnum;
+            newCol = (colData[that.column() as usize]).colnum;
             if nfound == 0 {
                 col = newCol;
                 nfound += 1;
@@ -8738,7 +9020,12 @@ fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
 /*  point to the appropriate column arrays.                            */
 /*  Finally, call Evaluate_Node for final node.                        */
 /***********************************************************************/
-pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
+pub(crate) fn Evaluate_Parser(
+    lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
+    firstRow: c_long,
+    nRows: c_long,
+) {
     unsafe {
         let mut i: c_int = 0;
         let mut column: c_int = 0;
@@ -8828,7 +9115,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
             }
             i += 1;
         }
-        Evaluate_Node(lParse, lParse.resultNode);
+        Evaluate_Node(lParse, colData, lParse.resultNode);
     }
 }
 
@@ -8836,7 +9123,7 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
 /*  Recursively evaluate thisNode's subNodes, then call one of the    */
 /*  Do_<Action> functions pointed to by thisNode's DoOp element.      */
 /**********************************************************************/
-fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
+fn Evaluate_Node(lParse: &mut ParseData, colData: &mut [iteratorCol], thisNode: c_int) {
     let mut this_node_idx: usize;
     let mut i: c_int = 0;
     if lParse.status != 0 {
@@ -8856,6 +9143,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
 
             Evaluate_Node(
                 lParse,
+                colData,
                 (lParse.Nodes)[thisNode as usize].SubNodes[i as usize] as c_int,
             );
 
@@ -8865,6 +9153,7 @@ fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
         }
         ((lParse.Nodes[thisNode as usize]).DoOp).expect("non-null function pointer")(
             lParse,
+            colData,
             thisNode as usize,
         );
     }
@@ -8995,7 +9284,7 @@ unsafe fn free_node_buffer(node: &mut Node) {
     }
 }
 
-fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Unary(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that: &mut Node;
         let mut elem: c_long = 0;
@@ -9257,7 +9546,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Offset(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut fRow: c_long = 0;
         let mut nRowOverlap: c_long = 0;
@@ -9428,6 +9717,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 ValueSort::Bits | ValueSort::String => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
+                        colData,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
@@ -9440,6 +9730,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 ValueSort::Boolean => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
+                        colData,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
@@ -9452,6 +9743,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 ValueSort::Long => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
+                        colData,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
@@ -9464,6 +9756,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
                 ValueSort::Double => {
                     status = (lParse.loadData).expect("non-null function pointer")(
                         lParse,
+                        colData,
                         -(lParse.Nodes[col_idx]).operation,
                         fRow,
                         nRowReload,
@@ -9541,7 +9834,7 @@ fn Do_Offset(lParse: &mut ParseData, this_node_idx: usize) {
         }
     }
 }
-fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_BinOp_bit(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
@@ -9745,7 +10038,7 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_BinOp_str(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
@@ -10066,7 +10359,7 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
         }
     }
 }
-fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_BinOp_log(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
@@ -10305,7 +10598,7 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_BinOp_lng(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut vector1: c_int = 0;
         let mut vector2: c_int = 0;
@@ -10640,7 +10933,7 @@ fn validate_double_vector(lParse: &mut ParseData, node_idx: usize) -> c_int {
     1
 }
 
-fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_BinOp_dbl(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that1: &mut Node;
         let mut that2: &mut Node;
@@ -11057,7 +11350,7 @@ pub(crate) fn angsep_calc(
     2.0 * atan2((a).sqrt(), (1.0 - a).sqrt()) / DEG
 }
 
-fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Func(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut theParams: [usize; 10] = [0; 10];
         let mut vector: [c_int; 10] = [0; 10];
@@ -14369,7 +14662,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Deref(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut theVar: &mut Node;
         let mut theDims: [usize; MAXDIMS as usize] = [0; MAXDIMS as usize];
@@ -14781,7 +15074,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_GTI(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut theExpr: &mut Node;
         let mut theTimes: &mut Node;
@@ -14895,7 +15188,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_GTI_Over(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut theTimes: &mut Node;
         let mut theStart: &mut Node;
@@ -15187,7 +15480,7 @@ fn Search_GTI(
         gti
     }
 }
-fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_REG(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut theRegion: &mut Node;
         let mut theX: &mut Node;
@@ -15375,7 +15668,7 @@ fn get_this_that1_that2_nodes<T>(
 }
 */
 
-fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Vector(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that: &mut Node;
         let mut row: c_long = 0;
@@ -15483,7 +15776,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
+fn Do_Array(lParse: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize) {
     unsafe {
         let mut that: &mut Node;
         let mut row: c_long = 0;

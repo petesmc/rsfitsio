@@ -1207,6 +1207,7 @@ pub(crate) fn ffhist2e(
             let mut nelem: c_long = 0;
             let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
             let mut lParse: ParseData = ParseData::default();
+            let mut colData: Vec<iteratorCol> = Vec::new();
 
             ffiprs(
                 fptr_inner,
@@ -1218,9 +1219,10 @@ pub(crate) fn ffhist2e(
                 &mut naxis1,
                 &mut naxes,
                 &mut lParse,
+                &mut colData,
                 status,
             );
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             if nelem < 0 {
                 nelem = 1; /* If it's a constant expression */
             }
@@ -3061,6 +3063,7 @@ pub(crate) fn fits_calc_binningde(
             let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
             let mut naxis: c_int = 0;
             let mut lParse: ParseData = ParseData::default();
+            let mut colData: Vec<iteratorCol> = Vec::new();
 
             /* Initialize the parser so that we can determine the datatype
             of the returned type as well as the vector dimensions */
@@ -3075,6 +3078,7 @@ pub(crate) fn fits_calc_binningde(
                 &mut naxis,
                 &mut naxes,
                 &mut lParse,
+                &mut colData,
                 status,
             ) != 0
             {
@@ -3082,7 +3086,7 @@ pub(crate) fn fits_calc_binningde(
                 let errmsg_len = strlen_safe(&errmsg);
                 strncat_safe(&mut errmsg, ce[ii].unwrap(), FLEN_ERRMSG - errmsg_len - 1);
                 ffpmsg_slice(&errmsg);
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
             if nelem < 0 {
@@ -3094,7 +3098,7 @@ pub(crate) fn fits_calc_binningde(
             /* We require lParse.nCols columns to be read from input,
             plus one for the Temporary calculator result */
             ncols = lParse.nCols + 1;
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
         }
 
         /* Not sure why this repeat limitation is here -- CM
@@ -3996,6 +4000,9 @@ pub(crate) fn fits_make_histde(
     let mut imagepars: [iteratorCol; 1] = [iteratorCol::default(); 1];
     let mut nrows: c_long = -1;
     let mut parsers: [ParseData; 5] = array::from_fn(|_| ParseData::default());
+    /* The parser iterator columns now live alongside, not inside, the
+    ParseData, so each of the five parsers gets its own array. */
+    let mut parserCols: [Vec<iteratorCol>; 5] = array::from_fn(|_| Vec::new());
     let mut infos: [parseInfo; 5] = array::from_fn(|_| parseInfo::default());
     let mut numAllocCols: c_int = 0;
     let mut startCol: c_int = -1;
@@ -4164,6 +4171,7 @@ pub(crate) fn fits_make_histde(
                     &mut naxis1,
                     &mut naxes,
                     &mut (parsers[ii]),
+                    &mut (parserCols[ii]),
                     status,
                 );
                 if *status != 0 {
@@ -4179,6 +4187,7 @@ pub(crate) fn fits_make_histde(
                 fits_get_num_rows(fptr, &mut nrows, status);
                 if fits_parser_set_temporary_col(
                     &mut (parsers[ii]),
+                    &mut (parserCols[ii]),
                     &mut (infos[ii]),
                     nrows,
                     core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
@@ -4202,7 +4211,7 @@ pub(crate) fn fits_make_histde(
                 }
                 numAllocCols += parsers[ii].nCols;
                 for jj in 0..parsers[ii].nCols as usize {
-                    unsafe { *iterCols.add(startCol as usize) = parsers[ii].colData[jj] };
+                    unsafe { *iterCols.add(startCol as usize) = parserCols[ii][jj] };
                     startCol += 1;
                 }
             } else {
@@ -4249,6 +4258,7 @@ pub(crate) fn fits_make_histde(
                 &mut wtnaxis,
                 &mut wtnaxes,
                 &mut (parsers[4]),
+                &mut (parserCols[4]),
                 status,
             );
             if *status != 0 {
@@ -4263,6 +4273,7 @@ pub(crate) fn fits_make_histde(
             fits_get_num_rows(fptr, &mut nrows, status);
             if fits_parser_set_temporary_col(
                 &mut (parsers[4]),
+                &mut (parserCols[4]),
                 &mut (infos[4]),
                 nrows,
                 core::ptr::from_mut::<f64>(&mut (double_nulval)).cast::<c_void>(),
@@ -4286,7 +4297,7 @@ pub(crate) fn fits_make_histde(
             }
             numAllocCols += parsers[ii].nCols;
             for jj in 0..parsers[4].nCols as usize {
-                unsafe { *iterCols.add(startCol as usize) = parsers[4].colData[jj] };
+                unsafe { *iterCols.add(startCol as usize) = parserCols[4][jj] };
                 startCol += 1;
             }
         } else if weight == DOUBLENULLVALUE {
@@ -4402,7 +4413,7 @@ pub(crate) fn fits_make_histde(
     /* ... and parsers */
     for ii in 0..=4 {
         if parsers[ii].nCols > 0 {
-            ffcprs(&mut (parsers[ii]));
+            ffcprs(&mut (parsers[ii]), &mut (parserCols[ii]));
         }
     }
     *status
@@ -4622,6 +4633,7 @@ fn fits_get_expr_minmax(
 ) -> c_int {
     let mut Info: parseInfo = parseInfo::default();
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
     let mut minmaxWorkFn: histo_minmax_workfn_struct = histo_minmax_workfn_struct::default();
     let mut naxis: c_int = 0;
     let constant: c_int = 0;
@@ -4668,10 +4680,11 @@ fn fits_get_expr_minmax(
         &mut naxis,
         &mut naxes,
         &mut lParse,
+        &mut colData,
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
 
@@ -4729,11 +4742,11 @@ fn fits_get_expr_minmax(
             }
             _ => {
                 // For any other data types, we don't handle constants
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
         }
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
 
@@ -4742,13 +4755,14 @@ fn fits_get_expr_minmax(
     /* Add a temporary column which contains the expression value */
     if fits_parser_set_temporary_col(
         &mut lParse,
+        &mut colData,
         &mut Info,
         nrows,
         core::ptr::from_mut::<f64>(&mut double_nulval).cast::<c_void>(),
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
 
@@ -4761,7 +4775,7 @@ fn fits_get_expr_minmax(
 
     if ffiter_safe(
         lParse.nCols,
-        &mut lParse.colData,
+        &mut colData,
         0,
         0,
         histo_minmax_expr_workfn
@@ -4788,7 +4802,7 @@ fn fits_get_expr_minmax(
         *datamax = minmaxWorkFn.datamax;
     }
 
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 

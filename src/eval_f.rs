@@ -178,6 +178,7 @@ pub fn fffrow_safe(
     let mut elem: c_long;
     let result: c_char;
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     if *status != 0 {
         return *status;
@@ -195,10 +196,11 @@ pub fn fffrow_safe(
         &mut naxis,
         &mut naxes,
         &mut lParse,
+        &mut colData,
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
 
@@ -210,7 +212,7 @@ pub fn fffrow_safe(
     }
 
     if Info.datatype != TLOGICAL || nelem != 1 {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         ffpmsg_str("Expression does not evaluate to a logical scalar.");
         *status = PARSE_BAD_TYPE;
         return *status;
@@ -231,7 +233,7 @@ pub fn fffrow_safe(
         Info.maxRows = nrows;
         Info.parseData = &raw mut lParse;
 
-        let colData_slice = &mut lParse.colData[..];
+        let colData_slice = &mut colData[..];
         if ffiter_safe(
             lParse.nCols,
             colData_slice,
@@ -265,7 +267,7 @@ pub fn fffrow_safe(
         }
     }
 
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 
@@ -340,6 +342,7 @@ pub fn ffsrow_safe(
     let mut outExt: in_out_ext = in_out_ext::default();
 
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     unsafe {
         if *status != 0 {
@@ -356,10 +359,11 @@ pub fn ffsrow_safe(
             &mut naxis,
             &mut naxes,
             &mut lParse,
+            &mut colData,
             status,
         ) != 0
         {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -375,7 +379,7 @@ pub fn ffsrow_safe(
         /**********************************************************************/
 
         if Info.datatype != TLOGICAL || nelem != 1 {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             ffpmsg_str("Expression does not evaluate to a logical scalar.");
             *status = PARSE_BAD_TYPE;
             return *status;
@@ -389,7 +393,7 @@ pub fn ffsrow_safe(
             ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
         }
         if *status != 0 {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
         inExt.rowLength = (infptr.Fptr).rowlength as LONGLONG;
@@ -397,7 +401,7 @@ pub fn ffsrow_safe(
         inExt.heapSize = (infptr.Fptr).heapsize;
         if inExt.numRows == 0 {
             /* Nothing to copy */
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -408,7 +412,7 @@ pub fn ffsrow_safe(
             ffrdef_safe(outfptr, status);
         }
         if *status != 0 {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
         outExt.rowLength = (outfptr.Fptr).rowlength as LONGLONG;
@@ -420,7 +424,7 @@ pub fn ffsrow_safe(
 
         if inExt.rowLength != outExt.rowLength {
             ffpmsg_str("Output table has different row length from input");
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             *status = PARSE_BAD_OUTPUT;
             return *status;
         }
@@ -439,7 +443,7 @@ pub fn ffsrow_safe(
             .is_err()
         {
             ffpmsg_str("Unable to allocate memory for row selection");
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             *status = MEMORY_ALLOCATION;
             return *status;
         }
@@ -461,7 +465,7 @@ pub fn ffsrow_safe(
             }
             nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
         } else {
-            let col_slice = &mut lParse.colData[..];
+            let col_slice = &mut colData[..];
             ffiter_safe(
                 lParse.nCols,
                 col_slice,
@@ -490,7 +494,7 @@ pub fn ffsrow_safe(
                 .try_reserve_exact(cmp::max(500000, rdlen) as usize)
                 .is_err()
             {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 *status = MEMORY_ALLOCATION;
                 return *status;
             } else {
@@ -667,7 +671,7 @@ pub fn ffsrow_safe(
             } /*  End of HEAP copy  */
         }
 
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
 
         ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
         *status
@@ -732,6 +736,7 @@ pub fn ffcrow_safe(
     let mut nelem1: c_long = 0;
     let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     if *status != 0 {
         return *status;
@@ -747,10 +752,11 @@ pub fn ffcrow_safe(
         &mut naxis,
         &mut naxes,
         &mut lParse,
+        &mut colData,
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
     if nelem1 < 0 {
@@ -758,7 +764,7 @@ pub fn ffcrow_safe(
     }
 
     if nelements < nelem1 {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         ffpmsg_str("Array not large enough to hold at least one row of data.");
         *status = PARSE_LRG_VECTOR;
         return *status;
@@ -775,7 +781,7 @@ pub fn ffcrow_safe(
     Info.maxRows = nelements / nelem1;
     Info.parseData = &raw mut lParse;
 
-    let colData_slice = &mut lParse.colData[..];
+    let colData_slice = &mut colData[..];
     if ffiter_safe(
         lParse.nCols,
         colData_slice,
@@ -790,7 +796,7 @@ pub fn ffcrow_safe(
     }
 
     *anynul = Info.anyNull;
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 
@@ -932,6 +938,7 @@ pub fn ffcalc_rng_safe(
     let mut nullKwd: [c_char; 9] = [0; 9];
     let mut tdimKwd: [c_char; 9] = [0; 9];
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     let mut parInfo = parInfo;
     let mut parName = parName;
@@ -950,10 +957,11 @@ pub fn ffcalc_rng_safe(
         &mut naxis,
         &mut naxes,
         &mut lParse,
+        &mut colData,
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
     if nelem < 0 {
@@ -978,7 +986,7 @@ pub fn ffcalc_rng_safe(
         *status = 0;
         if parName[0] == b'#' as c_char {
             if constant == 0 {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 ffpmsg_str("Cannot put tabular result into keyword (ffcalc)");
                 *status = PARSE_BAD_TYPE;
                 return *status;
@@ -988,7 +996,7 @@ pub fn ffcalc_rng_safe(
                 || fits_strcasecmp(parName, cs!(c"COMMENT")) == 0)
                 && Info.datatype != TSTRING
             {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 ffpmsg_str("HISTORY and COMMENT values must be strings (ffcalc)");
                 *status = PARSE_BAD_TYPE;
                 return *status;
@@ -999,7 +1007,7 @@ pub fn ffcalc_rng_safe(
             if ffgcrd_safe(outfptr, parName, &mut card, status) == KEY_NO_EXIST {
                 colNo = -1;
             } else if *status != 0 {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
         } else {
@@ -1040,7 +1048,7 @@ pub fn ffcalc_rng_safe(
                 } else {
                     match Info.datatype {
                         TLOGICAL => {
-                            ffcprs(&mut lParse);
+                            ffcprs(&mut lParse, &mut colData);
                             ffpmsg_str("Cannot create LOGICAL column in ASCII table");
                             *status = NOT_BTABLE;
                             return *status;
@@ -1149,7 +1157,7 @@ pub fn ffcalc_rng_safe(
         if *status != 0 {
             /*  Either some other error happened in ffgcrd   */
             /*  or one happened in ffptdm                    */
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
     }
@@ -1169,13 +1177,13 @@ pub fn ffcalc_rng_safe(
         /*************************************/
 
         col_cnt = lParse.nCols;
-        if fits_parser_allocateCol(&mut lParse, col_cnt, status) != 0 {
-            ffcprs(&mut lParse);
+        if fits_parser_allocateCol(&mut lParse, &mut colData, col_cnt, status) != 0 {
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
         fits_iter_set_by_num_safe(
-            &mut lParse.colData[col_cnt as usize],
+            &mut colData[col_cnt as usize],
             outfptr,
             colNo,
             0,
@@ -1202,7 +1210,7 @@ pub fn ffcalc_rng_safe(
                 nPerLp = Info.maxRows as c_int;
             }
 
-            let colData_slice = &mut lParse.colData[..];
+            let colData_slice = &mut colData[..];
             if ffiter_safe(
                 lParse.nCols,
                 colData_slice,
@@ -1215,7 +1223,7 @@ pub fn ffcalc_rng_safe(
             {
                 *status = 0;
             } else if *status != 0 {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
             if Info.anyNull != 0 {
@@ -1278,7 +1286,7 @@ pub fn ffcalc_rng_safe(
         }
     }
 
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 
@@ -1323,6 +1331,7 @@ pub fn fftexp_safe(
     status: &mut c_int,   /* O - Error status                        */
 ) -> c_int {
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     ffiprs(
         fptr,
@@ -1334,9 +1343,10 @@ pub fn fftexp_safe(
         naxis,
         naxes,
         &mut lParse,
+        &mut colData,
         status,
     );
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 
@@ -1344,16 +1354,17 @@ pub fn fftexp_safe(
 /// Initialize the parser and determine what type of result the expression
 /// produces.
 pub(crate) fn ffiprs(
-    fptr: &mut fitsfile,    /* I - Input FITS file                     */
-    compressed: c_int,      /* I - Is FITS file hkunexpanded?          */
-    expr: &[c_char],        /* I - Arithmetic expression               */
-    maxdim: c_int,          /* I - Max Dimension of naxes              */
-    datatype: &mut c_int,   /* O - Data type of result                 */
-    nelem: &mut c_long,     /* O - Vector length of result             */
-    naxis: &mut c_int,      /* O - # of dimensions of result           */
-    naxes: &mut [c_long],   /* O - Size of each dimension              */
-    lParse: &mut ParseData, /* O - parser status                       */
-    status: &mut c_int,     /* O - Error status                        */
+    fptr: &mut fitsfile,            /* I - Input FITS file                     */
+    compressed: c_int,              /* I - Is FITS file hkunexpanded?          */
+    expr: &[c_char],                /* I - Arithmetic expression               */
+    maxdim: c_int,                  /* I - Max Dimension of naxes              */
+    datatype: &mut c_int,           /* O - Data type of result                 */
+    nelem: &mut c_long,             /* O - Vector length of result             */
+    naxis: &mut c_int,              /* O - # of dimensions of result           */
+    naxes: &mut [c_long],           /* O - Size of each dimension              */
+    lParse: &mut ParseData,         /* O - parser status                       */
+    colData: &mut Vec<iteratorCol>, /* O - parser iterator columns     */
+    status: &mut c_int,             /* O - Error status                        */
 ) -> c_int {
     let i: c_int = 0;
     let mut lexpr: c_int = 0;
@@ -1383,7 +1394,7 @@ pub(crate) fn ffiprs(
     lParse.def_fptr = fptr;
     lParse.compressed = compressed;
     lParse.nCols = 0;
-    lParse.colData = Vec::new();
+    colData.clear();
     lParse.varData = Vec::new();
     lParse.getData = Some(find_column);
     lParse.loadData = Some(load_column);
@@ -1476,7 +1487,7 @@ pub(crate) fn ffiprs(
 
     fits_parser_yylex_init(&mut yylex_scanner);
     fits_parser_yyrestart(ptr::null_mut(), yylex_scanner.as_deref_mut().unwrap());
-    *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse);
+    *status = fits_parser_yyparse(yylex_scanner.as_deref_mut().unwrap(), lParse, colData);
     fits_parser_yylex_destroy(yylex_scanner.unwrap());
 
     if *status != 0 {
@@ -1496,16 +1507,16 @@ pub(crate) fn ffiprs(
         return *status;
     }
     if lParse.nCols == 0 {
-        if lParse.colData.try_reserve_exact(1).is_err() {
+        if colData.try_reserve_exact(1).is_err() {
             ffpmsg_str("memory allocation failed (ffiprs)");
             *status = MEMORY_ALLOCATION;
             return *status;
         } else {
-            lParse.colData.resize(1, iteratorCol::default());
+            colData.resize(1, iteratorCol::default());
         }
 
         /* This allows iterator to know value of fptr when no columns are referenced   */
-        (lParse.colData[0]).fptr = fptr;
+        (colData[0]).fptr = fptr;
     }
 
     let result: &Node = &lParse.Nodes[lParse.resultNode as usize];
@@ -1552,7 +1563,7 @@ pub(crate) fn ffiprs(
 
 /*---------------------------------------------------------------------------*/
 /// Clear the parser, making it ready to accept a new expression.
-pub(crate) fn ffcprs(lParse: &mut ParseData) {
+pub(crate) fn ffcprs(lParse: &mut ParseData, colData: &mut Vec<iteratorCol>) {
     unsafe {
         let col: c_int = 0;
         let mut node: c_int = 0;
@@ -1563,7 +1574,7 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
         }
 
         if lParse.nCols > 0 {
-            lParse.colData.clear();
+            colData.clear();
 
             for col in 0..lParse.nCols {
                 if lParse.varData[col as usize].undef.is_none() {
@@ -1580,9 +1591,9 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             }
             lParse.varData.clear();
             lParse.nCols = 0;
-        } else if !lParse.colData.is_empty() {
+        } else if !colData.is_empty() {
             /* Special case if colData needed to be created with no columns */
-            lParse.colData.clear();
+            colData.clear();
         }
 
         if lParse.nNodes > 0 {
@@ -1703,9 +1714,13 @@ pub(crate) fn fits_parser_workfn_safe(
             routines are binning multiple columns, and so there are
             multiple parsers being managed at one time.) Upon the first
             call we make sure they match */
-            for jj in 0..(nCols as usize) {
-                lParse.colData[jj].repeat = colData[jj].repeat;
-            }
+            /* The C's `lParse->colData[jj].repeat = colData[jj].repeat` loop
+            is gone: the parser no longer owns a second array. Everything
+            that runs under the iterator -- Setup_DataArrays, Evaluate_Parser
+            and load_column -- now reads the `colData` handed in here, which
+            for the histogramming routines is the index-aligned slice of the
+            master array the parser's columns were copied into. So the two
+            copies are already in step. */
 
             if (*(pv.userInfo)).maxRows > 0 {
                 (*(pv.userInfo)).maxRows = cmp::min(totalrows, (*(pv.userInfo)).maxRows);
@@ -1913,7 +1928,7 @@ pub(crate) fn fits_parser_workfn_safe(
         remain = nrows;
         while remain != 0 {
             ntodo = cmp::min(remain, 10000);
-            Evaluate_Parser(lParse, firstrow, ntodo);
+            Evaluate_Parser(lParse, colData, firstrow, ntodo);
             if lParse.status != 0 {
                 break;
             }
@@ -3303,6 +3318,7 @@ pub fn fffrwc_safe(
         let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
         let mut result: c_char = 0;
         let mut lParse: ParseData = ParseData::default();
+        let mut colData: Vec<iteratorCol> = Vec::new();
 
         if *status != 0 {
             return *status;
@@ -3318,10 +3334,11 @@ pub fn fffrwc_safe(
             &mut naxis,
             &mut naxes,
             &mut lParse,
+            &mut colData,
             status,
         ) != 0
         {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -3360,7 +3377,7 @@ pub fn fffrwc_safe(
         }
 
         if Info.datatype != TLOGICAL || nelem != 1 {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             ffpmsg_str("Expression does not evaluate to a logical scalar.");
             *status = PARSE_BAD_TYPE;
             return *status;
@@ -3389,7 +3406,7 @@ pub fn fffrwc_safe(
         parNo = lParse.nCols;
         while parNo > 0 {
             parNo -= 1;
-            match lParse.colData[parNo as usize].datatype {
+            match colData[parNo as usize].datatype {
                 TLONG => {
                     let mut v: Vec<c_long> = Vec::new();
                     if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
@@ -3397,7 +3414,7 @@ pub fn fffrwc_safe(
                     } else {
                         v.resize((ntimes + 1) as usize, 0);
                         v[0] = 1234554321;
-                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                        colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
                         lng_arrays.push(v);
                     }
                 }
@@ -3408,7 +3425,7 @@ pub fn fffrwc_safe(
                     } else {
                         v.resize((ntimes + 1) as usize, 0.0);
                         v[0] = DOUBLENULLVALUE;
-                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                        colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
                         dbl_arrays.push(v);
                     }
                 }
@@ -3438,8 +3455,7 @@ pub fn fffrwc_safe(
                             for elem in 0..nelems {
                                 ptrs.push(base.add(elem * alen as usize));
                             }
-                            lParse.colData[parNo as usize].array =
-                                ptrs.as_mut_ptr().cast::<c_void>();
+                            colData[parNo as usize].array = ptrs.as_mut_ptr().cast::<c_void>();
                             str_blocks.push(block);
                             str_ptrs.push(ptrs);
                         }
@@ -3457,7 +3473,7 @@ pub fn fffrwc_safe(
         /* Read data from columns needed for the expression and then parse it */
         /**********************************************************************/
 
-        if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
+        if fits_uncompress_hkdata(&mut lParse, &mut colData, fptr, ntimes, times, status) == 0 {
             if constant != 0 {
                 let result_node = &lParse.Nodes[lParse.resultNode as usize];
                 result = (result_node).value.data.log();
@@ -3476,7 +3492,7 @@ pub fn fffrwc_safe(
                     1,
                     ntimes,
                     lParse.nCols,
-                    &mut lParse.colData,
+                    &mut colData,
                     core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 );
             }
@@ -3493,7 +3509,7 @@ pub fn fffrwc_safe(
             lParse.nCols = nCol;
         }
 
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         *status
     }
 }
@@ -3537,6 +3553,7 @@ pub fn ffffrw_safer(
     let mut result: c_char = 0;
 
     let mut lParse: ParseData = ParseData::default();
+    let mut colData: Vec<iteratorCol> = Vec::new();
 
     if *status != 0 {
         return *status;
@@ -3551,10 +3568,11 @@ pub fn ffffrw_safer(
         &mut naxis,
         naxes.as_mut_slice(),
         &mut lParse,
+        &mut colData,
         status,
     ) != 0
     {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         return *status;
     }
     if nelem < 0 {
@@ -3565,7 +3583,7 @@ pub fn ffffrw_safer(
     }
 
     if dtype != TLOGICAL || nelem != 1 {
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         ffpmsg_str("Expression does not evaluate to a logical scalar.");
         return {
             *status = PARSE_BAD_TYPE;
@@ -3587,7 +3605,7 @@ pub fn ffffrw_safer(
                 prownum: rownum,
                 lParse: core::ptr::from_mut::<ParseData>(&mut lParse),
             };
-            let colData_slice = &mut lParse.colData[..];
+            let colData_slice = &mut colData[..];
             if ffiter_safe(
                 (lParse).nCols,
                 colData_slice,
@@ -3602,7 +3620,7 @@ pub fn ffffrw_safer(
             };
         }
     }
-    ffcprs(&mut lParse);
+    ffcprs(&mut lParse, &mut colData);
     *status
 }
 
@@ -3610,6 +3628,7 @@ pub fn ffffrw_safer(
 ///  Setup iterator column and parser information to be ready to compute temporary calculator expression
 pub(crate) fn fits_parser_set_temporary_col(
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
     Info: &mut parseInfo,
     nrows: c_long,
     nulval: *mut c_void,
@@ -3621,21 +3640,21 @@ pub(crate) fn fits_parser_set_temporary_col(
 
     let col_cnt: c_int = lParse.nCols;
 
-    if fits_parser_allocateCol(lParse, col_cnt, status) != 0 {
+    if fits_parser_allocateCol(lParse, colData, col_cnt, status) != 0 {
         return *status;
     }
 
     /* Set important variables for TemporaryCol where calculated results end up */
 
     fits_iter_set_by_num_safe(
-        &mut lParse.colData[col_cnt as usize],
+        &mut colData[col_cnt as usize],
         ptr::null_mut(),
         0,
         TDOUBLE,
         TEMPORARY_COL,
     );
 
-    (lParse.colData[col_cnt as usize]).repeat = lParse.nElements;
+    (colData[col_cnt as usize]).repeat = lParse.nElements;
 
     Info.dataPtr = ptr::null_mut();
     Info.nullPtr = nulval;
@@ -3650,6 +3669,7 @@ pub(crate) fn fits_parser_set_temporary_col(
 /// Uncompress housekeeping data from a compressed FITS table
 fn fits_uncompress_hkdata(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     fptr: &mut fitsfile,
     ntimes: c_long,
     times: &mut [f64],
@@ -3711,7 +3731,7 @@ fn fits_uncompress_hkdata(
                 parNo = lParse.nCols;
                 while parNo > 0 {
                     parNo -= 1;
-                    let col_data = lParse.colData[parNo as usize];
+                    let col_data = colData[parNo as usize];
                     match col_data.datatype {
                         TLONG => {
                             let array = col_data.array.cast::<c_long>();
@@ -3769,7 +3789,7 @@ fn fits_uncompress_hkdata(
 
             if parNo >= 0 {
                 found[parNo as usize] = 1; /* Flag this parameter as found */
-                let col_data = lParse.colData[parNo as usize];
+                let col_data = colData[parNo as usize];
                 match col_data.datatype {
                     TLONG => {
                         let array = col_data.array.cast::<c_long>();
@@ -3873,19 +3893,21 @@ pub(crate) extern "C" fn ffffrw_work(
 ) -> c_int {
     let workData: &mut ffffrw_workdata =
         unsafe { userPtr.cast::<ffffrw_workdata>().as_mut().expect(NULL_MSG) };
+    let colData = unsafe { core::slice::from_raw_parts_mut(colData, nCols as usize) };
 
-    ffffrw_work_safe(totalrows, offset, firstrow, nrows, nCols, workData)
+    ffffrw_work_safe(totalrows, offset, firstrow, nrows, nCols, colData, workData)
 }
 
 /*---------------------------------------------------------------------------*/
 /// Iterator work function which calls the parser and searches for the
 /// first row which evaluates to TRUE.
 pub(crate) fn ffffrw_work_safe(
-    totalrows: c_long, /* I - Total rows to be processed     */
-    offset: c_long,    /* I - Number of rows skipped at start*/
-    firstrow: c_long,  /* I - First row of this iteration    */
-    nrows: c_long,     /* I - Number of rows in this iter    */
-    nCols: c_int,      /* I - Number of columns in use       */
+    totalrows: c_long,           /* I - Total rows to be processed     */
+    offset: c_long,              /* I - Number of rows skipped at start*/
+    firstrow: c_long,            /* I - First row of this iteration    */
+    nrows: c_long,               /* I - Number of rows in this iter    */
+    nCols: c_int,                /* I - Number of columns in use       */
+    colData: &mut [iteratorCol], /* IO- Column information/data        */
     workData: &mut ffffrw_workdata,
 ) -> c_int {
     unsafe {
@@ -3893,7 +3915,7 @@ pub(crate) fn ffffrw_work_safe(
 
         let lParse: &mut ParseData = &mut *workData.lParse;
 
-        Evaluate_Parser(lParse, firstrow, nrows);
+        Evaluate_Parser(lParse, colData, firstrow, nrows);
 
         if (lParse.status) == 0 {
             result = &mut lParse.Nodes[lParse.resultNode as usize];
@@ -3969,6 +3991,7 @@ pub fn fits_pixel_filter_safer(
         let mut msg: [c_char; 256] = [0; 256];
         let mut write_blank_kwd: c_int = 0; /* write BLANK if any output nulls? */
         let mut lParse: ParseData = ParseData::default();
+        let mut colData: Vec<iteratorCol> = Vec::new();
 
         let debug_pixfilter = if std::env::var("DEBUG_PIXFILTER").is_ok() {
             1
@@ -4002,10 +4025,11 @@ pub fn fits_pixel_filter_safer(
             &mut naxis,
             &mut naxes,
             &mut lParse,
+            &mut colData,
             status,
         ) != 0
         {
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -4047,7 +4071,7 @@ pub fn fits_pixel_filter_safer(
                 println!("result type is {} [{}]", rtype, info.datatype);
             }
             if *status != 0 {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
         }
@@ -4062,7 +4086,7 @@ pub fn fits_pixel_filter_safer(
         ) != 0
         {
             ffpmsg_str("pixel_filter: unable to read input image parameters");
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -4095,7 +4119,7 @@ pub fn fits_pixel_filter_safer(
         ) != 0
         {
             ffpmsg_str("pixel_filter: unable to create output image");
-            ffcprs(&mut lParse);
+            ffcprs(&mut lParse, &mut colData);
             return *status;
         }
 
@@ -4111,7 +4135,7 @@ pub fn fits_pixel_filter_safer(
             ) != 0
             {
                 ffpmsg_str("pixel_filter: unable to determine number of keycards");
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
 
@@ -4123,7 +4147,7 @@ pub fn fits_pixel_filter_safer(
                     int_snprintf!(&mut msg, 256, "pixel_filter: unable to read keycard {}", i,);
 
                     ffpmsg_slice(&msg);
-                    ffcprs(&mut lParse);
+                    ffcprs(&mut lParse, &mut colData);
                     return *status;
                 }
 
@@ -4144,7 +4168,7 @@ pub fn fits_pixel_filter_safer(
                         *status,
                     );
                     ffpmsg_slice(&msg);
-                    ffcprs(&mut lParse);
+                    ffcprs(&mut lParse, &mut colData);
                     return *status;
                 }
             }
@@ -4181,7 +4205,7 @@ pub fn fits_pixel_filter_safer(
                 );
                 ffpmsg_slice(&msg);
                 *status = P_ERROR;
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
         }
@@ -4231,13 +4255,13 @@ pub fn fits_pixel_filter_safer(
             /* Create new iterator Output Column */
             /*************************************/
             col_cnt = lParse.nCols;
-            if fits_parser_allocateCol(&mut lParse, col_cnt, status) != 0 {
-                ffcprs(&mut lParse);
+            if fits_parser_allocateCol(&mut lParse, &mut colData, col_cnt, status) != 0 {
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
             lParse.nCols += 1;
 
-            let colIter: &mut iteratorCol = &mut lParse.colData[col_cnt as usize];
+            let colIter: &mut iteratorCol = &mut colData[col_cnt as usize];
             colIter.fptr = filter.ofptr;
             colIter.iotype = OUTPUT_COL;
 
@@ -4254,7 +4278,7 @@ pub fn fits_pixel_filter_safer(
             info.parseData = &raw mut lParse;
 
             if {
-                let colData_slice = &mut lParse.colData[..];
+                let colData_slice = &mut colData[..];
                 ffiter_safe(
                     lParse.nCols,
                     colData_slice,
@@ -4268,7 +4292,7 @@ pub fn fits_pixel_filter_safer(
             {
                 *status = 0;
             } else if *status != 0 {
-                ffcprs(&mut lParse);
+                ffcprs(&mut lParse, &mut colData);
                 return *status;
             }
 
@@ -4360,7 +4384,7 @@ pub fn fits_pixel_filter_safer(
             }
         }
 
-        ffcprs(&mut lParse);
+        ffcprs(&mut lParse, &mut colData);
         *status
     }
 }
@@ -4440,6 +4464,7 @@ fn set_image_col_types(
 
 fn find_column(
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
     colName: &[c_char],
     itslval: &mut FITS_PARSER_YYSTYPE,
 ) -> c_int {
@@ -4517,14 +4542,14 @@ fn find_column(
             pending error, which is how a syntax error raised earlier in the
             parse used to be lost. */
             let mut tstatus = lParse.status;
-            if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
+            if fits_parser_allocateCol(lParse, colData, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
             }
             lParse.status = tstatus;
 
             varInfo = &mut lParse.varData[col_cnt as usize];
-            colIter = &mut lParse.colData[col_cnt as usize];
+            colIter = &mut colData[col_cnt as usize];
 
             if (*lParse.pixFilter).ifptr.add(colnum as usize).is_null() {
                 ffpmsg_str("find_column: PixelFilter missing image pointer");
@@ -4605,14 +4630,14 @@ fn find_column(
             pending error, which is how a syntax error raised earlier in the
             parse used to be lost. */
             let mut tstatus = lParse.status;
-            if fits_parser_allocateCol(lParse, col_cnt, &mut tstatus) != 0 {
+            if fits_parser_allocateCol(lParse, colData, col_cnt, &mut tstatus) != 0 {
                 lParse.status = tstatus;
                 return P_ERROR;
             }
             lParse.status = tstatus;
 
             varInfo = &mut lParse.varData[col_cnt as usize];
-            colIter = &mut lParse.colData[col_cnt as usize];
+            colIter = &mut colData[col_cnt as usize];
 
             fits_iter_set_by_num_safe(colIter, fptr, colnum, 0, INPUT_COL);
         }
@@ -4825,24 +4850,27 @@ fn find_keywd(
 }
 
 /// Allocates parser iterator column storage for 25 columns *more* than nCols
-fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_int) -> c_int {
+fn fits_parser_allocateCol(
+    lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
+    nCol: c_int,
+    status: &mut c_int,
+) -> c_int {
     if (nCol % 25) == 0 {
-        let existing_len = lParse.colData.len();
-        if lParse.colData.try_reserve_exact(25).is_err() {
-            lParse.colData.clear();
+        let existing_len = colData.len();
+        if colData.try_reserve_exact(25).is_err() {
+            colData.clear();
             lParse.varData.clear();
 
             *status = MEMORY_ALLOCATION;
             return *status;
         } else {
-            lParse
-                .colData
-                .resize(existing_len + 25, iteratorCol::default());
+            colData.resize(existing_len + 25, iteratorCol::default());
         }
 
         let existing_len = lParse.varData.len();
         if lParse.varData.try_reserve_exact(25).is_err() {
-            lParse.colData.clear();
+            colData.clear();
             lParse.varData.clear();
 
             *status = MEMORY_ALLOCATION;
@@ -4861,6 +4889,7 @@ fn fits_parser_allocateCol(lParse: &mut ParseData, nCol: c_int, status: &mut c_i
 
 fn load_column(
     lParse: &mut ParseData,
+    colData: &mut [iteratorCol],
     varNum: c_int,
     fRow: c_long,
     nRows: c_long,
@@ -4879,7 +4908,7 @@ fn load_column(
         let mut status: c_int = 0;
         let mut anynul: c_int = 0;
 
-        let var: &mut iteratorCol = &mut lParse.colData[varNum as usize];
+        let var: &mut iteratorCol = &mut colData[varNum as usize];
         if lParse.hdutype == IMAGE_HDU {
             /* This test would need to be on a per varNum basis to support
              * cross HDU operations */

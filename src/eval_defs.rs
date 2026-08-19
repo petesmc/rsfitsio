@@ -346,7 +346,7 @@ impl lval {
 #[derive(Default, Debug, Clone)]
 pub(crate) struct Node {
     pub operation: c_int,
-    pub DoOp: Option<fn(p: &mut ParseData, this_node_idx: usize)>,
+    pub DoOp: Option<fn(p: &mut ParseData, colData: &mut [iteratorCol], this_node_idx: usize)>,
     pub nSubNodes: c_int,
     pub SubNodes: [usize; MAXSUBS as usize],
     pub ntype: ValueSort,
@@ -397,12 +397,17 @@ impl Node {
 }
 
 /// Fetches a single named value for the parser (ffcalc's keyword lookup).
-pub(crate) type GetDataFn =
-    fn(p: &mut ParseData, dataName: &[c_char], dataValue: &mut FITS_PARSER_YYSTYPE) -> c_int;
+pub(crate) type GetDataFn = fn(
+    p: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
+    dataName: &[c_char],
+    dataValue: &mut FITS_PARSER_YYSTYPE,
+) -> c_int;
 
 /// Loads a row range of one parser variable into the caller's buffers.
 pub(crate) type LoadDataFn = fn(
     p: &mut ParseData,
+    colData: &mut [iteratorCol],
     varNum: c_int,
     fRow: c_long,
     nRows: c_long,
@@ -410,6 +415,16 @@ pub(crate) type LoadDataFn = fn(
     undef: *mut c_char,
 ) -> c_int;
 
+/// The parser's state, minus its iterator columns.
+///
+/// The C `ParseData` also held `iteratorCol *colData`. That array is the very
+/// array the iterator (`ffiter`) is handed and holds a `&mut [iteratorCol]`
+/// over for the whole of an iteration, while the work function reaches back
+/// into the `ParseData` through `parseInfo::parseData` -- two live `&mut`s
+/// over the same columns. So the array now lives beside the `ParseData`, owned
+/// by whoever set the parser up, and is threaded in as a separate argument:
+/// `&mut Vec<iteratorCol>` while parsing (`ffiprs`/`find_column` still grow
+/// it), `&mut [iteratorCol]` once the iterator owns it.
 #[derive(Default)]
 pub(crate) struct ParseData {
     pub def_fptr: *mut fitsfile,
@@ -434,7 +449,6 @@ pub(crate) struct ParseData {
     pub nElements: c_long,
     pub nAxis: c_int,
     pub nAxes: [c_long; MAXDIMS as usize],
-    pub colData: Vec<iteratorCol>, // This is a list
     pub varData: Vec<DataInfo>,
     pub pixFilter: *mut PixelFilter,
     pub firstDataRow: c_long,
@@ -470,7 +484,6 @@ impl ParseData {
         self.nElements = Default::default();
         self.nAxis = Default::default();
         self.nAxes = Default::default();
-        self.colData = Default::default();
         self.varData = Default::default();
         self.pixFilter = Default::default();
         self.firstDataRow = Default::default();

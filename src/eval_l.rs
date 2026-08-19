@@ -64,7 +64,7 @@ use libc::{ENOMEM, FILE, fileno, fwrite, isatty, size_t};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar, c_uint, c_void};
 use crate::eval_defs::{MAX_STRLEN, MAXVARNAME, P_ERROR, ParseData, ValueSort};
-use crate::fitsio::PARSE_SYNTAX_ERR;
+use crate::fitsio::{PARSE_SYNTAX_ERR, iteratorCol};
 use crate::fitsio2::FSTRCMP;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -288,6 +288,7 @@ fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int
 
 pub(crate) fn fits_parser_yyGetVariable(
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
     varName: &[c_char],
     thelval: &mut FITS_PARSER_YYSTYPE,
 ) -> c_int {
@@ -297,7 +298,9 @@ pub(crate) fn fits_parser_yyGetVariable(
 
     if varNum < 0 {
         if (lParse.getData).is_some() {
-            dtype = (lParse.getData).expect("non-null function pointer")(lParse, varName, thelval);
+            dtype = (lParse.getData).expect("non-null function pointer")(
+                lParse, colData, varName, thelval,
+            );
         } else {
             dtype = -1;
             lParse.status = PARSE_SYNTAX_ERR;
@@ -450,6 +453,7 @@ pub(crate) fn fits_parser_yylex(
     yylval_param: &mut FITS_PARSER_YYSTYPE,
     yyscanner: &mut yyguts_t,
     lParse: &mut ParseData,
+    colData: &mut Vec<iteratorCol>,
 ) -> c_int {
     unsafe {
         let mut yy_amount_of_matched_text: c_int = 0;
@@ -969,6 +973,7 @@ pub(crate) fn fits_parser_yylex(
                                         (lParse.getData).expect("non-null function pointer");
                                     result = get_data(
                                         lParse,
+                                        colData,
                                         yytext_r_slice,
                                         yyscanner
                                             .yylval_r
@@ -1038,6 +1043,7 @@ pub(crate) fn fits_parser_yylex(
 
                                 dtype = fits_parser_yyGetVariable(
                                     lParse,
+                                    colData,
                                     yytext_r_slice,
                                     yyscanner.yylval_r.as_mut().unwrap(),
                                 );
