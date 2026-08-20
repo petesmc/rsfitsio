@@ -3031,14 +3031,22 @@ pub(crate) fn fits_parser_workfn_safe(
         /* If a TemporaryCol output is used, we want to inform the caller
         what the null value is expected to be */
 
-        // WARNING - THIS IS DANGEROUS. If nCols = 0, points to invalid memory.
-        // In the case of the where expr = "#ROW > 2" there are no columns.
-        outcol = colData.offset((nCols - 1) as isize).as_mut().unwrap();
-        // outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
+        /* The C computes `colData[nCols-1]` unconditionally here. When the
+        expression names no columns -- `where` expressions such as "#ROW > 2"
+        -- nCols is 0 and that offsets one element before the start of the
+        array, which is out of bounds however the result is used. There is no
+        output column to describe in that case, so skip it: the two blocks
+        below only report what the output column's null value should be. */
+        let outcol_ptr: *mut iteratorCol = if nCols > 0 {
+            colData.offset((nCols - 1) as isize)
+        } else {
+            ptr::null_mut()
+        };
 
-        if pv.Null != outcol.array
+        if !outcol_ptr.is_null()
+            && pv.Null != (*outcol_ptr).array
             && (Data0)
-                == outcol
+                == (*outcol_ptr)
                     .array
                     .cast::<c_char>()
                     .add((pv.datasize).try_into().unwrap())
@@ -3046,12 +3054,12 @@ pub(crate) fn fits_parser_workfn_safe(
         {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
-                    outcol.array,
+                    (*outcol_ptr).array,
                     (*pv.Null.cast::<*mut c_char>()).cast::<c_void>(),
                     2,
                 );
             } else {
-                memcpy(outcol.array, pv.Null, pv.datasize.try_into().unwrap());
+                memcpy((*outcol_ptr).array, pv.Null, pv.datasize.try_into().unwrap());
             }
         }
 
@@ -3060,7 +3068,7 @@ pub(crate) fn fits_parser_workfn_safe(
 
         if anyNullThisTime != 0 {
             (*(pv.userInfo)).anyNull = 1;
-        } else if pv.Null == outcol.array {
+        } else if !outcol_ptr.is_null() && pv.Null == (*outcol_ptr).array {
             if (*(pv.userInfo)).datatype == TSTRING {
                 memcpy(
                     (*pv.Null.cast::<*mut c_char>()).cast::<c_void>(),
