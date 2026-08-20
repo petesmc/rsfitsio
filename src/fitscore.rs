@@ -254,13 +254,10 @@ pub unsafe extern "C" fn ffflnm(
 }
 
 pub fn ffflnm_safe(fptr: &mut fitsfile, filename: &mut [c_char], status: &mut c_int) -> c_int {
-    // SAFETY: Fptr.filename is this file's heap-allocated, NUL-terminated C string.
-    unsafe {
-        strcpy_safe(
-            filename,
-            cast_slice(CStr::from_ptr(fptr.Fptr.filename).to_bytes_with_nul()),
-        );
-    }
+    strcpy_safe(
+        filename,
+        cast_slice(fptr.Fptr.get_filename_as_cstr().to_bytes_with_nul()),
+    );
     *status
 }
 

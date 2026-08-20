@@ -46,7 +46,10 @@
     clippy::cast,
 )]
 */
-#![allow(deprecated)]
+// NOTE: no crate-wide `#![allow(deprecated)]`. Every `extern "C"` entry point is
+// `#[deprecated]` so that internal callers still going through the C ABI instead of
+// the `_safe` form show up as warnings (TODO.md). Allow it locally where a wrapper
+// must call its deprecated sibling, never crate-wide.
 #![deny(clippy::std_instead_of_core, clippy::std_instead_of_alloc)]
 // #![deny(clippy::unnecessary_cast)]
 

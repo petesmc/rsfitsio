@@ -33,8 +33,9 @@
       engine now that yyextra_r is gone. Same shape as the FPTR_TABLE and
       infptr/outfptr entries below: a struct holding a pointer to something
       that is also reached through a `&mut`.
-- [ ] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
-      as both input and output; see the infptr/outfptr entry below.
+- [X] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
+      as both input and output. Done: every `fp_self` is gone; the tests call
+      the `_inplace` forms instead. See the infptr/outfptr entry below.
 - [ ] Clean up all warnings
 - [ ] Remove clippy allow(unused_assignments)
 - [ ] Remove clippy allow(unused_variables)
@@ -56,6 +57,34 @@
       marked NOTE (upstream bug N) in src/bin/fpack/
 - [ ] Restructure modules, ::api ??
 - [X] Every extern function should be a wrapper around a safe interface
+- [ ] Keep shrinking `unsafe` outside the FFI wrappers. Measure with
+      `notes/unsafe_metric.py` (non-FFI blocks and the lines inside them);
+      the crate-wide `#![allow(deprecated)]` is gone from lib.rs so the
+      deprecation warnings once again show which internal callers are still on
+      the C ABI (`cargo check --all-targets 2>&1 | grep -c deprecated`).
+      Done so far: ffopen_safe (998-line block -> none; it needed `unsafe` for
+      exactly one line, a `CStr::from_ptr` on a `[*const c_char; 3]` that is now
+      `[&CStr; 3]`), fits_already_open, ffsrow_safe, fffrwc_safe,
+      fits_execute_template (now has a `_safe` form), the zcompress entry points
+      with already-safe signatures (which deleted 15 blocks in imcompress.rs and
+      one in drvrfile.rs), the `.filename` sites that bypassed
+      `get_filename_as_cstr`, and `strto_float_impl`.
+      Still open, in rough value order:
+      * `uncompress2mem` / `uncompress2mem_from_mem` still take
+        `buffptr: *mut *mut u8` plus a `mem_realloc` callback whose body is a
+        `panic!("not implemented")`. Converting them to `&mut [u8]`/`&mut Vec<u8>`
+        makes them safe and unblocks fits_uncompress_table_safe, whose 1012-line
+        block exists *only* because it calls uncompress2mem_from_mem -- the body
+        has no unsafe operation of its own.
+      * ffiter_safe (putcol.rs, 1312 lines) and fits_parser_workfn_safe
+        (eval_f.rs, 661 lines) have genuine pointer work; narrow, do not remove.
+      * The putkey.rs ffpkn*_safe family take `&[*const c_char]` and pay ~20
+        `CStr::from_ptr` blocks for it; `&[&[c_char]]` (as ffhdr2str_safe already
+        uses) moves that to the extern wrapper.
+      * src/bin/speed/main.rs is the only binary still on the C ABI (48 sites).
+      * fits_pixel_filter_safer keeps a function-wide block on purpose:
+        PixelFilter is a C struct of raw pointers, so narrowing it means changing
+        that struct. Documented in place.
 - [X] Fix broken testprog.out comparison
 - [ ] Miri still reports Undefined Behavior. Run with
       `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri nextest run
@@ -77,26 +106,26 @@
       * cfileio.rs:1880 (20) — the FPTR_TABLE entry below.
       * The `&mut`/`&mut` aliasing sites are 1 test each, but see the first
         entry: they are a signature problem, not a local one.
-      * The ported `_safe` signatures take `infptr: &mut fitsfile` and
-        `outfptr: &mut fitsfile`, but the C API explicitly allows
-        `infptr == outfptr` and callers rely on it. Two `&mut` to one object
-        can never be legal, so every site that reproduces the C aliasing is UB:
-        `ffsrow_safe(&mut *f, &mut *f, ..)` in cfileio.rs:4893 (library code,
-        with a SAFETY comment acknowledging it), plus the same trick in the
-        eval_f.rs and editcol.rs tests. These signatures need to take a single
-        `&mut` plus a flag, or raw pointers, before the aliasing can go away.
-      * `fitsfile.Fptr` is a `Box<FITSfile>` but several FITSfiles are shared
-        between handles by `Box::from_raw`, so two live Boxes own one
-        allocation (cfileio.rs:1854, already marked "TODO this is very
-        unsafe!"). Confirmed by miri, invalidated at getkey.rs:242.
-      * `FPTR_TABLE` (cfileio.rs:1880) stores a raw pointer derived from a
-        `&mut FITSfile` borrowed out of that Box. Any later write through the
-        Box (e.g. fitscore.rs:5757) invalidates it, and the next
-        `FPTR_TABLE[ii].as_mut()` in fits_already_open (cfileio.rs:1997) is UB.
-        Reproducer: open one file, then open a second.
-        Fixing this soundly means owning FITSfile through a raw pointer
-        (NonNull + Deref/DerefMut wrapper, which is layout- and C-ABI-neutral)
-        rather than Box, so all accesses share one provenance root.
+      * FIXED for ffsrow/ffcalc/ffcalc_rng/ffcpcl/ffcpky. The C API allows
+        `infptr == outfptr` but two `&mut` to one object can never be legal, so
+        each of those now has an `_inplace` twin taking a single `&mut`, and the
+        `extern "C"` wrapper compares the two raw pointers and dispatches --
+        matching what ffcopy/ffcpfl/ffcphd/ffcpdt already did. The bodies are
+        deliberately duplicated rather than parameterised; each pair carries a
+        NOTE pointing at its twin. The `&mut *f` launders in cfileio.rs
+        (ffselect_table, ffedit_columns) and the eval_f.rs/editcol.rs tests are
+        all gone. Note the wrapper test is *handle* identity: two distinct
+        handles sharing one FITSfile (fits_reopen_file) is a supported two-file
+        case, and the FITSfile-level `ptr::eq(a.Fptr.as_ptr(), ..)` checks in
+        ffcpcl_safe/ffcpdt_safe are a different test and stay.
+      * FIXED: `fitsfile.Fptr` is an `FptrRef` (repr(transparent) NonNull with
+        Deref/DerefMut), not a `Box`, so sharing a FITSfile between handles no
+        longer means two live Boxes owning one allocation.
+      * `FPTR_TABLE` now stores `Fptr.as_ptr()`, the same pointer the handles
+        deref through, and fits_already_open takes a shared `&FITSfile` from it
+        rather than minting a `&mut` that aliased every live handle. What is
+        left is that `FPTR_TABLE` is still a `static mut`; wrapping it in a
+        Mutex over a Send newtype would confine that to one `unsafe impl`.
       * eval_l.rs:1571 — the lexer's yy_buffer_stack hands out `&mut` into a
         raw buffer that is then invalidated at eval_l.rs:1752.
       * drvrmem.rs:259 — `m[ii].memaddrptr = &mut m[ii].memaddr` is a
@@ -120,7 +149,8 @@
       * 42 tests fail on miri's own gaps, not on defects: `socketpair` and
         `copy_file_range` (the fpack/funpack/fitsverify tests spawn
         subprocesses). Exactly one is ours: a remaining C `fopen` call.
-- [ ] Fix dodgy safety code in ffedit_columns. WARNING / SAFETY / TODO
+- [X] Fix dodgy safety code in ffedit_columns. The `same_ftpr` launder is gone;
+      it calls `ffcalc_inplace_safe` instead.
 - [X] Mark all extern functions as deprecated so that we can detect usage
 - [X] Feature "bzip2" doesn't work
 - [X] Feature "shared_mem" doesn't work

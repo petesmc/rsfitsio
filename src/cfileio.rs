@@ -13,7 +13,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_short, c_void};
 use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout, https_set_verbose};
-use crate::grparser::fits_execute_template;
+use crate::grparser::fits_execute_template_safe;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -46,7 +46,10 @@ use crate::drvrsmem::{
 };
 use crate::editcol::{ffdcol_safe, fficol_safe};
 use crate::edithdu::{ffcopy_safe, ffcphd_safe};
-use crate::eval_f::{ffcalc_safe, ffffrw_safer, fffrow_safe, ffsrow_safe, fits_pixel_filter_safer};
+use crate::eval_f::{
+    ffcalc_inplace_safe, ffffrw_safer, fffrow_safe, ffsrow_inplace_safe, ffsrow_safe,
+    fits_pixel_filter_safer,
+};
 use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmrk_safe, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe,
     ffghadll_safe, ffghdn_safe, ffghdt_safe, ffgidm_safe, ffgidt_safe, ffgiprll_safe, ffgkcl_safe,
@@ -207,7 +210,7 @@ pub fn ffomem_safer(
     let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-    let hdtype: [*const c_char; 3] = [c"IMAGE".as_ptr(), c"TABLE".as_ptr(), c"BINTABLE".as_ptr()];
+    let hdtype: [&CStr; 3] = [c"IMAGE", c"TABLE", c"BINTABLE"];
 
     if *status > 0 {
         return *status;
@@ -428,11 +431,7 @@ pub fn ffomem_safer(
                         &mut errmsg,
                         FLEN_ERRMSG,
                         "           and with XTENSION = {},",
-                        unsafe {
-                            CStr::from_ptr(hdtype[movetotype as usize])
-                                .to_str()
-                                .unwrap()
-                        },
+                        hdtype[movetotype as usize].to_str().unwrap(),
                     );
                     ffpmsg_slice(&errmsg);
                 }
@@ -812,972 +811,834 @@ pub fn ffopen_safe(
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
     status: &mut c_int,               /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        let mut newptr: Option<Box<fitsfile>> = None;
-        let mut driver = 0;
-        let mut hdutyp = 0;
-        let mut hdunum = 0;
-        let slen;
-        let mut isopen = 0;
-        let mut filesize = 0;
-        let mut rownum: c_long = 0;
-        let mut nrows: c_long = 0;
-        let mut goodrows: c_long = 0;
-        let mut extnum = 0;
-        let mut extvers = 0;
-        let mut handle = 0;
-        let mut movetotype = 0;
-        let mut tstatus;
-        let mut only_one = 0;
-        let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
-        let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut origurltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
-        let mut extspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut rowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut tblname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut binspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut colspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut pixfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut histfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut testpath: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut filtfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut wtcol: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut minname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let mut maxname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let mut binname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let mut minin: [f64; 4] = [0.0; 4];
-        let mut maxin: [f64; 4] = [0.0; 4];
-        let mut binsizein: [f64; 4] = [0.0; 4];
-        let mut weight: f64 = 0.0;
-        let mut imagetype = 0;
-        let mut naxis = 1;
-        let mut haxis = 0;
-        let mut recip = 0;
-        let mut skip_null = false;
-        let mut skip_image = false;
-        let mut skip_table = false;
-        let mut no_primary_data = false;
-        let mut open_disk_file = false;
-        let mut colname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
-        let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
-        let hdtype: [*const c_char; 3] =
-            [c"IMAGE".as_ptr(), c"TABLE".as_ptr(), c"BINTABLE".as_ptr()];
+    let mut newptr: Option<Box<fitsfile>> = None;
+    let mut driver = 0;
+    let mut hdutyp = 0;
+    let mut hdunum = 0;
+    let slen;
+    let mut isopen = 0;
+    let mut filesize = 0;
+    let mut rownum: c_long = 0;
+    let mut nrows: c_long = 0;
+    let mut goodrows: c_long = 0;
+    let mut extnum = 0;
+    let mut extvers = 0;
+    let mut handle = 0;
+    let mut movetotype = 0;
+    let mut tstatus;
+    let mut only_one = 0;
+    let mut urltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+    let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut outfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut origurltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+    let mut extspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut extname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut rowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tblname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut imagecolname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut rowexpress: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut binspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut colspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut pixfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut histfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut testpath: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut filtfilename: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut compspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut wtcol: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut minname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+    let mut maxname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+    let mut binname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+    let mut minin: [f64; 4] = [0.0; 4];
+    let mut maxin: [f64; 4] = [0.0; 4];
+    let mut binsizein: [f64; 4] = [0.0; 4];
+    let mut weight: f64 = 0.0;
+    let mut imagetype = 0;
+    let mut naxis = 1;
+    let mut haxis = 0;
+    let mut recip = 0;
+    let mut skip_null = false;
+    let mut skip_image = false;
+    let mut skip_table = false;
+    let mut no_primary_data = false;
+    let mut open_disk_file = false;
+    let mut colname: [[c_char; FLEN_VALUE]; 4] = [[0; FLEN_VALUE]; 4];
+    let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
+    let hdtype: [&CStr; 3] = [c"IMAGE", c"TABLE", c"BINTABLE"];
 
-        let rowselect = None;
+    let rowselect = None;
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        if *status == SKIP_NULL_PRIMARY {
-            /* this special status value is used as a flag by ffdopn to tell */
-            /* ffopen to skip over a null primary array when opening the file. */
+    if *status == SKIP_NULL_PRIMARY {
+        /* this special status value is used as a flag by ffdopn to tell */
+        /* ffopen to skip over a null primary array when opening the file. */
 
-            skip_null = true;
-            *status = 0;
-        } else if *status == SKIP_IMAGE {
-            /* this special status value is used as a flag by fftopn to tell */
-            /* ffopen to move to 1st significant table when opening the file. */
+        skip_null = true;
+        *status = 0;
+    } else if *status == SKIP_IMAGE {
+        /* this special status value is used as a flag by fftopn to tell */
+        /* ffopen to move to 1st significant table when opening the file. */
 
-            skip_image = true;
-            *status = 0;
-        } else if *status == SKIP_TABLE {
-            /* this special status value is used as a flag by ffiopn to tell */
-            /* ffopen to move to 1st significant image when opening the file. */
+        skip_image = true;
+        *status = 0;
+    } else if *status == SKIP_TABLE {
+        /* this special status value is used as a flag by ffiopn to tell */
+        /* ffopen to move to 1st significant image when opening the file. */
 
-            skip_table = true;
-            *status = 0;
-        } else if *status == OPEN_DISK_FILE {
-            /* this special status value is used as a flag by ffdkopn to tell */
-            /* ffopen to not interpret the input filename using CFITSIO's    */
-            /* extended filename syntax, and simply open the specified disk file */
+        skip_table = true;
+        *status = 0;
+    } else if *status == OPEN_DISK_FILE {
+        /* this special status value is used as a flag by ffdkopn to tell */
+        /* ffopen to not interpret the input filename using CFITSIO's    */
+        /* extended filename syntax, and simply open the specified disk file */
 
-            open_disk_file = true;
-            *status = 0;
-        }
+        open_disk_file = true;
+        *status = 0;
+    }
 
-        /* initialize null file pointer */
-        let f_tmp = fptr.take();
-        if let Some(f) = f_tmp {
-            // WARNING: The c version doesn't null pointers after a close, so we have a dangling pointer.
-            // We need to be careful with this, as it can cause double free errors.
-            // Therefore, if this function is called with a Some(), then we will leak the pointer because
-            // it's probably invalid.
-            let _ = Box::into_raw(f);
-        }
+    /* initialize null file pointer */
+    let f_tmp = fptr.take();
+    if let Some(f) = f_tmp {
+        // WARNING: The c version doesn't null pointers after a close, so we have a dangling pointer.
+        // We need to be careful with this, as it can cause double free errors.
+        // Therefore, if this function is called with a Some(), then we will leak the pointer because
+        // it's probably invalid.
+        let _ = Box::into_raw(f);
+    }
 
-        let mut writecopy = false; /* have we made a write-able copy of the input file? */
+    let mut writecopy = false; /* have we made a write-able copy of the input file? */
 
-        if *NEED_TO_INITIALIZE.lock().unwrap() {
-            /* this is called only once */
-            *status = fits_init_cfitsio_safer();
-        }
+    if *NEED_TO_INITIALIZE.lock().unwrap() {
+        /* this is called only once */
+        *status = fits_init_cfitsio_safer();
+    }
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        let url = name;
-        let mut ui = 0;
+    let url = name;
+    let mut ui = 0;
 
-        while url[ui] == bb(b' ') {
-            /* ignore leading spaces in the filename */
-            ui += 1;
-        }
+    while url[ui] == bb(b' ') {
+        /* ignore leading spaces in the filename */
+        ui += 1;
+    }
 
-        if url[ui] == 0 {
-            ffpmsg_str("Name of file to open is blank. (ffopen)");
+    if url[ui] == 0 {
+        ffpmsg_str("Name of file to open is blank. (ffopen)");
+        *status = FILE_NOT_OPENED;
+        return *status;
+    }
+
+    let url = &url[ui..];
+
+    if open_disk_file {
+        /* treat the input URL literally as the name of the file to open */
+        /* and don't try to parse the URL using the extended filename syntax */
+
+        if strlen_safe(url) > FLEN_FILENAME - 1 {
+            ffpmsg_str("Name of file to open is too long. (ffopen)");
             *status = FILE_NOT_OPENED;
             return *status;
         }
 
-        let url = &url[ui..];
+        strcpy_safe(&mut infile, url);
+        strcpy_safe(&mut urltype, cs!(c"file://"));
+        outfile[0] = 0;
+        extspec[0] = 0;
+        binspec[0] = 0;
+        colspec[0] = 0;
+        rowfilter[0] = 0;
+        pixfilter[0] = 0;
+        compspec[0] = 0;
+    } else {
+        /* parse the input file specification */
 
-        if open_disk_file {
-            /* treat the input URL literally as the name of the file to open */
-            /* and don't try to parse the URL using the extended filename syntax */
+        /* NOTE: This routine tests that all the strings do not */
+        /* overflow the standard buffer sizes (FLEN_FILENAME, etc.) */
+        /* therefore in general we do not have to worry about buffer */
+        /* overflow of any of the returned strings. */
 
-            if strlen_safe(url) > FLEN_FILENAME - 1 {
-                ffpmsg_str("Name of file to open is too long. (ffopen)");
-                *status = FILE_NOT_OPENED;
-                return *status;
-            }
+        /* call the newer version of this parsing routine that supports 'compspec' */
 
-            strcpy_safe(&mut infile, url);
-            strcpy_safe(&mut urltype, cs!(c"file://"));
-            outfile[0] = 0;
-            extspec[0] = 0;
-            binspec[0] = 0;
-            colspec[0] = 0;
-            rowfilter[0] = 0;
-            pixfilter[0] = 0;
-            compspec[0] = 0;
-        } else {
-            /* parse the input file specification */
-
-            /* NOTE: This routine tests that all the strings do not */
-            /* overflow the standard buffer sizes (FLEN_FILENAME, etc.) */
-            /* therefore in general we do not have to worry about buffer */
-            /* overflow of any of the returned strings. */
-
-            /* call the newer version of this parsing routine that supports 'compspec' */
-
-            ffifile2_safe(
-                url,
-                Some(&mut urltype[..]),
-                Some(&mut infile[..]),
-                Some(&mut outfile[..]),
-                Some(&mut extspec[..]),
-                Some(&mut rowfilter[..]),
-                Some(&mut binspec[..]),
-                Some(&mut colspec[..]),
-                Some(&mut pixfilter[..]),
-                Some(&mut compspec[..]),
-                status,
-            );
-            let tstEnv = std::env::var("CFITSIO_DISABLE_COPY_RESTRICT").ok();
-            if !tstEnv.as_deref().is_some_and(|s| s.starts_with('1')) {
-                if strlen_safe(&infile) != 0 && strlen_safe(&outfile) != 0 {
-                    let pathstart: &[c_char] = if strncmp_safe(&urltype, cs!(c"file"), 4) != 0 {
-                        skip_host_string(&infile)
-                    } else {
-                        &infile
-                    };
-                    strcpy_safe(&mut testpath, pathstart);
-                    if normalize_path(&mut testpath, status) != 0 {
-                        ffpmsg_str("Unable to normalize input file path (ffopen)");
-                        ffpmsg_slice(&testpath);
-                        return *status;
-                    }
-                    if exclude_path(&testpath) != 0 {
-                        ffpmsg_str("Attempting to access an invalid directory (ffopen)");
-                        ffpmsg_slice(&testpath);
-                        *status = FILE_NOT_OPENED;
-                        return *status;
-                    }
+        ffifile2_safe(
+            url,
+            Some(&mut urltype[..]),
+            Some(&mut infile[..]),
+            Some(&mut outfile[..]),
+            Some(&mut extspec[..]),
+            Some(&mut rowfilter[..]),
+            Some(&mut binspec[..]),
+            Some(&mut colspec[..]),
+            Some(&mut pixfilter[..]),
+            Some(&mut compspec[..]),
+            status,
+        );
+        let tstEnv = std::env::var("CFITSIO_DISABLE_COPY_RESTRICT").ok();
+        if !tstEnv.as_deref().is_some_and(|s| s.starts_with('1')) {
+            if strlen_safe(&infile) != 0 && strlen_safe(&outfile) != 0 {
+                let pathstart: &[c_char] = if strncmp_safe(&urltype, cs!(c"file"), 4) != 0 {
+                    skip_host_string(&infile)
+                } else {
+                    &infile
+                };
+                strcpy_safe(&mut testpath, pathstart);
+                if normalize_path(&mut testpath, status) != 0 {
+                    ffpmsg_str("Unable to normalize input file path (ffopen)");
+                    ffpmsg_slice(&testpath);
+                    return *status;
                 }
-                if strncmp_safe(&urltype, cs!(c"rawfile"), 7) == 0
-                    && strncmp_safe(&outfile, cs!(c"root:"), 5) == 0
-                {
-                    ffpmsg_str(
-                        "The copying of a raw binary file to the root driver has been disabled.",
-                    );
+                if exclude_path(&testpath) != 0 {
+                    ffpmsg_str("Attempting to access an invalid directory (ffopen)");
+                    ffpmsg_slice(&testpath);
                     *status = FILE_NOT_OPENED;
                     return *status;
                 }
             }
+            if strncmp_safe(&urltype, cs!(c"rawfile"), 7) == 0
+                && strncmp_safe(&outfile, cs!(c"root:"), 5) == 0
+            {
+                ffpmsg_str(
+                    "The copying of a raw binary file to the root driver has been disabled.",
+                );
+                *status = FILE_NOT_OPENED;
+                return *status;
+            }
+        }
+    }
+
+    if *status > 0 {
+        ffpmsg_str("could not parse the input filename: (ffopen)");
+        ffpmsg_slice(url);
+        return *status;
+    }
+
+    imagecolname[0] = 0;
+    rowexpress[0] = 0;
+
+    if extspec[0] != 0 {
+        slen = strlen_safe(&extspec);
+        if extspec[slen - 1] == bb(b'#') {
+            /* special symbol to mean only copy this extension */
+            extspec[slen - 1] = 0;
+            only_one = 1;
         }
 
+        /* parse the extension specifier into individual parameters */
+        ffexts_safe(
+            &extspec,
+            &mut extnum,
+            &mut extname,
+            &mut extvers,
+            &mut movetotype,
+            &mut imagecolname,
+            &mut rowexpress,
+            status,
+        );
         if *status > 0 {
-            ffpmsg_str("could not parse the input filename: (ffopen)");
+            return *status;
+        };
+    }
+
+    /*-------------------------------------------------------------------*/
+    /* special cases:                                                    */
+    /*-------------------------------------------------------------------*/
+
+    histfilename[0] = 0;
+    filtfilename[0] = 0;
+
+    if outfile[0] != 0 && (binspec[0] != 0 || imagecolname[0] != 0 || pixfilter[0] != 0) {
+        /* if binspec or imagecolumn are specified, then the  */
+        /* output file name is intended for the final image,  */
+        /* and not a copy of the input file.                  */
+
+        strcpy_safe(&mut histfilename, &outfile);
+        outfile[0] = 0;
+    } else if outfile[0] != 0 && (rowfilter[0] != 0 || colspec[0] != 0) {
+        /* if rowfilter or colspece are specified, then the    */
+        /* output file name is intended for the filtered file  */
+        /* and not a copy of the input file.                   */
+
+        strcpy_safe(&mut filtfilename, &outfile);
+        outfile[0] = 0;
+    }
+
+    /*-------------------------------------------------------------------*/
+    /* check if this same file is already open, and if so, attach to it  */
+    /*-------------------------------------------------------------------*/
+
+    let lock = FFLOCK();
+
+    if fits_already_open(
+        fptr,
+        url,
+        &mut urltype,
+        &mut infile,
+        &mut extspec,
+        &mut rowfilter,
+        &mut binspec,
+        &mut colspec,
+        mode,
+        open_disk_file,
+        &mut isopen,
+        status,
+    ) > 0
+    {
+        FFUNLOCK(lock);
+        return *status;
+    }
+
+    FFUNLOCK(lock);
+
+    let mut move2hdu = false;
+    if isopen != 0 {
+        move2hdu = true;
+    }
+
+    if !move2hdu {
+        /* get the driver number corresponding to this urltype */
+        *status = urltype2driver(&urltype, &mut driver);
+
+        if *status > 0 {
+            ffpmsg_str("could not find driver for this file: (ffopen)");
+            ffpmsg_slice(&urltype);
             ffpmsg_slice(url);
             return *status;
         }
 
-        imagecolname[0] = 0;
-        rowexpress[0] = 0;
+        /*-------------------------------------------------------------------
+          deal with all those messy special cases which may require that
+          a different driver be used:
+              - is disk file compressed?
+              - are ftp:, gsiftp:, or http: files compressed?
+              - has user requested that a local copy be made of
+                the ftp or http file?
+        -------------------------------------------------------------------*/
 
-        if extspec[0] != 0 {
-            slen = strlen_safe(&extspec);
-            if extspec[slen - 1] == bb(b'#') {
-                /* special symbol to mean only copy this extension */
-                extspec[slen - 1] = 0;
-                only_one = 1;
+        let d = DRIVER_TABLE.get().unwrap();
+
+        if let Some(checkfile) = (d[driver as usize]).checkfile {
+            strcpy_safe(&mut origurltype, &urltype); /* Save the urltype */
+
+            /* 'checkfile' may modify the urltype, infile and outfile strings */
+            *status = checkfile(&mut urltype, &mut infile, &mut outfile);
+
+            if *status != 0 {
+                ffpmsg_str("checkfile failed for this file: (ffopen)");
+                ffpmsg_slice(url);
+                return *status;
             }
 
-            /* parse the extension specifier into individual parameters */
-            ffexts_safe(
-                &extspec,
-                &mut extnum,
-                &mut extname,
-                &mut extvers,
-                &mut movetotype,
-                &mut imagecolname,
-                &mut rowexpress,
-                status,
-            );
-            if *status > 0 {
-                return *status;
+            if strcmp_safe(&origurltype, &urltype) != 0 {
+                /* did driver changed on us? */
+                *status = urltype2driver(&urltype, &mut driver);
+                if *status > 0 {
+                    ffpmsg_str("could not change driver for this file: (ffopen)");
+                    ffpmsg_slice(url);
+                    ffpmsg_slice(&urltype);
+                    return *status;
+                };
             };
         }
 
-        /*-------------------------------------------------------------------*/
-        /* special cases:                                                    */
-        /*-------------------------------------------------------------------*/
+        /* call appropriate driver to open the file */
+        match (d[driver as usize]).open {
+            Some(open) => {
+                let lock = FFLOCK(); /* lock this while searching for vacant handle */
+                *status = open(&mut infile, mode, &mut handle);
+                FFUNLOCK(lock);
 
-        histfilename[0] = 0;
-        filtfilename[0] = 0;
+                if *status > 0 {
+                    ffpmsg_str("failed to find or open the following file: (ffopen)");
+                    ffpmsg_slice(url);
+                    return *status;
+                };
+            }
+            None => {
+                ffpmsg_str("cannot open an existing file of this type: (ffopen)");
+                ffpmsg_slice(url);
+                *status = FILE_NOT_OPENED;
+                return *status;
+            }
+        };
 
-        if outfile[0] != 0 && (binspec[0] != 0 || imagecolname[0] != 0 || pixfilter[0] != 0) {
-            /* if binspec or imagecolumn are specified, then the  */
-            /* output file name is intended for the final image,  */
-            /* and not a copy of the input file.                  */
+        /* get initial file size */
+        *status = ((d[driver as usize]).size)(handle, &mut filesize);
 
-            strcpy_safe(&mut histfilename, &outfile);
-            outfile[0] = 0;
-        } else if outfile[0] != 0 && (rowfilter[0] != 0 || colspec[0] != 0) {
-            /* if rowfilter or colspece are specified, then the    */
-            /* output file name is intended for the filtered file  */
-            /* and not a copy of the input file.                   */
-
-            strcpy_safe(&mut filtfilename, &outfile);
-            outfile[0] = 0;
-        }
-
-        /*-------------------------------------------------------------------*/
-        /* check if this same file is already open, and if so, attach to it  */
-        /*-------------------------------------------------------------------*/
-
-        let lock = FFLOCK();
-
-        if fits_already_open(
-            fptr,
-            url,
-            &mut urltype,
-            &mut infile,
-            &mut extspec,
-            &mut rowfilter,
-            &mut binspec,
-            &mut colspec,
-            mode,
-            open_disk_file,
-            &mut isopen,
-            status,
-        ) > 0
-        {
-            FFUNLOCK(lock);
+        if *status > 0 {
+            ((d[driver as usize]).close)(handle); /* close the file */
+            ffpmsg_str("failed get the size of the following file: (ffopen)");
+            ffpmsg_slice(url);
             return *status;
         }
 
-        FFUNLOCK(lock);
+        let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffopen"), status);
+        if Fptr.is_err() {
+            return *status;
+        }
+        let mut Fptr = Fptr.unwrap();
 
-        let mut move2hdu = false;
-        if isopen != 0 {
-            move2hdu = true;
+        /* initialize the ageindex array (relative age of the I/O buffers) */
+        /* and initialize the bufrecnum array as being empty */
+        for ii in 0..NIOBUF as usize {
+            Fptr.ageindex[ii] = ii as c_int;
+            Fptr.bufrecnum[ii] = -1;
         }
 
-        if !move2hdu {
-            /* get the driver number corresponding to this urltype */
-            *status = urltype2driver(&urltype, &mut driver);
+        /* store the parameters describing the file */
+        Fptr.MAXHDU = 1000; /* initial size of headstart */
+        Fptr.filehandle = handle; /* file handle */
+        Fptr.driver = driver; /* driver number */
+        strcpy_safe(Fptr.get_filename_as_mut_slice(), url); /* full input filename */
+        Fptr.filesize = filesize as LONGLONG; /* physical file size */
+        Fptr.logfilesize = filesize as LONGLONG; /* logical file size */
+        Fptr.writemode = mode; /* read-write mode    */
+        Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data */
+        Fptr.curbuf = -1; /* undefined current IO buffer */
+        Fptr.open_count = 1; /* structure is currently used once */
+        Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
+        Fptr.only_one = only_one; /* flag denoting only copy single extension */
+        Fptr.noextsyntax = if open_disk_file { 1 } else { 0 }; /* true if extended syntax is disabled */
 
-            if *status > 0 {
-                ffpmsg_str("could not find driver for this file: (ffopen)");
-                ffpmsg_slice(&urltype);
-                ffpmsg_slice(url);
-                return *status;
-            }
+        // HEAP ALLOCATION
+        /* allocate fitsfile structure and initialize = 0 */
+        let f_fitsfile = box_try_new(fitsfile {
+            HDUposition: 0,
+            Fptr: FptrRef::new(Fptr),
+        });
 
-            /*-------------------------------------------------------------------
-              deal with all those messy special cases which may require that
-              a different driver be used:
-                  - is disk file compressed?
-                  - are ftp:, gsiftp:, or http: files compressed?
-                  - has user requested that a local copy be made of
-                    the ftp or http file?
-            -------------------------------------------------------------------*/
-
+        if f_fitsfile.is_err() {
             let d = DRIVER_TABLE.get().unwrap();
-
-            if let Some(checkfile) = (d[driver as usize]).checkfile {
-                strcpy_safe(&mut origurltype, &urltype); /* Save the urltype */
-
-                /* 'checkfile' may modify the urltype, infile and outfile strings */
-                *status = checkfile(&mut urltype, &mut infile, &mut outfile);
-
-                if *status != 0 {
-                    ffpmsg_str("checkfile failed for this file: (ffopen)");
-                    ffpmsg_slice(url);
-                    return *status;
-                }
-
-                if strcmp_safe(&origurltype, &urltype) != 0 {
-                    /* did driver changed on us? */
-                    *status = urltype2driver(&urltype, &mut driver);
-                    if *status > 0 {
-                        ffpmsg_str("could not change driver for this file: (ffopen)");
-                        ffpmsg_slice(url);
-                        ffpmsg_slice(&urltype);
-                        return *status;
-                    };
-                };
-            }
-
-            /* call appropriate driver to open the file */
-            match (d[driver as usize]).open {
-                Some(open) => {
-                    let lock = FFLOCK(); /* lock this while searching for vacant handle */
-                    *status = open(&mut infile, mode, &mut handle);
-                    FFUNLOCK(lock);
-
-                    if *status > 0 {
-                        ffpmsg_str("failed to find or open the following file: (ffopen)");
-                        ffpmsg_slice(url);
-                        return *status;
-                    };
-                }
-                None => {
-                    ffpmsg_str("cannot open an existing file of this type: (ffopen)");
-                    ffpmsg_slice(url);
-                    *status = FILE_NOT_OPENED;
-                    return *status;
-                }
-            };
-
-            /* get initial file size */
-            *status = ((d[driver as usize]).size)(handle, &mut filesize);
-
-            if *status > 0 {
-                ((d[driver as usize]).close)(handle); /* close the file */
-                ffpmsg_str("failed get the size of the following file: (ffopen)");
-                ffpmsg_slice(url);
-                return *status;
-            }
-
-            let Fptr = FITSfile::new(&d[driver as usize], handle, url, cs!(c"ffopen"), status);
-            if Fptr.is_err() {
-                return *status;
-            }
-            let mut Fptr = Fptr.unwrap();
-
-            /* initialize the ageindex array (relative age of the I/O buffers) */
-            /* and initialize the bufrecnum array as being empty */
-            for ii in 0..NIOBUF as usize {
-                Fptr.ageindex[ii] = ii as c_int;
-                Fptr.bufrecnum[ii] = -1;
-            }
-
-            /* store the parameters describing the file */
-            Fptr.MAXHDU = 1000; /* initial size of headstart */
-            Fptr.filehandle = handle; /* file handle */
-            Fptr.driver = driver; /* driver number */
-            strcpy_safe(Fptr.get_filename_as_mut_slice(), url); /* full input filename */
-            Fptr.filesize = filesize as LONGLONG; /* physical file size */
-            Fptr.logfilesize = filesize as LONGLONG; /* logical file size */
-            Fptr.writemode = mode; /* read-write mode    */
-            Fptr.datastart = DATA_UNDEFINED as LONGLONG; /* unknown start of data */
-            Fptr.curbuf = -1; /* undefined current IO buffer */
-            Fptr.open_count = 1; /* structure is currently used once */
-            Fptr.validcode = VALIDSTRUC; /* flag denoting valid structure */
-            Fptr.only_one = only_one; /* flag denoting only copy single extension */
-            Fptr.noextsyntax = if open_disk_file { 1 } else { 0 }; /* true if extended syntax is disabled */
-
-            // HEAP ALLOCATION
-            /* allocate fitsfile structure and initialize = 0 */
-            let f_fitsfile = box_try_new(fitsfile {
-                HDUposition: 0,
-                Fptr: FptrRef::new(Fptr),
-            });
-
-            if f_fitsfile.is_err() {
-                let d = DRIVER_TABLE.get().unwrap();
-                ((d[driver as usize]).close)(handle); /* close the file */
-                ffpmsg_str("failed to allocate structure for following file: (ffopen)");
-                ffpmsg_slice(url);
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            }
-
-            let mut f_fitsfile = f_fitsfile.unwrap();
-
-            //drop(d); // To break mutex guard
-
-            ffldrc(&mut f_fitsfile, 0, REPORT_EOF, status); /* load first record */
-
-            fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
-
-            if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
-                /* determine HDU structure */
-                ffpmsg_str("ffopen could not interpret primary array header of file: ");
-                ffpmsg_slice(url);
-
-                if *status == UNKNOWN_REC {
-                    ffpmsg_str("This does not look like a FITS file.");
-                }
-
-                ffclos_safe(f_fitsfile, status);
-                *fptr = None; /* return null file pointer */
-                return *status;
-            }
-
-            *fptr = Some(f_fitsfile);
-
-            /* ------------------------------------------------------------- */
-            /* At this point, the input file has been opened. If outfile was */
-            /* specified, then we have opened a copy of the file, not the    */
-            /* original file so it is safe to modify it if necessary         */
-            /* ------------------------------------------------------------- */
-
-            if outfile[0] != 0 {
-                writecopy = true;
-            }
+            ((d[driver as usize]).close)(handle); /* close the file */
+            ffpmsg_str("failed to allocate structure for following file: (ffopen)");
+            ffpmsg_slice(url);
+            *status = MEMORY_ALLOCATION;
+            return *status;
         }
 
-        if extspec[0] != 0 {
-            let f = (*fptr).as_mut().unwrap();
+        let mut f_fitsfile = f_fitsfile.unwrap();
 
-            if extnum != 0 {
-                /* extension number was specified */
+        //drop(d); // To break mutex guard
 
-                ffmahd_safe(f, extnum + 1, Some(&mut hdutyp), status);
-            } else if extname[0] != 0 {
-                /* move to named extension, if specified */
-                ffmnhd_safe(f, movetotype, &extname, extvers, status);
+        ffldrc(&mut f_fitsfile, 0, REPORT_EOF, status); /* load first record */
+
+        fits_store_Fptr(f_fitsfile.Fptr.as_ptr(), status); /* store Fptr address */
+
+        if ffrhdu_safe(&mut f_fitsfile, Some(&mut hdutyp), status) > 0 {
+            /* determine HDU structure */
+            ffpmsg_str("ffopen could not interpret primary array header of file: ");
+            ffpmsg_slice(url);
+
+            if *status == UNKNOWN_REC {
+                ffpmsg_str("This does not look like a FITS file.");
             }
 
-            if *status > 0 {
-                /* clean up after error */
-                ffpmsg_str("ffopen could not move to the specified extension:");
+            ffclos_safe(f_fitsfile, status);
+            *fptr = None; /* return null file pointer */
+            return *status;
+        }
 
-                if extnum > 0 {
+        *fptr = Some(f_fitsfile);
+
+        /* ------------------------------------------------------------- */
+        /* At this point, the input file has been opened. If outfile was */
+        /* specified, then we have opened a copy of the file, not the    */
+        /* original file so it is safe to modify it if necessary         */
+        /* ------------------------------------------------------------- */
+
+        if outfile[0] != 0 {
+            writecopy = true;
+        }
+    }
+
+    if extspec[0] != 0 {
+        let f = (*fptr).as_mut().unwrap();
+
+        if extnum != 0 {
+            /* extension number was specified */
+
+            ffmahd_safe(f, extnum + 1, Some(&mut hdutyp), status);
+        } else if extname[0] != 0 {
+            /* move to named extension, if specified */
+            ffmnhd_safe(f, movetotype, &extname, extvers, status);
+        }
+
+        if *status > 0 {
+            /* clean up after error */
+            ffpmsg_str("ffopen could not move to the specified extension:");
+
+            if extnum > 0 {
+                int_snprintf!(
+                    &mut errmsg,
+                    FLEN_ERRMSG,
+                    " extension number {} doesn't exist or couldn't be opened.",
+                    extnum,
+                );
+                ffpmsg_slice(&errmsg);
+            } else {
+                int_snprintf!(
+                    &mut errmsg,
+                    FLEN_ERRMSG,
+                    " extension with EXTNAME = {},",
+                    slice_to_str!(&extname),
+                );
+                ffpmsg_slice(&errmsg);
+
+                if extvers != 0 {
                     int_snprintf!(
                         &mut errmsg,
                         FLEN_ERRMSG,
-                        " extension number {} doesn't exist or couldn't be opened.",
-                        extnum,
+                        "           and with EXTVERS = {},",
+                        extvers,
                     );
                     ffpmsg_slice(&errmsg);
-                } else {
+                }
+
+                if movetotype != ANY_HDU {
                     int_snprintf!(
                         &mut errmsg,
                         FLEN_ERRMSG,
-                        " extension with EXTNAME = {},",
-                        slice_to_str!(&extname),
+                        "           and with XTENSION = {},",
+                        hdtype[movetotype as usize].to_str().unwrap(),
                     );
                     ffpmsg_slice(&errmsg);
-
-                    if extvers != 0 {
-                        int_snprintf!(
-                            &mut errmsg,
-                            FLEN_ERRMSG,
-                            "           and with EXTVERS = {},",
-                            extvers,
-                        );
-                        ffpmsg_slice(&errmsg);
-                    }
-
-                    if movetotype != ANY_HDU {
-                        int_snprintf!(
-                            &mut errmsg,
-                            FLEN_ERRMSG,
-                            "           and with XTENSION = {},",
-                            CStr::from_ptr(hdtype[movetotype as usize])
-                                .to_str()
-                                .unwrap(),
-                        );
-                        ffpmsg_slice(&errmsg);
-                    }
-                    ffpmsg_str(" doesn't exist or couldn't be opened.");
                 }
+                ffpmsg_str(" doesn't exist or couldn't be opened.");
+            }
 
-                let f_tmp = fptr.take().unwrap(); // Nulls pointer
-                ffclos_safe(f_tmp, status);
-                return *status;
-            };
-        } else if skip_null
-            || skip_image
-            || skip_table
-            || (imagecolname[0] != 0 || colspec[0] != 0 || rowfilter[0] != 0 || binspec[0] != 0)
-        {
-            /* ------------------------------------------------------------------
+            let f_tmp = fptr.take().unwrap(); // Nulls pointer
+            ffclos_safe(f_tmp, status);
+            return *status;
+        };
+    } else if skip_null
+        || skip_image
+        || skip_table
+        || (imagecolname[0] != 0 || colspec[0] != 0 || rowfilter[0] != 0 || binspec[0] != 0)
+    {
+        /* ------------------------------------------------------------------
 
-            If no explicit extension specifier is given as part of the file
-            name, and, if a) skip_null is true (set if ffopen is called by
-            ffdopn) or b) skip_image or skip_table is true (set if ffopen is
-            called by fftopn or ffdopn) or c) other file filters are
-            specified, then CFITSIO will attempt to move to the first
-            'interesting' HDU after opening an existing FITS file (or to
-            first interesting table HDU if skip_image is true);
+        If no explicit extension specifier is given as part of the file
+        name, and, if a) skip_null is true (set if ffopen is called by
+        ffdopn) or b) skip_image or skip_table is true (set if ffopen is
+        called by fftopn or ffdopn) or c) other file filters are
+        specified, then CFITSIO will attempt to move to the first
+        'interesting' HDU after opening an existing FITS file (or to
+        first interesting table HDU if skip_image is true);
 
-            An 'interesting' HDU is defined to be either an image with NAXIS
-            > 0 (i.e., not a null array) or a table which has an EXTNAME
-            value which does not contain any of the following strings:
-               'GTI'  - Good Time Interval extension
-               'OBSTABLE'  - used in Beppo SAX data files
+        An 'interesting' HDU is defined to be either an image with NAXIS
+        > 0 (i.e., not a null array) or a table which has an EXTNAME
+        value which does not contain any of the following strings:
+           'GTI'  - Good Time Interval extension
+           'OBSTABLE'  - used in Beppo SAX data files
 
-            The main purpose for this is to allow CFITSIO to skip over a null
-            primary and other non-interesting HDUs when opening an existing
-            file, and move directly to the first extension that contains
-            significant data.
-            ------------------------------------------------------------------ */
+        The main purpose for this is to allow CFITSIO to skip over a null
+        primary and other non-interesting HDUs when opening an existing
+        file, and move directly to the first extension that contains
+        significant data.
+        ------------------------------------------------------------------ */
 
-            let f = (*fptr).as_mut().unwrap();
+        let f = (*fptr).as_mut().unwrap();
 
-            ffghdn_safe(f, &mut hdunum);
-            if hdunum == 1 {
-                ffgidm_safe(f, &mut naxis, status);
+        ffghdn_safe(f, &mut hdunum);
+        if hdunum == 1 {
+            ffgidm_safe(f, &mut naxis, status);
 
-                if naxis != 0 {
-                    let mut naxes = vec![0; naxis as usize];
-                    ffgisz_safe(f, naxis, &mut naxes, status);
+            if naxis != 0 {
+                let mut naxes = vec![0; naxis as usize];
+                ffgisz_safe(f, naxis, &mut naxes, status);
 
-                    for ii in 0..naxis as usize {
-                        if naxes[ii] == 0 {
-                            if ii == 0 {
-                                /* NAXIS1=0 could be a random group indicator */
-                                tstatus = 0;
-                                ffmaky_safe(f, 2, status);
-
-                                let mut group_val = 0;
-                                if ffgkyl_safe(
-                                    f,
-                                    cs!(c"GROUPS"),
-                                    &mut group_val,
-                                    None,
-                                    &mut tstatus,
-                                ) != 0
-                                {
-                                    no_primary_data = true; /* GROUPS keyword not found */
-                                }
-                            } else {
-                                no_primary_data = true;
-                            }
-                        }
-                    }
-                } else {
-                    no_primary_data = true;
-                }
-
-                if no_primary_data || skip_image {
-                    /* skip primary array */
-
-                    loop {
-                        /* see if the next HDU is 'interesting' */
-                        if ffmrhd_safe(f, 1, Some(&mut hdutyp), status) != 0 {
-                            if *status == END_OF_FILE {
-                                *status = 0; /* reset expected error */
-                            }
-
-                            /* didn't find an interesting HDU so move back to beginning */
-                            ffmahd_safe(f, 1, Some(&mut hdutyp), status);
-                            break;
-                        }
-
-                        if hdutyp == IMAGE_HDU && skip_image {
-                            continue; /* skip images */
-                        } else if hdutyp != IMAGE_HDU && skip_table {
-                            continue; /* skip tables */
-                        } else if hdutyp == IMAGE_HDU {
-                            ffgidm_safe(f, &mut naxis, status);
-                            if naxis > 0 {
-                                break; /* found a non-null image */
-                            };
-                        } else {
+                for ii in 0..naxis as usize {
+                    if naxes[ii] == 0 {
+                        if ii == 0 {
+                            /* NAXIS1=0 could be a random group indicator */
                             tstatus = 0;
-                            tblname[0] = 0;
-                            fits_read_key_str(f, cs!(c"EXTNAME"), &mut tblname, None, &mut tstatus);
+                            ffmaky_safe(f, 2, status);
 
-                            if (strstr_safe(&tblname, cs!(c"GTI")).is_none()
-                                && strstr_safe(&tblname, cs!(c"gti")).is_none())
-                                && fits_strncasecmp(&tblname, cs!(c"OBSTABLE"), 8) != 0
+                            let mut group_val = 0;
+                            if ffgkyl_safe(f, cs!(c"GROUPS"), &mut group_val, None, &mut tstatus)
+                                != 0
                             {
-                                break; /* found an interesting table */
-                            };
-                        };
-                    } /* end loop */
+                                no_primary_data = true; /* GROUPS keyword not found */
+                            }
+                        } else {
+                            no_primary_data = true;
+                        }
+                    }
                 }
-            } /* end if (hdunum==1) */
-        }
-
-        if imagecolname[0] != 0 {
-            /* ----------------------------------------------------------------- */
-            /* we need to open an image contained in a single table cell         */
-            /* First, determine which row of the table to use.                   */
-            /* ----------------------------------------------------------------- */
-            let f = (*fptr).as_mut().unwrap();
-
-            if !isdigit_safe(rowexpress[0]) {
-                /* is the row specification a number? */
-                sscanf_ld(&rowexpress, cs!(c"%ld"), &raw mut rownum);
-                if rownum < 1 {
-                    ffpmsg_str("illegal rownum for image cell:");
-                    ffpmsg_slice(&rowexpress);
-                    ffpmsg_str("Could not open the following image in a table cell:");
-                    ffpmsg_slice(&extspec);
-
-                    let f_tmp = fptr.take().unwrap(); // Nulls fptr
-                    ffclos_safe(f_tmp, status);
-                    *status = BAD_ROW_NUM;
-                    return *status;
-                };
-            } else if ffffrw_safer(f, &rowexpress, &mut rownum, status) > 0 {
-                ffpmsg_str("Failed to find row matching this expression:");
-                ffpmsg_slice(&rowexpress);
-                ffpmsg_str("Could not open the following image in a table cell:");
-                ffpmsg_slice(&extspec);
-                let f_tmp = fptr.take().unwrap(); // Nulls fptr
-                ffclos_safe(f_tmp, status);
-                return *status;
+            } else {
+                no_primary_data = true;
             }
-            if rownum == 0 {
-                ffpmsg_str("row satisfying this expression doesn\'t exist::");
+
+            if no_primary_data || skip_image {
+                /* skip primary array */
+
+                loop {
+                    /* see if the next HDU is 'interesting' */
+                    if ffmrhd_safe(f, 1, Some(&mut hdutyp), status) != 0 {
+                        if *status == END_OF_FILE {
+                            *status = 0; /* reset expected error */
+                        }
+
+                        /* didn't find an interesting HDU so move back to beginning */
+                        ffmahd_safe(f, 1, Some(&mut hdutyp), status);
+                        break;
+                    }
+
+                    if hdutyp == IMAGE_HDU && skip_image {
+                        continue; /* skip images */
+                    } else if hdutyp != IMAGE_HDU && skip_table {
+                        continue; /* skip tables */
+                    } else if hdutyp == IMAGE_HDU {
+                        ffgidm_safe(f, &mut naxis, status);
+                        if naxis > 0 {
+                            break; /* found a non-null image */
+                        };
+                    } else {
+                        tstatus = 0;
+                        tblname[0] = 0;
+                        fits_read_key_str(f, cs!(c"EXTNAME"), &mut tblname, None, &mut tstatus);
+
+                        if (strstr_safe(&tblname, cs!(c"GTI")).is_none()
+                            && strstr_safe(&tblname, cs!(c"gti")).is_none())
+                            && fits_strncasecmp(&tblname, cs!(c"OBSTABLE"), 8) != 0
+                        {
+                            break; /* found an interesting table */
+                        };
+                    };
+                } /* end loop */
+            }
+        } /* end if (hdunum==1) */
+    }
+
+    if imagecolname[0] != 0 {
+        /* ----------------------------------------------------------------- */
+        /* we need to open an image contained in a single table cell         */
+        /* First, determine which row of the table to use.                   */
+        /* ----------------------------------------------------------------- */
+        let f = (*fptr).as_mut().unwrap();
+
+        if !isdigit_safe(rowexpress[0]) {
+            /* is the row specification a number? */
+            sscanf_ld(&rowexpress, cs!(c"%ld"), &raw mut rownum);
+            if rownum < 1 {
+                ffpmsg_str("illegal rownum for image cell:");
                 ffpmsg_slice(&rowexpress);
                 ffpmsg_str("Could not open the following image in a table cell:");
                 ffpmsg_slice(&extspec);
+
                 let f_tmp = fptr.take().unwrap(); // Nulls fptr
                 ffclos_safe(f_tmp, status);
                 *status = BAD_ROW_NUM;
                 return *status;
-            }
-
-            /* determine the name of the new file to contain copy of the image */
-            if histfilename[0] != 0 && (pixfilter[0]) == 0 {
-                strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
-            } else {
-                strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* create image file in memory */
-            }
-
-            /* Copy the image into new primary array and open it as the current */
-            /* fptr.  This will close the table that contains the original image. */
-
-            /* create new empty file to hold copy of the image */
-            if ffinit_safe(&mut newptr, &outfile, status) > 0 {
-                ffpmsg_str("failed to create file for copy of image in table cell:");
-                ffpmsg_slice(&outfile);
-                return *status;
-            }
-
-            if fits_copy_cell2image_safe(f, newptr.as_mut().unwrap(), &imagecolname, rownum, status)
-                > 0
-            {
-                ffpmsg_str("Failed to copy table cell to new primary array:");
-                ffpmsg_slice(&extspec);
-                let f_tmp = fptr.take().unwrap(); // Nulls fptr
-                ffclos_safe(f_tmp, status);
-                return *status;
-            }
-
-            /* close the original file and set fptr to the new image */
+            };
+        } else if ffffrw_safer(f, &rowexpress, &mut rownum, status) > 0 {
+            ffpmsg_str("Failed to find row matching this expression:");
+            ffpmsg_slice(&rowexpress);
+            ffpmsg_str("Could not open the following image in a table cell:");
+            ffpmsg_slice(&extspec);
             let f_tmp = fptr.take().unwrap(); // Nulls fptr
             ffclos_safe(f_tmp, status);
-
-            *fptr = newptr; /* reset the pointer to the new table */
-
-            writecopy = true; /* we are now dealing with a copy of the original file */
-
-            /*  leave it up to calling routine to write any HISTORY keywords */
+            return *status;
+        }
+        if rownum == 0 {
+            ffpmsg_str("row satisfying this expression doesn\'t exist::");
+            ffpmsg_slice(&rowexpress);
+            ffpmsg_str("Could not open the following image in a table cell:");
+            ffpmsg_slice(&extspec);
+            let f_tmp = fptr.take().unwrap(); // Nulls fptr
+            ffclos_safe(f_tmp, status);
+            *status = BAD_ROW_NUM;
+            return *status;
         }
 
-        /* --------------------------------------------------------------------- */
-        /* edit columns (and/or keywords) in the table, if specified in the URL  */
-        /* --------------------------------------------------------------------- */
+        /* determine the name of the new file to contain copy of the image */
+        if histfilename[0] != 0 && (pixfilter[0]) == 0 {
+            strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
+        } else {
+            strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* create image file in memory */
+        }
 
-        if colspec[0] != 0 {
-            /* the column specifier will modify the file, so make sure */
-            /* we are already dealing with a copy, or else make a new copy */
+        /* Copy the image into new primary array and open it as the current */
+        /* fptr.  This will close the table that contains the original image. */
 
-            if !writecopy {
-                /* Is the current file already a copy? */
-                writecopy = fits_is_this_a_copy(urltype) != 0;
-            }
+        /* create new empty file to hold copy of the image */
+        if ffinit_safe(&mut newptr, &outfile, status) > 0 {
+            ffpmsg_str("failed to create file for copy of image in table cell:");
+            ffpmsg_slice(&outfile);
+            return *status;
+        }
 
-            if !writecopy {
-                if filtfilename[0] != 0 && outfile[0] == 0 {
-                    strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
-                } else {
-                    strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* will create copy in memory */
-                }
+        if fits_copy_cell2image_safe(f, newptr.as_mut().unwrap(), &imagecolname, rownum, status) > 0
+        {
+            ffpmsg_str("Failed to copy table cell to new primary array:");
+            ffpmsg_slice(&extspec);
+            let f_tmp = fptr.take().unwrap(); // Nulls fptr
+            ffclos_safe(f_tmp, status);
+            return *status;
+        }
 
-                writecopy = true;
+        /* close the original file and set fptr to the new image */
+        let f_tmp = fptr.take().unwrap(); // Nulls fptr
+        ffclos_safe(f_tmp, status);
+
+        *fptr = newptr; /* reset the pointer to the new table */
+
+        writecopy = true; /* we are now dealing with a copy of the original file */
+
+        /*  leave it up to calling routine to write any HISTORY keywords */
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* edit columns (and/or keywords) in the table, if specified in the URL  */
+    /* --------------------------------------------------------------------- */
+
+    if colspec[0] != 0 {
+        /* the column specifier will modify the file, so make sure */
+        /* we are already dealing with a copy, or else make a new copy */
+
+        if !writecopy {
+            /* Is the current file already a copy? */
+            writecopy = fits_is_this_a_copy(urltype) != 0;
+        }
+
+        if !writecopy {
+            if filtfilename[0] != 0 && outfile[0] == 0 {
+                strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
             } else {
-                let f = (*fptr).as_mut().unwrap();
-
-                f.Fptr.writemode = READWRITE; /* we have write access */
-                outfile[0] = 0;
+                strcpy_safe(&mut outfile, cs!(c"mem://_1")); /* will create copy in memory */
             }
 
-            if ffedit_columns(fptr, &outfile, &mut colspec, status) > 0 {
-                ffpmsg_str("editing columns in input table failed (ffopen)");
-                ffpmsg_str(" while trying to perform the following operation:");
-                ffpmsg_slice(&colspec);
-                let f_tmp = fptr.take().unwrap(); // Nulls fptr
+            writecopy = true;
+        } else {
+            let f = (*fptr).as_mut().unwrap();
+
+            f.Fptr.writemode = READWRITE; /* we have write access */
+            outfile[0] = 0;
+        }
+
+        if ffedit_columns(fptr, &outfile, &mut colspec, status) > 0 {
+            ffpmsg_str("editing columns in input table failed (ffopen)");
+            ffpmsg_str(" while trying to perform the following operation:");
+            ffpmsg_slice(&colspec);
+            let f_tmp = fptr.take().unwrap(); // Nulls fptr
+            ffclos_safe(f_tmp, status);
+            return *status;
+        };
+    }
+
+    /* ------------------------------------------------------------------- */
+    /* select rows from the table, if specified in the URL                 */
+    /* or select a subimage (if this is an image HDU and not a table)      */
+    /* ------------------------------------------------------------------- */
+
+    if rowfilter[0] != 0 {
+        let f = (*fptr).as_mut().unwrap();
+
+        ffghdt_safe(f, &mut hdutyp, status); /* get type of HDU */
+        if hdutyp == IMAGE_HDU {
+            /* this is an image so 'rowfilter' is an image section specification */
+
+            if filtfilename[0] != 0 && outfile[0] == 0 {
+                strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
+            } else if outfile[0] == 0 {
+                /* output file name not already defined? */
+                strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create file in memory */
+            }
+
+            /* create new file containing the image section, plus a copy of */
+            /* any other HDUs that exist in the input file.  This routine   */
+            /* will close the original image file and return a pointer      */
+            /* to the new file. */
+
+            if fits_select_image_section_safe(fptr, &outfile, &rowfilter, status) > 0 {
+                ffpmsg_str("on-the-fly selection of image section failed (ffopen)");
+                ffpmsg_str(" while trying to use the following section filter:");
+                ffpmsg_slice(&rowfilter);
+
+                let f_tmp = fptr.take().unwrap(); // Nulls pointer
                 ffclos_safe(f_tmp, status);
                 return *status;
             };
-        }
+        } else {
+            /* this is a table HDU, so the rowfilter is really a row filter */
 
-        /* ------------------------------------------------------------------- */
-        /* select rows from the table, if specified in the URL                 */
-        /* or select a subimage (if this is an image HDU and not a table)      */
-        /* ------------------------------------------------------------------- */
+            if binspec[0] != 0 {
+                /*  since we are going to make a histogram of the selected rows,   */
+                /*  it would be a waste of time and memory to make a whole copy of */
+                /*  the selected rows.  Instead, just construct an array of TRUE   */
+                /*  or FALSE values that indicate which rows are to be included    */
+                /*  in the histogram and pass that to the histogram generating     */
+                /*  routine                                                        */
 
-        if rowfilter[0] != 0 {
-            let f = (*fptr).as_mut().unwrap();
+                ffgnrw_safe(f, &mut nrows, status); /* get no. of rows */
 
-            ffghdt_safe(f, &mut hdutyp, status); /* get type of HDU */
-            if hdutyp == IMAGE_HDU {
-                /* this is an image so 'rowfilter' is an image section specification */
-
-                if filtfilename[0] != 0 && outfile[0] == 0 {
-                    strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
-                } else if outfile[0] == 0 {
-                    /* output file name not already defined? */
-                    strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create file in memory */
-                }
-
-                /* create new file containing the image section, plus a copy of */
-                /* any other HDUs that exist in the input file.  This routine   */
-                /* will close the original image file and return a pointer      */
-                /* to the new file. */
-
-                if fits_select_image_section_safe(fptr, &outfile, &rowfilter, status) > 0 {
-                    ffpmsg_str("on-the-fly selection of image section failed (ffopen)");
-                    ffpmsg_str(" while trying to use the following section filter:");
+                // HEAP ALLOCATION - Temporary
+                let mut rowselect = Vec::new();
+                if rowselect.try_reserve_exact(nrows as usize).is_err() {
+                    ffpmsg_str("failed to allocate memory for selected columns array (ffopen)");
+                    ffpmsg_str(" while trying to select rows with the following filter:");
                     ffpmsg_slice(&rowfilter);
 
                     let f_tmp = fptr.take().unwrap(); // Nulls pointer
                     ffclos_safe(f_tmp, status);
+
+                    *status = MEMORY_ALLOCATION;
                     return *status;
-                };
-            } else {
-                /* this is a table HDU, so the rowfilter is really a row filter */
-
-                if binspec[0] != 0 {
-                    /*  since we are going to make a histogram of the selected rows,   */
-                    /*  it would be a waste of time and memory to make a whole copy of */
-                    /*  the selected rows.  Instead, just construct an array of TRUE   */
-                    /*  or FALSE values that indicate which rows are to be included    */
-                    /*  in the histogram and pass that to the histogram generating     */
-                    /*  routine                                                        */
-
-                    ffgnrw_safe(f, &mut nrows, status); /* get no. of rows */
-
-                    // HEAP ALLOCATION - Temporary
-                    let mut rowselect = Vec::new();
-                    if rowselect.try_reserve_exact(nrows as usize).is_err() {
-                        ffpmsg_str("failed to allocate memory for selected columns array (ffopen)");
-                        ffpmsg_str(" while trying to select rows with the following filter:");
-                        ffpmsg_slice(&rowfilter);
-
-                        let f_tmp = fptr.take().unwrap(); // Nulls pointer
-                        ffclos_safe(f_tmp, status);
-
-                        *status = MEMORY_ALLOCATION;
-                        return *status;
-                    } else {
-                        rowselect.resize(nrows as usize, 0);
-                    }
-
-                    if fffrow_safe(
-                        f,
-                        &rowfilter,
-                        1,
-                        nrows,
-                        &mut goodrows,
-                        &mut rowselect,
-                        status,
-                    ) > 0
-                    {
-                        ffpmsg_str("selection of rows in input table failed (ffopen)");
-                        ffpmsg_str(" while trying to select rows with the following filter:");
-                        ffpmsg_slice(&rowfilter);
-
-                        let f_tmp = fptr.take().unwrap(); // Nulls pointer
-                        ffclos_safe(f_tmp, status);
-
-                        return *status;
-                    };
                 } else {
-                    if !writecopy {
-                        /* Is the current file already a copy? */
-                        writecopy = fits_is_this_a_copy(urltype) != 0;
-                    }
+                    rowselect.resize(nrows as usize, 0);
+                }
 
-                    if !writecopy {
-                        if filtfilename[0] != 0 && outfile[0] == 0 {
-                            strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
-                        } else if outfile[0] == 0 {
-                            /* output filename not already defined? */
-                            strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create copy in memory */
-                        };
-                    } else {
-                        f.Fptr.writemode = READWRITE; /* we have write access */
-                        outfile[0] = 0;
-                    }
-
-                    /* select rows in the table.  If a copy of the input file has */
-                    /* not already been made, then this routine will make a copy */
-                    /* and then close the input file, so that the modifications will */
-                    /* only be made on the copy, not the original */
-
-                    if ffselect_table(fptr, &outfile, &rowfilter, status) > 0 {
-                        ffpmsg_str("on-the-fly selection of rows in input table failed (ffopen)");
-                        ffpmsg_str(" while trying to select rows with the following filter:");
-                        ffpmsg_slice(&rowfilter);
-                        let f_tmp = fptr.take().unwrap(); // Nulls pointer
-                        ffclos_safe(f_tmp, status);
-                        return *status;
-                    }
-
-                    let f = (*fptr).as_mut().unwrap();
-
-                    /* write history records */
-                    ffphis_safe(f, cs!(c"CFITSIO used the following filtering expression to create this table:"), status);
-                    ffphis_safe(f, name, status);
-                } /* end of no binspec case */
-            } /* end of table HDU case */
-        } /* end of rowfilter exists case */
-
-        /* ------------------------------------------------------------------- */
-        /* make an image histogram by binning columns, if specified in the URL */
-        /* ------------------------------------------------------------------- */
-
-        if binspec[0] != 0 {
-            let mut exprs: [Box<[c_char]>; 5] = Default::default(); // This is a valid pointer to an empty value, i.e. is expecting a return value
-            if histfilename[0] != 0 && (pixfilter[0]) == 0 {
-                strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
-            } else {
-                strcpy_safe(&mut outfile, cs!(c"mem://_3")); /* create histogram in memory */
-                /* if not already copied the file */
-            }
-
-            /* parse the binning specifier into individual parameters */
-            ffbinse(
-                &binspec,
-                &mut imagetype,
-                &mut haxis,
-                &mut colname,
-                &mut minin,
-                &mut maxin,
-                &mut binsizein,
-                &mut minname,
-                &mut maxname,
-                &mut binname,
-                &mut weight,
-                &mut wtcol,
-                &mut recip,
-                Some(&mut exprs),
-                status,
-            );
-
-            /* Create the histogram primary array and open it as the current fptr */
-            /* This will close the table that was used to create the histogram. */
-
-            // Check if any expressions exist
-            let has_exprs = exprs.iter().any(|e| !e.is_empty() && e[0] != 0);
-
-            if has_exprs {
-                ffhist2e(
-                    fptr,
-                    &outfile,
-                    imagetype,
-                    haxis,
-                    &colname,
-                    Some(&[
-                        Some(&exprs[0]),
-                        Some(&exprs[1]),
-                        Some(&exprs[2]),
-                        Some(&exprs[3]),
-                    ]),
-                    &minin,
-                    &maxin,
-                    &binsizein,
-                    &minname,
-                    &maxname,
-                    &binname,
-                    weight,
-                    &wtcol,
-                    Some(&exprs[4]),
-                    recip,
-                    rowselect,
+                if fffrow_safe(
+                    f,
+                    &rowfilter,
+                    1,
+                    nrows,
+                    &mut goodrows,
+                    &mut rowselect,
                     status,
-                );
-            } else {
-                ffhist2e(
-                    fptr, &outfile, imagetype, haxis, &colname, None, &minin, &maxin, &binsizein,
-                    &minname, &maxname, &binname, weight, &wtcol, None, recip, rowselect, status,
-                );
-            }
-
-            let f = (*fptr).as_mut().unwrap();
-            if *status > 0 {
-                ffpmsg_str("on-the-fly histogramming of input table failed (ffopen)");
-                ffpmsg_str(" while trying to execute the following histogram specification:");
-                ffpmsg_slice(&binspec);
-
-                let f_tmp = fptr.take().unwrap(); // Nulls pointer
-                ffclos_safe(f_tmp, status);
-
-                return *status;
-            }
-
-            /* write history records */
-            ffphis_safe(
-                f,
-                cs!(c"CFITSIO used the following expression to create this histogram:"),
-                status,
-            );
-
-            ffphis_safe(f, name, status);
-        }
-
-        if pixfilter[0] != 0 {
-            let f = (*fptr).as_mut().unwrap();
-            if histfilename[0] != 0 {
-                strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
-            } else {
-                strcpy_safe(&mut outfile, cs!(c"mem://_4")); /* create in memory */
-                /* if not already copied the file */
-            }
-
-            /* Ensure type of HDU is consistent with pixel filtering */
-            ffghdt_safe(f, &mut hdutyp, status);
-
-            if hdutyp == IMAGE_HDU {
-                pixel_filter_helper(fptr, outfile, pixfilter, status);
-
-                if *status > 0 {
-                    ffpmsg_str("pixel filtering of input image failed (ffopen)");
-                    ffpmsg_str(" while trying to execute the following:");
-                    ffpmsg_slice(&pixfilter);
+                ) > 0
+                {
+                    ffpmsg_str("selection of rows in input table failed (ffopen)");
+                    ffpmsg_str(" while trying to select rows with the following filter:");
+                    ffpmsg_slice(&rowfilter);
 
                     let f_tmp = fptr.take().unwrap(); // Nulls pointer
                     ffclos_safe(f_tmp, status);
 
+                    return *status;
+                };
+            } else {
+                if !writecopy {
+                    /* Is the current file already a copy? */
+                    writecopy = fits_is_this_a_copy(urltype) != 0;
+                }
+
+                if !writecopy {
+                    if filtfilename[0] != 0 && outfile[0] == 0 {
+                        strcpy_safe(&mut outfile, &filtfilename); /* the original outfile name */
+                    } else if outfile[0] == 0 {
+                        /* output filename not already defined? */
+                        strcpy_safe(&mut outfile, cs!(c"mem://_2")); /* will create copy in memory */
+                    };
+                } else {
+                    f.Fptr.writemode = READWRITE; /* we have write access */
+                    outfile[0] = 0;
+                }
+
+                /* select rows in the table.  If a copy of the input file has */
+                /* not already been made, then this routine will make a copy */
+                /* and then close the input file, so that the modifications will */
+                /* only be made on the copy, not the original */
+
+                if ffselect_table(fptr, &outfile, &rowfilter, status) > 0 {
+                    ffpmsg_str("on-the-fly selection of rows in input table failed (ffopen)");
+                    ffpmsg_str(" while trying to select rows with the following filter:");
+                    ffpmsg_slice(&rowfilter);
+                    let f_tmp = fptr.take().unwrap(); // Nulls pointer
+                    ffclos_safe(f_tmp, status);
                     return *status;
                 }
 
@@ -1786,30 +1647,161 @@ pub fn ffopen_safe(
                 /* write history records */
                 ffphis_safe(
                     f,
-                    cs!(c"CFITSIO used the following expression to create this image:"),
+                    cs!(c"CFITSIO used the following filtering expression to create this table:"),
                     status,
                 );
-
                 ffphis_safe(f, name, status);
-            } else {
-                let _f = (*fptr).as_mut().unwrap();
-                ffpmsg_str("cannot use pixel filter on non-IMAGE HDU");
+            } /* end of no binspec case */
+        } /* end of table HDU case */
+    } /* end of rowfilter exists case */
+
+    /* ------------------------------------------------------------------- */
+    /* make an image histogram by binning columns, if specified in the URL */
+    /* ------------------------------------------------------------------- */
+
+    if binspec[0] != 0 {
+        let mut exprs: [Box<[c_char]>; 5] = Default::default(); // This is a valid pointer to an empty value, i.e. is expecting a return value
+        if histfilename[0] != 0 && (pixfilter[0]) == 0 {
+            strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
+        } else {
+            strcpy_safe(&mut outfile, cs!(c"mem://_3")); /* create histogram in memory */
+            /* if not already copied the file */
+        }
+
+        /* parse the binning specifier into individual parameters */
+        ffbinse(
+            &binspec,
+            &mut imagetype,
+            &mut haxis,
+            &mut colname,
+            &mut minin,
+            &mut maxin,
+            &mut binsizein,
+            &mut minname,
+            &mut maxname,
+            &mut binname,
+            &mut weight,
+            &mut wtcol,
+            &mut recip,
+            Some(&mut exprs),
+            status,
+        );
+
+        /* Create the histogram primary array and open it as the current fptr */
+        /* This will close the table that was used to create the histogram. */
+
+        // Check if any expressions exist
+        let has_exprs = exprs.iter().any(|e| !e.is_empty() && e[0] != 0);
+
+        if has_exprs {
+            ffhist2e(
+                fptr,
+                &outfile,
+                imagetype,
+                haxis,
+                &colname,
+                Some(&[
+                    Some(&exprs[0]),
+                    Some(&exprs[1]),
+                    Some(&exprs[2]),
+                    Some(&exprs[3]),
+                ]),
+                &minin,
+                &maxin,
+                &binsizein,
+                &minname,
+                &maxname,
+                &binname,
+                weight,
+                &wtcol,
+                Some(&exprs[4]),
+                recip,
+                rowselect,
+                status,
+            );
+        } else {
+            ffhist2e(
+                fptr, &outfile, imagetype, haxis, &colname, None, &minin, &maxin, &binsizein,
+                &minname, &maxname, &binname, weight, &wtcol, None, recip, rowselect, status,
+            );
+        }
+
+        let f = (*fptr).as_mut().unwrap();
+        if *status > 0 {
+            ffpmsg_str("on-the-fly histogramming of input table failed (ffopen)");
+            ffpmsg_str(" while trying to execute the following histogram specification:");
+            ffpmsg_slice(&binspec);
+
+            let f_tmp = fptr.take().unwrap(); // Nulls pointer
+            ffclos_safe(f_tmp, status);
+
+            return *status;
+        }
+
+        /* write history records */
+        ffphis_safe(
+            f,
+            cs!(c"CFITSIO used the following expression to create this histogram:"),
+            status,
+        );
+
+        ffphis_safe(f, name, status);
+    }
+
+    if pixfilter[0] != 0 {
+        let f = (*fptr).as_mut().unwrap();
+        if histfilename[0] != 0 {
+            strcpy_safe(&mut outfile, &histfilename); /* the original outfile name */
+        } else {
+            strcpy_safe(&mut outfile, cs!(c"mem://_4")); /* create in memory */
+            /* if not already copied the file */
+        }
+
+        /* Ensure type of HDU is consistent with pixel filtering */
+        ffghdt_safe(f, &mut hdutyp, status);
+
+        if hdutyp == IMAGE_HDU {
+            pixel_filter_helper(fptr, outfile, pixfilter, status);
+
+            if *status > 0 {
+                ffpmsg_str("pixel filtering of input image failed (ffopen)");
+                ffpmsg_str(" while trying to execute the following:");
                 ffpmsg_slice(&pixfilter);
 
                 let f_tmp = fptr.take().unwrap(); // Nulls pointer
                 ffclos_safe(f_tmp, status);
-                *status = NOT_IMAGE;
-                return *status;
-            };
-        }
 
-        /* parse and save image compression specification, if given */
-        if compspec[0] != 0 {
+                return *status;
+            }
+
             let f = (*fptr).as_mut().unwrap();
-            ffparsecompspec(f, &compspec, status);
-        }
-        *status
+
+            /* write history records */
+            ffphis_safe(
+                f,
+                cs!(c"CFITSIO used the following expression to create this image:"),
+                status,
+            );
+
+            ffphis_safe(f, name, status);
+        } else {
+            let _f = (*fptr).as_mut().unwrap();
+            ffpmsg_str("cannot use pixel filter on non-IMAGE HDU");
+            ffpmsg_slice(&pixfilter);
+
+            let f_tmp = fptr.take().unwrap(); // Nulls pointer
+            ffclos_safe(f_tmp, status);
+            *status = NOT_IMAGE;
+            return *status;
+        };
     }
+
+    /* parse and save image compression specification, if given */
+    if compspec[0] != 0 {
+        let f = (*fptr).as_mut().unwrap();
+        ffparsecompspec(f, &compspec, status);
+    }
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -1859,7 +1851,7 @@ pub fn ffreopen_safer(
     /* allocate fitsfile structure and initialize = 0 */
     // HEAP ALLOCATION
     let mut n = Box::new(fitsfile {
-        HDUposition: 0, /* set initial position to primary array */
+        HDUposition: 0,              /* set initial position to primary array */
         Fptr: openfptr.Fptr.share(), /* both point to the same structure */
     });
 
@@ -1967,144 +1959,70 @@ pub(crate) fn fits_already_open(
     isopen: &mut c_int, /* O - 1 = file is already open            */
     status: &mut c_int, /* IO - error status                       */
 ) -> c_int {
-    unsafe {
-        let mut oldFptr: &mut FITSfile;
-        let mut iMatch = None;
-        let mut oldurltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
-        let mut oldinfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut oldextspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut oldoutfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut oldrowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut oldbinspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut oldcolspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
-        let mut tmpinfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut iMatch = None;
+    let mut oldurltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
+    let mut oldinfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut oldextspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut oldoutfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut oldrowfilter: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut oldbinspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut oldcolspec: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
+    let mut tmpinfile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
-        *isopen = 0;
+    *isopen = 0;
 
-        /*  When opening a file with readonly access then we simply let
-            the operating system open the file again, instead of using the CFITSIO
-            trick of attaching to the previously opened file.  This is required
-            if CFITSIO is running in a multi-threaded environment, because 2 different
-            threads cannot share the same FITSfile pointer.
+    /*  When opening a file with readonly access then we simply let
+        the operating system open the file again, instead of using the CFITSIO
+        trick of attaching to the previously opened file.  This is required
+        if CFITSIO is running in a multi-threaded environment, because 2 different
+        threads cannot share the same FITSfile pointer.
 
-            If the file is opened/reopened with write access, then the file MUST
-            only be physically opened once..
-        */
+        If the file is opened/reopened with write access, then the file MUST
+        only be physically opened once..
+    */
 
-        if mode == 0 {
-            return *status;
-        }
+    if mode == 0 {
+        return *status;
+    }
 
-        strcpy_safe(&mut tmpinfile, infile);
-        if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0
-            && standardize_path(&mut tmpinfile, status) != 0
-        {
-            return *status;
-        };
-        for ii in 0..NMAXFILES {
-            /* check every buffer */
+    strcpy_safe(&mut tmpinfile, infile);
+    if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0
+        && standardize_path(&mut tmpinfile, status) != 0
+    {
+        return *status;
+    };
+    for ii in 0..NMAXFILES {
+        /* check every buffer */
 
-            if !FPTR_TABLE[ii].is_null() {
-                oldFptr = FPTR_TABLE[ii].as_mut().expect(NULL_MSG);
+        /* SAFETY: FPTR_TABLE is a `static mut`; a non-null entry always points
+        at a live FITSfile owned by an open handle.  Taking a shared reference
+        rather than `&mut` keeps this from aliasing the live FptrRef handles --
+        every use below is a read. */
+        if let Some(oldFptr) = unsafe { FPTR_TABLE[ii].as_ref() } {
+            if oldFptr.noextsyntax != 0 {
+                /* old urltype must be "file://" */
+                if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0 {
+                    /* compare tmpinfile to adjusted oldFptr->filename */
 
-                if oldFptr.noextsyntax != 0 {
-                    /* old urltype must be "file://" */
-                    if fits_strcasecmp(urltype, cs!(c"FILE://")) == 0 {
-                        /* compare tmpinfile to adjusted oldFptr->filename */
+                    let ofn = cast_slice(oldFptr.get_filename_as_cstr().to_bytes_with_nul());
 
-                        let ofn = cast_slice(CStr::from_ptr(oldFptr.filename).to_bytes_with_nul());
-
-                        /* This shouldn't be possible, but check anyway */
-                        if strlen_safe(ofn) > FLEN_FILENAME - 1 {
-                            ffpmsg_str("Name of old file is too long. (fits_already_open)");
-                            *status = FILE_NOT_OPENED;
-                            return *status;
-                        }
-
-                        let ofn = cast_slice(CStr::from_ptr(oldFptr.filename).to_bytes_with_nul());
-                        strcpy_safe(&mut oldinfile, ofn);
-                        if standardize_path(&mut oldinfile, status) != 0 {
-                            return *status;
-                        }
-
-                        if strcmp_safe(&tmpinfile, &oldinfile) == 0 {
-                            /* if infile is not noextsyn, must check that it is not
-                            using filters of any kind */
-                            if noextsyn || (rowfilter[0] == 0 && binspec[0] == 0 && colspec[0] == 0)
-                            {
-                                if mode == READWRITE as c_int
-                                    && oldFptr.writemode == READONLY as c_int
-                                {
-                                    /*
-                                      cannot assume that a file previously opened with READONLY
-                                      can now be written to (e.g., files on CDROM, or over the
-                                      the network, or STDIN), so return with an error.
-                                    */
-
-                                    ffpmsg_str(
-                                        "cannot reopen file READWRITE when previously opened READONLY",
-                                    );
-                                    ffpmsg_slice(url);
-                                    *status = FILE_NOT_OPENED;
-                                    return *status;
-                                }
-                                iMatch = Some(ii);
-                            };
-                        };
-                    };
-
-                    /* end if old file has disabled extended syntax */
-                } else {
-                    let filename = cast_slice(CStr::from_ptr(oldFptr.filename).to_bytes_with_nul());
-
-                    ffiurl_safe(
-                        filename,
-                        Some(&mut oldurltype),
-                        Some(&mut oldinfile),
-                        Some(&mut oldoutfile),
-                        Some(&mut oldextspec),
-                        Some(&mut oldrowfilter),
-                        Some(&mut oldbinspec),
-                        Some(&mut oldcolspec),
-                        status,
-                    );
-
-                    if *status > 0 {
-                        ffpmsg_str("could not parse the previously opened filename: (ffopen)");
-                        ffpmsg_cstr(CStr::from_ptr(oldFptr.filename));
+                    /* This shouldn't be possible, but check anyway */
+                    if strlen_safe(ofn) > FLEN_FILENAME - 1 {
+                        ffpmsg_str("Name of old file is too long. (fits_already_open)");
+                        *status = FILE_NOT_OPENED;
                         return *status;
                     }
 
-                    if fits_strcasecmp(&oldurltype, cs!(c"FILE://")) == 0
-                        && standardize_path(&mut oldinfile, status) != 0
-                    {
+                    let ofn = cast_slice(oldFptr.get_filename_as_cstr().to_bytes_with_nul());
+                    strcpy_safe(&mut oldinfile, ofn);
+                    if standardize_path(&mut oldinfile, status) != 0 {
                         return *status;
-                    };
+                    }
 
-                    if strcmp_safe(urltype, &oldurltype) == 0
-                        && strcmp_safe(&tmpinfile, &oldinfile) == 0
-                    {
-                        /* identical type of file and root file name */
-
-                        if (rowfilter[0] == 0
-                        && oldrowfilter[0] == 0
-                        && binspec[0] == 0
-                        && oldbinspec[0] == 0
-                        && colspec[0] == 0
-                        && oldcolspec[0] == 0)
-
-                     /* no filtering or binning specs for either file, so */
-                     /* this is a case where the same file is being reopened. */
-                     /* It doesn't matter if the extensions are different */
-
-
-                        || (strcmp_safe(rowfilter, &oldrowfilter) == 0
-                            && strcmp_safe(binspec, &oldbinspec) == 0
-                            && strcmp_safe(colspec, &oldcolspec) == 0
-                            && strcmp_safe(extspec, &oldextspec) == 0)
-                        /* filtering specs are given and are identical, and */
-                        /* the same extension is specified */
-                        {
+                    if strcmp_safe(&tmpinfile, &oldinfile) == 0 {
+                        /* if infile is not noextsyn, must check that it is not
+                        using filters of any kind */
+                        if noextsyn || (rowfilter[0] == 0 && binspec[0] == 0 && colspec[0] == 0) {
                             if mode == READWRITE as c_int && oldFptr.writemode == READONLY as c_int
                             {
                                 /*
@@ -2121,48 +2039,121 @@ pub(crate) fn fits_already_open(
                                 return *status;
                             }
                             iMatch = Some(ii);
+                        };
+                    };
+                };
+
+                /* end if old file has disabled extended syntax */
+            } else {
+                let filename = cast_slice(oldFptr.get_filename_as_cstr().to_bytes_with_nul());
+
+                ffiurl_safe(
+                    filename,
+                    Some(&mut oldurltype),
+                    Some(&mut oldinfile),
+                    Some(&mut oldoutfile),
+                    Some(&mut oldextspec),
+                    Some(&mut oldrowfilter),
+                    Some(&mut oldbinspec),
+                    Some(&mut oldcolspec),
+                    status,
+                );
+
+                if *status > 0 {
+                    ffpmsg_str("could not parse the previously opened filename: (ffopen)");
+                    ffpmsg_cstr(oldFptr.get_filename_as_cstr());
+                    return *status;
+                }
+
+                if fits_strcasecmp(&oldurltype, cs!(c"FILE://")) == 0
+                    && standardize_path(&mut oldinfile, status) != 0
+                {
+                    return *status;
+                };
+
+                if strcmp_safe(urltype, &oldurltype) == 0
+                    && strcmp_safe(&tmpinfile, &oldinfile) == 0
+                {
+                    /* identical type of file and root file name */
+
+                    if (rowfilter[0] == 0
+                    && oldrowfilter[0] == 0
+                    && binspec[0] == 0
+                    && oldbinspec[0] == 0
+                    && colspec[0] == 0
+                    && oldcolspec[0] == 0)
+
+                 /* no filtering or binning specs for either file, so */
+                 /* this is a case where the same file is being reopened. */
+                 /* It doesn't matter if the extensions are different */
+
+
+                    || (strcmp_safe(rowfilter, &oldrowfilter) == 0
+                        && strcmp_safe(binspec, &oldbinspec) == 0
+                        && strcmp_safe(colspec, &oldcolspec) == 0
+                        && strcmp_safe(extspec, &oldextspec) == 0)
+                    /* filtering specs are given and are identical, and */
+                    /* the same extension is specified */
+                    {
+                        if mode == READWRITE as c_int && oldFptr.writemode == READONLY as c_int {
+                            /*
+                              cannot assume that a file previously opened with READONLY
+                              can now be written to (e.g., files on CDROM, or over the
+                              the network, or STDIN), so return with an error.
+                            */
+
+                            ffpmsg_str(
+                                "cannot reopen file READWRITE when previously opened READONLY",
+                            );
+                            ffpmsg_slice(url);
+                            *status = FILE_NOT_OPENED;
+                            return *status;
                         }
+                        iMatch = Some(ii);
                     }
-                } /* end if old file recognizes extended syntax */
-            } /* end if old fptr exists */
-        } /* end loop over NMAXFILES */
+                }
+            } /* end if old file recognizes extended syntax */
+        } /* end if old fptr exists */
+    } /* end loop over NMAXFILES */
 
-        if let Some(iMatch) = iMatch {
-            let oldFptr = FPTR_TABLE[iMatch];
+    if let Some(iMatch) = iMatch {
+        /* SAFETY: iMatch was set from a non-null FPTR_TABLE slot above, so it
+        still points at a live FITSfile.  The new handle shares it; open_count
+        is incremented below, and ffclos frees it once that reaches zero. */
+        let sharedFptr = unsafe { FptrRef::from_ptr(FPTR_TABLE[iMatch]) };
 
-            // HEAP ALLOCATION
-            let f = box_try_new(fitsfile {
-                HDUposition: 0,               /* set initial position */
-                Fptr: FptrRef::from_ptr(oldFptr), /* point to the structure */
-            });
+        // HEAP ALLOCATION
+        let f = box_try_new(fitsfile {
+            HDUposition: 0,   /* set initial position */
+            Fptr: sharedFptr, /* point to the structure */
+        });
 
-            if f.is_err() {
-                ffpmsg_str("failed to allocate structure for following file: (ffopen)");
-                ffpmsg_slice(url);
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            }
-
-            let mut f = f.unwrap();
-
-            (f.Fptr.open_count) += 1; /* increment usage counter */
-
-            *fptr = Some(f);
-
-            if binspec[0] != 0 {
-                /* if binning specified, don't move */
-                extspec[0] = 0;
-            }
-
-            /* all the filtering has already been applied, so ignore */
-            rowfilter[0] = 0;
-            binspec[0] = 0;
-            colspec[0] = 0;
-            *isopen = 1;
+        if f.is_err() {
+            ffpmsg_str("failed to allocate structure for following file: (ffopen)");
+            ffpmsg_slice(url);
+            *status = MEMORY_ALLOCATION;
+            return *status;
         }
 
-        *status
+        let mut f = f.unwrap();
+
+        (f.Fptr.open_count) += 1; /* increment usage counter */
+
+        *fptr = Some(f);
+
+        if binspec[0] != 0 {
+            /* if binning specified, don't move */
+            extspec[0] = 0;
+        }
+
+        /* all the filtering has already been applied, so ignore */
+        rowfilter[0] = 0;
+        binspec[0] = 0;
+        colspec[0] = 0;
+        *isopen = 1;
     }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
@@ -3270,18 +3261,9 @@ pub(crate) fn ffedit_columns(
                     /*   oldname = name of the column or keyword */
                     /*   colformat = column format, or keyword comment string */
 
-                    // WARNING / SAFETY / TODO:  This is really ugly, but we need to
-                    // pass a mutable reference to fptr into ffcalc_safe.
-                    let same_ftpr = unsafe { &mut *core::ptr::from_mut(fptr.as_mut()) };
-
-                    if ffcalc_safe(
-                        fptr,
-                        &clause[cptr2..],
-                        same_ftpr,
-                        &oldname,
-                        &colformat,
-                        status,
-                    ) > 0
+                    /* the C passes the same fitsfile* as input and output here,
+                    which calculates into the file being edited */
+                    if ffcalc_inplace_safe(fptr, &clause[cptr2..], &oldname, &colformat, status) > 0
                     {
                         ffpmsg_str("Unable to calculate expression");
                         return *status;
@@ -4895,18 +4877,9 @@ pub(crate) fn ffselect_table(
     let selstatus = match newptr.as_deref_mut() {
         Some(out) => ffsrow_safe(fptr.as_deref_mut().unwrap(), out, expr, status),
         None => {
-            /* The C passes the same fitsfile* to fits_select_rows as both the
-            input and the output, which makes ffsrow delete the non-qualifying
-            rows in place (it branches on infptr == outfptr).  Safe Rust cannot
-            hand out two `&mut fitsfile` to one file, so bridge through a raw
-            pointer here.
-            TODO (idiomatic pass): give ffsrow_safe an `Option<&mut fitsfile>`
-            output parameter, where None means "same file as infptr", and drop
-            this unsafe block; two live `&mut` to one object is exactly the
-            aliasing that `&mut`'s noalias guarantee forbids. */
-            let f: *mut fitsfile = fptr.as_deref_mut().unwrap();
-            // SAFETY: reproduces the C's deliberate aliasing of infptr/outfptr.
-            unsafe { ffsrow_safe(&mut *f, &mut *f, expr, status) }
+            /* The C passes the same fitsfile* to fits_select_rows as both input
+            and output, which deletes the non-qualifying rows in place. */
+            ffsrow_inplace_safe(fptr.as_deref_mut().unwrap(), expr, status)
         }
     };
 
@@ -9018,8 +8991,11 @@ pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
         fits_clear_Fptr_safer(fptr.Fptr.as_ptr(), status); /* clear Fptr address */
 
         /* Last handle: release the FITSfile itself. FptrRef is a non-owning
-           handle, so this is the one place that frees it. */
-        let fitsfile { HDUposition: _, Fptr } = *fptr;
+        handle, so this is the one place that frees it. */
+        let fitsfile {
+            HDUposition: _,
+            Fptr,
+        } = *fptr;
         unsafe { Fptr.free() };
     } else {
         /*
@@ -9036,8 +9012,8 @@ pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
         }
 
         /* Other handles still refer to this FITSfile, so only the outer
-           fitsfile goes away. Dropping the FptrRef is a no-op, which is why
-           this no longer has to leak a Box to avoid a double free. */
+        fitsfile goes away. Dropping the FptrRef is a no-op, which is why
+        this no longer has to leak a Box to avoid a double free. */
         drop(fptr);
     }
     *status
@@ -9148,11 +9124,14 @@ pub fn ffdelt_safe(
     local_fptr.Fptr.validcode = 0; /* magic value to indicate invalid fptr */
 
     /* Release the FITSfile. ffdelt deletes the file outright, so unlike ffclos
-       there is no use count to consult; the C frees it here unconditionally.
-       FptrRef is a non-owning handle, so dropping the outer fitsfile below is
-       not enough on its own. */
+    there is no use count to consult; the C frees it here unconditionally.
+    FptrRef is a non-owning handle, so dropping the outer fitsfile below is
+    not enough on its own. */
     if let Some(f) = fptr.take() {
-        let fitsfile { HDUposition: _, Fptr } = *f;
+        let fitsfile {
+            HDUposition: _,
+            Fptr,
+        } = *f;
         unsafe { Fptr.free() };
     }
 
@@ -9379,9 +9358,7 @@ pub(crate) fn ffoptplt(
     if tstatus != 0 {
         /* not a FITS file, so treat it as an ASCII template */
         ffxmsg_safer(2, Some(&mut card)); /* clear the  error message */
-        unsafe {
-            fits_execute_template(fptr, tempname.as_ptr(), status);
-        }
+        fits_execute_template_safe(fptr, tempname, status);
 
         ffmahd_safe(fptr, 1, None, status); /* move back to the primary array */
         return *status;
@@ -14270,15 +14247,13 @@ mod tests {
         let mut status: c_int = 0;
         let mut out: Vec<u8> = Vec::new();
         let mut fsize: usize = 0;
-        unsafe {
-            compress2mem_from_mem(
-                cast_slice(bytes),
-                bytes.len(),
-                &mut out,
-                Some(&mut fsize),
-                &mut status,
-            );
-        }
+        compress2mem_from_mem(
+            cast_slice(bytes),
+            bytes.len(),
+            &mut out,
+            Some(&mut fsize),
+            &mut status,
+        );
         assert_eq!(status, 0, "compress2mem_from_mem failed");
         out.truncate(fsize);
         out

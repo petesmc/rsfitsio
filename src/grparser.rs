@@ -1948,21 +1948,6 @@ pub unsafe extern "C" fn fits_execute_template(
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
-        let mut r: c_int = 0;
-        let mut exit_flg: c_int = 0;
-        let mut first_extension: c_int = 0;
-        let mut i: c_int = 0;
-        let mut my_hn: c_int = 0;
-        let mut tmp0: c_int = 0;
-        let mut keys_exist: c_int = 0;
-        let mut more_keys: c_int = 0;
-        let mut used_ver: c_int = 0;
-        let mut grnm: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
-        let mut used_name: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
-        let mut luv: c_long = 0;
-
-        let mut parser_state = GRParseState::default();
-
         if status.is_null() {
             return NGP_NUL_PTR;
         }
@@ -1973,203 +1958,238 @@ pub unsafe extern "C" fn fits_execute_template(
             return *status;
         }
 
-        /* This function uses many global variables (local to this file) and therefore is not thread-safe. */
-        let _lock = FFLOCK();
-
         if ff.is_null() || ngp_template.is_null() {
             *status = NGP_NUL_PTR;
             return *status;
         }
 
         let ff = ff.as_mut().expect(NULL_MSG);
+        let ngp_template: &[c_char] = cast_slice(CStr::from_ptr(ngp_template).to_bytes_with_nul());
 
-        parser_state.NGP_INCLEVEL = 0; /* initialize things, not all should be zero */
-        parser_state.NGP_GRPLEVEL = 0;
-        parser_state.MASTER_GRP_IDX = 1;
-        exit_flg = 0;
-        parser_state.NGP_MASTER_DIR = PathBuf::new(); /* this should be before 1st call to ngp_include_file */
-        first_extension = 1; /* we need to create PHDU */
+        fits_execute_template_safe(ff, ngp_template, status)
+    }
+}
 
-        r = ngp_delete_extver_tab(&mut parser_state);
-        if NGP_OK != r {
-            *status = r;
-            return r;
-        }
+/*--------------------------------------------------------------------------*/
+/// Read whole template
+/// ff should point to the opened empty fits file.
+pub fn fits_execute_template_safe(
+    ff: &mut fitsfile,       /* I - FITS file pointer */
+    ngp_template: &[c_char], /* I - template string */
+    status: &mut c_int,      /* IO - error status */
+) -> c_int {
+    let mut r: c_int = 0;
+    let mut exit_flg: c_int = 0;
+    let mut first_extension: c_int = 0;
+    let mut i: c_int = 0;
+    let mut my_hn: c_int = 0;
+    let mut tmp0: c_int = 0;
+    let mut keys_exist: c_int = 0;
+    let mut more_keys: c_int = 0;
+    let mut used_ver: c_int = 0;
+    let mut grnm: [c_char; NGP_MAX_STRING] = [0; NGP_MAX_STRING];
+    let mut used_name: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut luv: c_long = 0;
 
-        fits_get_hdu_num(ff, &mut my_hn); /* our HDU position */
-        if my_hn <= 1
-        /* check whether we really need to create PHDU */
+    let mut parser_state = GRParseState::default();
+
+    if NGP_OK != *status {
+        return *status;
+    }
+
+    /* This function uses many global variables (local to this file) and therefore is not thread-safe. */
+    let _lock = FFLOCK();
+
+    parser_state.NGP_INCLEVEL = 0; /* initialize things, not all should be zero */
+    parser_state.NGP_GRPLEVEL = 0;
+    parser_state.MASTER_GRP_IDX = 1;
+    exit_flg = 0;
+    parser_state.NGP_MASTER_DIR = PathBuf::new(); /* this should be before 1st call to ngp_include_file */
+    first_extension = 1; /* we need to create PHDU */
+
+    r = ngp_delete_extver_tab(&mut parser_state);
+    if NGP_OK != r {
+        *status = r;
+        return r;
+    }
+
+    fits_get_hdu_num(ff, &mut my_hn); /* our HDU position */
+    if my_hn <= 1
+    /* check whether we really need to create PHDU */
+    {
+        fits_movabs_hdu(ff, 1, Some(&mut tmp0), status);
+        fits_get_hdrspace(ff, Some(&mut keys_exist), Some(&mut more_keys), status);
+        fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
+        if NGP_OK != *status
+        /* error here means file is corrupted */
         {
+            return *status;
+        }
+        if keys_exist > 0 {
+            first_extension = 0; /* if keywords exist assume PHDU already exist */
+        }
+    } else {
+        first_extension = 0; /* PHDU (followed by 1+ extensions) exist */
+
+        i = 2;
+        while i <= my_hn {
+            *status = NGP_OK;
             fits_movabs_hdu(ff, 1, Some(&mut tmp0), status);
-            fits_get_hdrspace(ff, Some(&mut keys_exist), Some(&mut more_keys), status);
-            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
-            if NGP_OK != *status
-            /* error here means file is corrupted */
-            {
-                return *status;
+            if NGP_OK != *status {
+                break;
             }
-            if keys_exist > 0 {
-                first_extension = 0; /* if keywords exist assume PHDU already exist */
-            }
-        } else {
-            first_extension = 0; /* PHDU (followed by 1+ extensions) exist */
 
-            i = 2;
-            while i <= my_hn {
+            fits_read_key(
+                ff,
+                KeywordDatatypeMut::TSTRING(&mut used_name),
+                cs!(c"EXTNAME"),
+                None,
+                status,
+            );
+            if NGP_OK != *status {
+                continue;
+            }
+
+            fits_read_key(
+                ff,
+                KeywordDatatypeMut::TLONG(&mut luv),
+                cs!(c"EXTVER"),
+                None,
+                status,
+            );
+            used_ver = luv as c_int; /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
+            if VALUE_UNDEFINED == *status {
+                used_ver = 1;
                 *status = NGP_OK;
-                fits_movabs_hdu(ff, 1, Some(&mut tmp0), status);
-                if NGP_OK != *status {
-                    break;
-                }
-
-                fits_read_key(
-                    ff,
-                    KeywordDatatypeMut::TSTRING(&mut used_name),
-                    cs!(c"EXTNAME"),
-                    None,
-                    status,
-                );
-                if NGP_OK != *status {
-                    continue;
-                }
-
-                fits_read_key(
-                    ff,
-                    KeywordDatatypeMut::TLONG(&mut luv),
-                    cs!(c"EXTVER"),
-                    None,
-                    status,
-                );
-                used_ver = luv as c_int; /* bugfix - 22-Jan-99, BO - nonalignment of OSF/Alpha */
-                if VALUE_UNDEFINED == *status {
-                    used_ver = 1;
-                    *status = NGP_OK;
-                }
-
-                if NGP_OK == *status {
-                    *status = ngp_set_extver(&mut parser_state, &used_name, used_ver);
-                }
-                i += 1;
             }
 
-            fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
-        }
-
-        if NGP_OK != *status {
-            return *status;
-        }
-
-        // Convert C string pointer to slice for ngp_include_file
-        let template_cstr = CStr::from_ptr(ngp_template);
-        let template_slice = cast_slice(template_cstr.to_bytes_with_nul());
-        *status = ngp_include_file(&mut parser_state, template_slice);
-        if NGP_OK != (*status) {
-            return *status;
-        }
-
-        // Extract directory from template path
-        if let Ok(template_str) = CStr::from_ptr(ngp_template).to_str() {
-            let template_path = Path::new(template_str);
-            if let Some(parent) = template_path.parent()
-                && parent != Path::new("")
-            {
-                parser_state.NGP_MASTER_DIR = parent.to_path_buf();
+            if NGP_OK == *status {
+                *status = ngp_set_extver(&mut parser_state, &used_name, used_ver);
             }
+            i += 1;
         }
 
-        loop {
-            r = ngp_read_line(&mut parser_state, 1);
-            if NGP_OK != r {
-                break; /* EOF always means error here */
-            }
-            match parser_state.NGP_KEYIDX {
-                NGP_TOKEN_SIMPLE => {
-                    let mut skip = false;
-                    if 0 == first_extension
-                    /* simple only allowed in first HDU */
-                    {
-                        r = NGP_TOKEN_NOT_EXPECT;
-                        skip = true;
-                    }
+        fits_movabs_hdu(ff, my_hn, Some(&mut tmp0), status);
+    }
 
-                    if !skip {
-                        r = ngp_unread_line(&mut parser_state);
-                        if NGP_OK == r {
-                            r = ngp_read_xtension(
-                                &mut parser_state,
-                                ff,
-                                0,
-                                NGP_XTENSION_SIMPLE | NGP_XTENSION_FIRST,
-                            );
-                            first_extension = 0;
-                        }
-                    }
+    if NGP_OK != *status {
+        return *status;
+    }
+
+    // ngp_template is already the NUL-terminated slice ngp_include_file wants
+    *status = ngp_include_file(&mut parser_state, ngp_template);
+    if NGP_OK != (*status) {
+        return *status;
+    }
+
+    // Extract directory from template path
+    if let Ok(template_str) = CStr::from_bytes_until_nul(cast_slice(ngp_template))
+        .expect("fits_execute_template: template is not NUL-terminated")
+        .to_str()
+    {
+        let template_path = Path::new(template_str);
+        if let Some(parent) = template_path.parent()
+            && parent != Path::new("")
+        {
+            parser_state.NGP_MASTER_DIR = parent.to_path_buf();
+        }
+    }
+
+    loop {
+        r = ngp_read_line(&mut parser_state, 1);
+        if NGP_OK != r {
+            break; /* EOF always means error here */
+        }
+        match parser_state.NGP_KEYIDX {
+            NGP_TOKEN_SIMPLE => {
+                let mut skip = false;
+                if 0 == first_extension
+                /* simple only allowed in first HDU */
+                {
+                    r = NGP_TOKEN_NOT_EXPECT;
+                    skip = true;
                 }
-                NGP_TOKEN_XTENSION => {
+
+                if !skip {
                     r = ngp_unread_line(&mut parser_state);
-                    let mut skip = false;
-                    if NGP_OK != (r) {
-                        skip = true;
-                    }
-                    if !skip {
+                    if NGP_OK == r {
                         r = ngp_read_xtension(
                             &mut parser_state,
                             ff,
                             0,
-                            if first_extension != 0 {
-                                NGP_XTENSION_FIRST
-                            } else {
-                                0
-                            },
+                            NGP_XTENSION_SIMPLE | NGP_XTENSION_FIRST,
                         );
                         first_extension = 0;
                     }
                 }
-                NGP_TOKEN_GROUP => {
-                    if NGP_TTYPE_STRING == parser_state.NGP_LINKEY.type_ {
-                        strncpy_safe(
-                            &mut grnm,
-                            cast_slice(
-                                CStr::from_ptr(parser_state.NGP_LINKEY.value.s).to_bytes_with_nul(),
-                            ),
-                            NGP_MAX_STRING,
-                        );
-                    } else {
-                        int_snprintf!(
-                            &mut grnm,
-                            NGP_MAX_STRING as size_t,
-                            "DEFAULT_GROUP_{}",
-                            parser_state.MASTER_GRP_IDX,
-                        );
-                        parser_state.MASTER_GRP_IDX += 1;
-                    }
-                    grnm[NGP_MAX_STRING - 1] = 0;
-                    r = ngp_read_group(&mut parser_state, ff, &grnm, 0);
+            }
+            NGP_TOKEN_XTENSION => {
+                r = ngp_unread_line(&mut parser_state);
+                let mut skip = false;
+                if NGP_OK != (r) {
+                    skip = true;
+                }
+                if !skip {
+                    r = ngp_read_xtension(
+                        &mut parser_state,
+                        ff,
+                        0,
+                        if first_extension != 0 {
+                            NGP_XTENSION_FIRST
+                        } else {
+                            0
+                        },
+                    );
                     first_extension = 0;
                 }
-                NGP_TOKEN_EOF => {
-                    exit_flg = 1;
-                }
-                _ => {
-                    r = NGP_TOKEN_NOT_EXPECT;
-                }
             }
-            if exit_flg != 0 || (NGP_OK != r) {
-                break;
+            NGP_TOKEN_GROUP => {
+                if NGP_TTYPE_STRING == parser_state.NGP_LINKEY.type_ {
+                    strncpy_safe(
+                        &mut grnm,
+                        cast_slice(
+                            /* SAFETY: for NGP_TTYPE_STRING the union's `s` arm is
+                            the active one and holds a NUL-terminated C string. */
+                            unsafe { CStr::from_ptr(parser_state.NGP_LINKEY.value.s) }
+                                .to_bytes_with_nul(),
+                        ),
+                        NGP_MAX_STRING,
+                    );
+                } else {
+                    int_snprintf!(
+                        &mut grnm,
+                        NGP_MAX_STRING as size_t,
+                        "DEFAULT_GROUP_{}",
+                        parser_state.MASTER_GRP_IDX,
+                    );
+                    parser_state.MASTER_GRP_IDX += 1;
+                }
+                grnm[NGP_MAX_STRING - 1] = 0;
+                r = ngp_read_group(&mut parser_state, ff, &grnm, 0);
+                first_extension = 0;
+            }
+            NGP_TOKEN_EOF => {
+                exit_flg = 1;
+            }
+            _ => {
+                r = NGP_TOKEN_NOT_EXPECT;
             }
         }
-
-        /* all top level HDUs up to faulty one are left intact in case of i/o error. It is up
-        to the caller to call fits_close_file or fits_delete_file when this function returns
-        error. */
-
-        ngp_free_line(&mut parser_state); /* deallocate last line (if any) */
-        ngp_free_prevline(&mut parser_state); /* deallocate cached line (if any) */
-        ngp_delete_extver_tab(&mut parser_state); /* delete extver table (if present), error ignored */
-
-        *status = r;
-        r
+        if exit_flg != 0 || (NGP_OK != r) {
+            break;
+        }
     }
+
+    /* all top level HDUs up to faulty one are left intact in case of i/o error. It is up
+    to the caller to call fits_close_file or fits_delete_file when this function returns
+    error. */
+
+    ngp_free_line(&mut parser_state); /* deallocate last line (if any) */
+    ngp_free_prevline(&mut parser_state); /* deallocate cached line (if any) */
+    ngp_delete_extver_tab(&mut parser_state); /* delete extver table (if present), error ignored */
+
+    *status = r;
+    r
 }
 
 #[cfg(test)]

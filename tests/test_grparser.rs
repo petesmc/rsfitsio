@@ -1,7 +1,6 @@
 // The extern "C" entry points are #[deprecated] so that internal callers reach
-// for the _safe forms instead. These tests exercise the C ABI surface itself,
-// and fits_execute_template has no _safe counterpart, so the attribute is
-// expected here.
+// for the _safe forms instead. These tests deliberately exercise the C ABI
+// surface itself, which is what the attribute is warning about.
 #![allow(deprecated)]
 
 mod common;

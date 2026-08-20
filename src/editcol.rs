@@ -2157,15 +2157,36 @@ pub unsafe extern "C" fn ffcpcl(
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
-        let infptr = infptr.as_mut().expect(NULL_MSG);
-        let outfptr = outfptr.as_mut().expect(NULL_MSG);
 
-        ffcpcl_safe(infptr, outfptr, incol, outcol, create_col, status)
+        /* The C API allows infptr == outfptr, which duplicates a column within
+        one table; two `&mut fitsfile` to one handle can never be legal, so the
+        in-place case gets its own function and this is the only place the
+        identity test lives. */
+        if core::ptr::eq(infptr, outfptr) {
+            ffcpcl_inplace_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                incol,
+                outcol,
+                create_col,
+                status,
+            )
+        } else {
+            ffcpcl_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                outfptr.as_mut().expect(NULL_MSG),
+                incol,
+                outcol,
+                create_col,
+                status,
+            )
+        }
     }
 }
 
 /*--------------------------------------------------------------------------*/
 /// copy a column from infptr and insert it in the outfptr table.
+/// NOTE: [`ffcpcl_inplace_safe`] is a copy of this body for the case where the
+/// caller passes one file as both input and output.  Any fix here belongs there too.
 pub fn ffcpcl_safe(
     infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
     outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
@@ -2697,6 +2718,561 @@ pub fn ffcpcl_safe(
         } else {
             ffpcld_safe(
                 outfptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &dvalues,
+                status,
+            );
+        }
+
+        if *status > 0 {
+            ffpmsg_str("Error writing output copy of column (ffcpcl)");
+            break;
+        }
+
+        npixels -= ntodo;
+        ndone += ntodo;
+        ntodo = cmp::min(npixels, maxloop);
+    }
+
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// In-place twin of [`ffcpcl_safe`]: copy a column within one file.
+///
+/// This is the C's `fits_copy_col(fptr, fptr, ...)` case.  The C API allows the
+/// same `fitsfile*` for input and output; safe Rust cannot hand out two
+/// `&mut fitsfile` to one handle, so that case gets its own function and the
+/// `extern "C"` wrapper dispatches on pointer identity.
+///
+/// NOTE: this body is a copy of [`ffcpcl_safe`] with `infptr`/`outfptr`
+/// collapsed to one handle.  Any fix to one belongs in the other.
+pub fn ffcpcl_inplace_safe(
+    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
+    incol: c_int,        /* I - number of input column   */
+    outcol: c_int,       /* I - number for output column  */
+    create_col: c_int,   /* I - create new col if TRUE, else overwrite */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut tstatus: c_int = 0;
+    let mut colnum: c_int = 0;
+    let mut typecode: c_int = 0;
+    let mut otypecode: c_int = 0;
+    let mut etypecode: c_int = 0;
+    let mut anynull: c_int = 0;
+    let mut inHduType: c_int = 0;
+    let mut outHduType: c_int = 0;
+    let mut tfields: c_long = 0;
+    let mut repeat: c_long = 0;
+    let mut orepeat: c_long = 0;
+    let mut width: c_long = 0;
+    let mut owidth: c_long = 0;
+    let mut nrows: c_long = 0;
+    let mut outrows: c_long = 0;
+    let mut inloop: c_long = 0;
+    let mut outloop: c_long = 0;
+    let mut maxloop: c_long = 0;
+    let mut ndone: c_long = 0;
+    let mut ntodo: c_long = 0;
+    let mut npixels: c_long = 0;
+    let mut firstrow: c_long = 0;
+    let mut firstelem: c_long = 0;
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut ttype: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut tform: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut ttype_comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut tform_comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut lvalues: Vec<c_char> = Vec::new();
+    let mut nullflag: c_char = 0;
+    let mut strarray: Vec<Vec<c_char>> = Vec::new();
+    let nulstr: [c_char; 2] = [5, 0];
+    let mut dnull: f64 = 0.0;
+    let mut dvalues: Vec<f64> = Vec::new();
+    let mut fnull: f32 = 0.0;
+    let mut fvalues: Vec<f32> = Vec::new();
+
+    let mut jjvalues: Vec<c_longlong> = Vec::new();
+    let mut ujjvalues: Vec<c_ulonglong> = Vec::new();
+
+    let mut incol = incol; // shadow as mut
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        ffrdef_safe(fptr, status); /* rescan header */
+    }
+    inHduType = fptr.Fptr.hdutype;
+
+    if fptr.HDUposition != fptr.Fptr.curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    } else if fptr.Fptr.datastart == DATA_UNDEFINED as LONGLONG {
+        ffrdef_safe(fptr, status); /* rescan header */
+    }
+    outHduType = fptr.Fptr.hdutype;
+
+    if *status > 0 {
+        return *status;
+    }
+
+    if inHduType == IMAGE_HDU || outHduType == IMAGE_HDU {
+        ffpmsg_str("Can not copy columns to or from IMAGE HDUs (ffcpcl)");
+        *status = NOT_TABLE;
+        return *status;
+    }
+
+    if inHduType == BINARY_TBL && outHduType == ASCII_TBL {
+        ffpmsg_str("Copying from Binary table to ASCII table is not supported (ffcpcl)");
+        *status = NOT_BTABLE;
+        return *status;
+    }
+
+    /* get the datatype and vector repeat length of the column */
+    ffgtcl_safe(
+        fptr,
+        incol,
+        Some(&mut typecode),
+        Some(&mut repeat),
+        Some(&mut width),
+        status,
+    );
+
+    /* ... and equivalent type code */
+    ffeqty_safe(fptr, incol, Some(&mut etypecode), None, None, status);
+
+    if typecode < 0 {
+        ffpmsg_str("Variable-length columns are not supported (ffcpcl)");
+        *status = BAD_TFORM;
+        return *status;
+    }
+
+    if create_col != 0 {
+        /* insert new column in output table? */
+        tstatus = 0;
+        ffkeyn_safe(cs!(c"TTYPE"), incol, &mut keyname, &mut tstatus);
+        ffgkys_safe(
+            fptr,
+            &keyname,
+            &mut ttype,
+            Some(&mut ttype_comm),
+            &mut tstatus,
+        );
+        ffkeyn_safe(cs!(c"TFORM"), incol, &mut keyname, &mut tstatus);
+
+        if ffgkys_safe(
+            fptr,
+            &keyname,
+            &mut tform,
+            Some(&mut tform_comm),
+            &mut tstatus,
+        ) != 0
+        {
+            ffpmsg_str("Could not find TTYPE and TFORM keywords in input table (ffcpcl)");
+            *status = NO_TFORM;
+            return *status;
+        }
+
+        if inHduType == ASCII_TBL && outHduType == BINARY_TBL {
+            /* convert from ASCII table to BINARY table format string */
+            if typecode == TSTRING {
+                ffnkey_safe(width as _, cs!(c"A"), &mut tform, status);
+            } else if typecode == TLONG {
+                strcpy_safe(&mut tform, cs!(c"1J"));
+            } else if typecode == TSHORT {
+                strcpy_safe(&mut tform, cs!(c"1I"));
+            } else if typecode == TFLOAT {
+                strcpy_safe(&mut tform, cs!(c"1E"));
+            } else if typecode == TDOUBLE {
+                strcpy_safe(&mut tform, cs!(c"1D"));
+            }
+        }
+
+        if ffgkyj_safe(fptr, cs!(c"TFIELDS"), &mut tfields, None, &mut tstatus) != 0 {
+            ffpmsg_str("Could not read TFIELDS keyword in output table (ffcpcl)");
+            *status = NO_TFIELDS;
+            return *status;
+        }
+
+        colnum = cmp::min((tfields + 1) as c_int, outcol); /* output col. number */
+
+        /* create the empty column */
+        if fficol_safe(fptr, colnum, &ttype, &tform, status) > 0 {
+            ffpmsg_str("Could not append new column to output file (ffcpcl)");
+            return *status;
+        }
+
+        /* input and output are the same file and the same HDU here, so the C's
+        combined test reduces to the column comparison */
+        if colnum <= incol {
+            incol += 1; /* the input column has been shifted over */
+        }
+
+        /* copy the comment strings from the input file for TTYPE and TFORM */
+        tstatus = 0;
+        ffkeyn_safe(cs!(c"TTYPE"), colnum, &mut keyname, &mut tstatus);
+        ffmcom_safe(fptr, &keyname, Some(&ttype_comm), &mut tstatus);
+        ffkeyn_safe(cs!(c"TFORM"), colnum, &mut keyname, &mut tstatus);
+        ffmcom_safe(fptr, &keyname, Some(&tform_comm), &mut tstatus);
+
+        /* copy other column-related keywords if they exist */
+
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TUNIT"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TSCAL"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TZERO"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TDISP"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TLMIN"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TLMAX"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TDIM"), status);
+
+        /*  WCS keywords */
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCTYP"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCUNI"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCRVL"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCRPX"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCDLT"), status);
+        ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TCROT"), status);
+
+        if inHduType == ASCII_TBL && outHduType == BINARY_TBL {
+            /* binary tables only have TNULLn keyword for integer columns */
+            if typecode == TLONG || typecode == TSHORT {
+                /* check if null string is defined; replace with integer */
+                ffkeyn_safe(cs!(c"TNULL"), incol, &mut keyname, &mut tstatus);
+                if ffgkys_safe(fptr, &keyname, &mut ttype, None, &mut tstatus) <= 0 {
+                    ffkeyn_safe(cs!(c"TNULL"), colnum, &mut keyname, &mut tstatus);
+                    if typecode == TLONG {
+                        ffpkyj_safe(fptr, &keyname, -9999999, Some(cs!(c"Null value")), status);
+                    } else {
+                        ffpkyj_safe(fptr, &keyname, -32768, Some(cs!(c"Null value")), status);
+                    }
+                }
+            }
+        } else {
+            ffcpky_inplace_safe(fptr, incol, colnum, cs!(c"TNULL"), status);
+        }
+
+        /* rescan header to recognize the new keywords */
+        if ffrdef_safe(fptr, status) != 0 {
+            return *status;
+        }
+    } else {
+        colnum = outcol;
+        /* get the datatype and vector repeat length of the output column */
+        ffgtcl_safe(
+            fptr,
+            outcol,
+            Some(&mut otypecode),
+            Some(&mut orepeat),
+            Some(&mut owidth),
+            status,
+        );
+
+        if orepeat != repeat {
+            ffpmsg_str("Input and output vector columns must have same length (ffcpcl)");
+            *status = BAD_TFORM;
+            return *status;
+        }
+    }
+
+    ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut nrows, None, status); /* no. of input rows */
+    ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut outrows, None, status); /* no. of output rows */
+    nrows = cmp::min(nrows, outrows);
+
+    if typecode == TBIT {
+        repeat = (repeat + 7) / 8; /* convert from bits to bytes */
+    } else if typecode == TSTRING && inHduType == BINARY_TBL {
+        repeat /= width; /* convert from chars to unit strings */
+    }
+
+    /* get optimum number of rows to copy at one time */
+    ffgrsz_safe(fptr, &mut inloop, status);
+    ffgrsz_safe(fptr, &mut outloop, status);
+
+    /* adjust optimum number, since 2 tables are open at once */
+    maxloop = cmp::min(inloop, outloop); /* smallest of the 2 tables */
+    maxloop = cmp::max(1, maxloop / 2); /* at least 1 row */
+    maxloop = cmp::min(maxloop, nrows); /* max = nrows to be copied */
+    maxloop *= repeat; /* mult by no of elements in a row */
+
+    /* allocate memory for arrays */
+    if typecode == TLOGICAL {
+        if lvalues.try_reserve_exact(maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for logicals (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            lvalues.resize(maxloop as usize, 0);
+        }
+    } else if typecode == TSTRING {
+        /* allocate array of pointers */
+        strarray.reserve_exact(maxloop as usize);
+
+        /* allocate space for each string */
+        for _ii in 0..(maxloop as usize) {
+            let str_storage = vec![0; (width + 1) as usize];
+
+            strarray.push(str_storage);
+        }
+    } else if typecode == TCOMPLEX {
+        if fvalues.try_reserve_exact(2 * maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for complex (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            fvalues.resize(2 * maxloop as usize, 0.0);
+        }
+        fnull = 0.0;
+    } else if typecode == TDBLCOMPLEX {
+        if dvalues.try_reserve_exact(2 * maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for dbl complex (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            dvalues.resize(2 * maxloop as usize, 0.0);
+        }
+        dnull = 0.0;
+    } else if typecode == TLONGLONG && etypecode == TULONGLONG {
+        /* These are unsigned long-long ints that are not rescaled to floating point numbers */
+
+        if ujjvalues.try_reserve_exact(maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for unsigned long long int (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            ujjvalues.resize(maxloop as usize, 0);
+        }
+    } else if typecode == TLONGLONG && etypecode != TDOUBLE {
+        /* These are long-long ints that are not rescaled to floating point numbers */
+
+        if jjvalues.try_reserve_exact(maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for long long int (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            jjvalues.resize(maxloop as usize, 0);
+        }
+    } else {
+        /* other numerical datatype; read them all as doubles */
+
+        if dvalues.try_reserve_exact(maxloop as usize).is_err() {
+            ffpmsg_str("malloc failed to get memory for doubles (ffcpcl)");
+            *status = ARRAY_TOO_BIG;
+            return *status;
+        } else {
+            dvalues.resize(maxloop as usize, 0.0);
+        }
+        dnull = -9.99991999E31; /* use an unlikely value for nulls */
+    }
+
+    npixels = nrows * repeat; /* total no. of pixels to copy */
+    ntodo = cmp::min(npixels, maxloop); /* no. to copy per iteration */
+    ndone = 0; /* total no. of pixels that have been copied */
+
+    while ntodo != 0 {
+        /* iterate through the table */
+        firstrow = ndone / repeat + 1;
+        firstelem = ndone - ((firstrow - 1) * repeat) + 1;
+
+        /* read from input table */
+        if typecode == TLOGICAL {
+            ffgcvl_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                0,
+                &mut lvalues,
+                Some(&mut anynull),
+                status,
+            );
+        } else if typecode == TSTRING {
+            ffgcvs_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                Some(&nulstr),
+                &mut vecs_to_slices_mut(&mut strarray),
+                Some(&mut anynull),
+                status,
+            );
+        } else if typecode == TCOMPLEX {
+            ffgcvc_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                fnull,
+                &mut fvalues,
+                Some(&mut anynull),
+                status,
+            );
+        } else if typecode == TDBLCOMPLEX {
+            ffgcvm_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                dnull,
+                &mut dvalues,
+                Some(&mut anynull),
+                status,
+            );
+
+        /* Neither TULONGLONG nor TLONGLONG does null checking.  Whatever
+        null value is in input table is transferred to output table
+        without checking.  Since the TNULL value was copied, this
+        should preserve null values */
+        } else if typecode == TLONGLONG && etypecode == TULONGLONG {
+            ffgcvujj_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                /*nulval*/ 0,
+                &mut ujjvalues,
+                Some(&mut anynull),
+                status,
+            );
+        } else if typecode == TLONGLONG && etypecode != TDOUBLE {
+            ffgcvjj_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                /*nulval*/ 0,
+                &mut jjvalues,
+                Some(&mut anynull),
+                status,
+            );
+        } else {
+            /* all numerical types */
+            ffgcvd_safe(
+                fptr,
+                incol,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                dnull,
+                &mut dvalues,
+                Some(&mut anynull),
+                status,
+            );
+        }
+
+        if *status > 0 {
+            ffpmsg_str("Error reading input copy of column (ffcpcl)");
+            break;
+        }
+
+        /* write to output table */
+        if typecode == TLOGICAL {
+            nullflag = 2;
+
+            ffpcnl_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &lvalues,
+                nullflag,
+                status,
+            );
+        } else if typecode == TSTRING {
+            if anynull != 0 {
+                ffpcns_safe(
+                    fptr,
+                    colnum,
+                    firstrow as LONGLONG,
+                    firstelem as LONGLONG,
+                    ntodo as LONGLONG,
+                    &vecs_to_slices(&strarray),
+                    &nulstr,
+                    status,
+                );
+            } else {
+                ffpcls_safe(
+                    fptr,
+                    colnum,
+                    firstrow as LONGLONG,
+                    firstelem as LONGLONG,
+                    ntodo as LONGLONG,
+                    &vecs_to_slices(&strarray),
+                    status,
+                );
+            }
+        } else if typecode == TCOMPLEX {
+            /* doesn't support writing nulls */
+            ffpclc_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &fvalues,
+                status,
+            );
+        } else if typecode == TDBLCOMPLEX {
+            /* doesn't support writing nulls */
+            ffpclm_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &dvalues,
+                status,
+            );
+        } else if typecode == TLONGLONG && etypecode == TULONGLONG {
+            /* No null checking because we did none to read */
+            ffpclujj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &ujjvalues,
+                status,
+            );
+        } else if typecode == TLONGLONG && etypecode != TDOUBLE {
+            /* No null checking because we did none to read */
+            ffpcljj_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &jjvalues,
+                status,
+            );
+        } else
+        /* all other numerical types */
+        if anynull != 0 {
+            ffpcnd_safe(
+                fptr,
+                colnum,
+                firstrow as LONGLONG,
+                firstelem as LONGLONG,
+                ntodo as LONGLONG,
+                &dvalues,
+                dnull,
+                status,
+            );
+        } else {
+            ffpcld_safe(
+                fptr,
                 colnum,
                 firstrow as LONGLONG,
                 firstelem as LONGLONG,
@@ -3625,6 +4201,33 @@ pub fn ffcpky_safe(
         ffkeyn_safe(rootname, outcol, &mut keyname, &mut tstatus);
         ffmkky_safe(&keyname, &value, Some(&comment), &mut card, status);
         ffprec_safe(outfptr, &card, status);
+    }
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// In-place twin of [`ffcpky_safe`]: copy an indexed keyword within one file.
+///
+/// The read and the write are separate statements, so one handle serves both.
+pub fn ffcpky_inplace_safe(
+    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
+    incol: c_int,        /* I - input index number   */
+    outcol: c_int,       /* I - output index number  */
+    rootname: &[c_char], /* I - root name of the keyword to be copied */
+    status: &mut c_int,  /* IO - error status     */
+) -> c_int {
+    let mut tstatus: c_int = 0;
+
+    let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
+    let mut value: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
+    let mut comment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+
+    ffkeyn_safe(rootname, incol, &mut keyname, &mut tstatus);
+    if ffgkey_safe(fptr, &keyname, &mut value, Some(&mut comment), &mut tstatus) <= 0 {
+        ffkeyn_safe(rootname, outcol, &mut keyname, &mut tstatus);
+        ffmkky_safe(&keyname, &value, Some(&comment), &mut card, status);
+        ffprec_safe(fptr, &card, status);
     }
     *status
 }
@@ -5444,13 +6047,8 @@ mod tests {
             fits_open_file(&mut f, &name, READWRITE, &mut status);
             fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
             // Copy column 1 to column 3 (insert new column). Same handle copies to itself.
-            {
-                let fp = f.as_deref_mut().unwrap();
-                // SAFETY: ffcpcl is called with the same input/output file in C
-                // (ffcpcl(f, f, ...)); replicate that aliasing here.
-                let fp2: &mut fitsfile = unsafe { &mut *core::ptr::from_mut::<fitsfile>(fp) };
-                fits_copy_col(fp, fp2, 1, 3, 1, &mut status);
-            }
+            /* the C calls ffcpcl(f, f, ...) here; that is the in-place form */
+            super::ffcpcl_inplace_safe(f.as_deref_mut().unwrap(), 1, 3, 1, &mut status);
             let mut ncols = 0;
             fits_get_num_cols(f.as_deref_mut().unwrap(), &mut ncols, &mut status);
             assert_eq!(ncols, 3);
