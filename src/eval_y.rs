@@ -73,7 +73,7 @@ use core::ffi::CStr;
 use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{calloc, free, malloc, memcpy, time, time_t};
+use libc::{calloc, free, malloc, memcpy};
 
 const APPROX: f64 = 1.0e-7;
 
@@ -9035,7 +9035,14 @@ pub(crate) fn Evaluate_Parser(
 
         /* Initialize the random number generator once and only once */
         if RAND_INITIALIZED == 0 {
-            simplerng_srand(time(core::ptr::null_mut::<time_t>()) as c_uint);
+            /* Seed from the wall clock, as the C's time(NULL) does. Uses
+               SystemTime rather than libc time() so the expression engine has
+               no foreign call on this path -- Miri cannot make it, and it was
+               aborting every test that reaches the evaluator. */
+            let seed = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as c_uint);
+            simplerng_srand(seed);
             RAND_INITIALIZED = 1;
         }
         lParse.firstRow = firstRow;
