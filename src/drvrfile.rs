@@ -737,14 +737,12 @@ pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &m
     let mut tmp_outdiskfile = tmp_outdiskfile.unwrap();
 
     /* uncompress file into another file */
-    unsafe {
-        uncompress2file(
-            filename,
-            &mut indiskfile.unwrap(),
-            &mut tmp_outdiskfile,
-            &mut status,
-        );
-    }
+    uncompress2file(
+        filename,
+        &mut indiskfile.unwrap(),
+        &mut tmp_outdiskfile,
+        &mut status,
+    );
 
     if status != 0 {
         ffpmsg_str("error in file_compress_open: failed to uncompressed file:");

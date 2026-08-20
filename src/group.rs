@@ -1782,15 +1782,10 @@ pub fn ffgtam_safe(
         let mut tmprootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
         let mut grootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
-        // SAFETY: Fptr.filename is each file's heap-allocated NUL-terminated C string.
-        unsafe {
-            let tfn =
-                cast_slice::<u8, c_char>(CStr::from_ptr(tmpfptr.Fptr.filename).to_bytes_with_nul());
-            fits_parse_rootname(tfn, &mut tmprootname, status);
-            let gfn =
-                cast_slice::<u8, c_char>(CStr::from_ptr(gfptr.Fptr.filename).to_bytes_with_nul());
-            fits_parse_rootname(gfn, &mut grootname, status);
-        }
+        let tfn = cast_slice::<u8, c_char>(tmpfptr.Fptr.get_filename_as_cstr().to_bytes_with_nul());
+        fits_parse_rootname(tfn, &mut tmprootname, status);
+        let gfn = cast_slice::<u8, c_char>(gfptr.Fptr.get_filename_as_cstr().to_bytes_with_nul());
+        fits_parse_rootname(gfn, &mut grootname, status);
 
         let same_fptr = core::ptr::eq(tmpfptr.Fptr.as_ptr(), gfptr.Fptr.as_ptr());
         !same_fptr && strncmp_safe(&tmprootname, &grootname, FLEN_FILENAME) != 0
@@ -4132,21 +4127,18 @@ pub fn ffgmrm_safe(
                 /* Now, if either the Fptr values are the same, or the root filenames
                    are the same, then assume these refer to the same file.
                 */
-                // SAFETY: Fptr.filename is each file's heap-allocated NUL-terminated C string.
-                unsafe {
-                    let mfn = cast_slice::<u8, c_char>(
-                        CStr::from_ptr(mfptr.as_deref().expect(NULL_MSG).Fptr.filename)
-                            .to_bytes_with_nul(),
-                    );
-                    fits_parse_rootname(mfn, &mut mrootname, status);
-                }
-                // SAFETY: as above, for the grouping table file.
-                unsafe {
-                    let gfn = cast_slice::<u8, c_char>(
-                        CStr::from_ptr(gfptr.Fptr.filename).to_bytes_with_nul(),
-                    );
-                    fits_parse_rootname(gfn, &mut grootname, status);
-                }
+                let mfn = cast_slice::<u8, c_char>(
+                    mfptr
+                        .as_deref()
+                        .expect(NULL_MSG)
+                        .Fptr
+                        .get_filename_as_cstr()
+                        .to_bytes_with_nul(),
+                );
+                fits_parse_rootname(mfn, &mut mrootname, status);
+                let gfn =
+                    cast_slice::<u8, c_char>(gfptr.Fptr.get_filename_as_cstr().to_bytes_with_nul());
+                fits_parse_rootname(gfn, &mut grootname, status);
 
                 /* The C's combined condition: same FITSfile by address, or
                 failing that the same rootname. */

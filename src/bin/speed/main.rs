@@ -1,3 +1,4 @@
+// TODO: still on the C ABI; convert to the _safe/alias API (see plan Phase 6).
 #![allow(deprecated)]
 
 // Purposed keep using the C API so that we can switch out the linked library to test speed

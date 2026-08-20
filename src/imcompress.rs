@@ -2808,15 +2808,13 @@ fn imcomp_compress_tile(
                     fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
                 }
 
-                unsafe {
-                    compress2mem_from_mem(
-                        cast_slice(tiledata),
-                        tilelen as usize * mem::size_of::<f32>(),
-                        &mut gzip_buf,
-                        Some(&mut gzip_nelem),
-                        status,
-                    );
-                }
+                compress2mem_from_mem(
+                    cast_slice(tiledata),
+                    tilelen as usize * mem::size_of::<f32>(),
+                    &mut gzip_buf,
+                    Some(&mut gzip_nelem),
+                    status,
+                );
             } else if (outfptr.Fptr).quantize_level == NO_QUANTIZE && datatype == TDOUBLE {
                 /* Special case of losslessly compressing double pixels with  GZIP */
                 /* In this case we compress the input tile array directly */
@@ -2828,15 +2826,13 @@ fn imcomp_compress_tile(
                     fits_shuffle_8bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
                 }
 
-                unsafe {
-                    compress2mem_from_mem(
-                        cast_slice(tiledata),
-                        tilelen as usize * mem::size_of::<f64>(),
-                        &mut gzip_buf,
-                        Some(&mut gzip_nelem),
-                        status,
-                    );
-                }
+                compress2mem_from_mem(
+                    cast_slice(tiledata),
+                    tilelen as usize * mem::size_of::<f64>(),
+                    &mut gzip_buf,
+                    Some(&mut gzip_nelem),
+                    status,
+                );
             } else {
                 /* compress the integer idata array */
 
@@ -2857,26 +2853,22 @@ fn imcomp_compress_tile(
 
                     let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
-                    unsafe {
-                        compress2mem_from_mem(
-                            cast_slice_mut(idata),
-                            tilelen as usize * mem::size_of::<c_short>(),
-                            &mut gzip_buf,
-                            Some(&mut gzip_nelem),
-                            status,
-                        );
-                    }
+                    compress2mem_from_mem(
+                        cast_slice_mut(idata),
+                        tilelen as usize * mem::size_of::<c_short>(),
+                        &mut gzip_buf,
+                        Some(&mut gzip_nelem),
+                        status,
+                    );
                 } else if intlength == 1 {
                     let idata: &mut [c_int] = cast_slice_mut(tiledata);
-                    unsafe {
-                        compress2mem_from_mem(
-                            cast_slice(idata),
-                            tilelen as usize * mem::size_of::<c_uchar>(),
-                            &mut gzip_buf,
-                            Some(&mut gzip_nelem),
-                            status,
-                        );
-                    }
+                    compress2mem_from_mem(
+                        cast_slice(idata),
+                        tilelen as usize * mem::size_of::<c_uchar>(),
+                        &mut gzip_buf,
+                        Some(&mut gzip_nelem),
+                        status,
+                    );
                 } else {
                     if (outfptr.Fptr).compress_type == GZIP_2 {
                         fits_shuffle_4bytes(cast_slice_mut(tiledata), tilelen as LONGLONG, status);
@@ -2884,15 +2876,13 @@ fn imcomp_compress_tile(
 
                     let idata: &mut [c_int] = cast_slice_mut(tiledata);
 
-                    unsafe {
-                        compress2mem_from_mem(
-                            cast_slice_mut(idata),
-                            tilelen as usize * mem::size_of::<c_int>(),
-                            &mut gzip_buf,
-                            Some(&mut gzip_nelem),
-                            status,
-                        );
-                    }
+                    compress2mem_from_mem(
+                        cast_slice_mut(idata),
+                        tilelen as usize * mem::size_of::<c_int>(),
+                        &mut gzip_buf,
+                        Some(&mut gzip_nelem),
+                        status,
+                    );
                 }
             }
 
@@ -3168,15 +3158,13 @@ fn imcomp_compress_tile(
 
             // WARNING: Potentially unsafe memory issue here given this function
             // call can reallocate the buffer.
-            unsafe {
-                compress2mem_from_mem(
-                    cast_slice(tiledata),
-                    tilelen as usize * mem::size_of::<f32>(),
-                    &mut gzip_buf,
-                    Some(&mut gzip_nelem),
-                    status,
-                );
-            }
+            compress2mem_from_mem(
+                cast_slice(tiledata),
+                tilelen as usize * mem::size_of::<f32>(),
+                &mut gzip_buf,
+                Some(&mut gzip_nelem),
+                status,
+            );
         } else {
             /* datatype == TDOUBLE */
 
@@ -3208,15 +3196,13 @@ fn imcomp_compress_tile(
 
             // WARNING: Potentially unsafe memory issue here given this function
             // call can reallocate the buffer.
-            unsafe {
-                compress2mem_from_mem(
-                    cast_slice_mut(tiledata),
-                    tilelen as usize * mem::size_of::<f64>(),
-                    &mut gzip_buf,
-                    Some(&mut gzip_nelem),
-                    status,
-                );
-            }
+            compress2mem_from_mem(
+                cast_slice_mut(tiledata),
+                tilelen as usize * mem::size_of::<f64>(),
+                &mut gzip_buf,
+                Some(&mut gzip_nelem),
+                status,
+            );
         }
 
         /* Write the compressed byte stream. */
@@ -11533,15 +11519,13 @@ pub fn fits_compress_table_safe(
                                     }
                                 }
                                 /*: gzip compress the array of bytes */
-                                unsafe {
-                                    compress2mem_from_mem(
-                                        cast_slice(&vlamem),
-                                        vlamemlen as usize,
-                                        &mut cvlamem,
-                                        Some(&mut dlen),
-                                        status,
-                                    );
-                                }
+                                compress2mem_from_mem(
+                                    cast_slice(&vlamem),
+                                    vlamemlen as usize,
+                                    &mut cvlamem,
+                                    Some(&mut dlen),
+                                    status,
+                                );
                             } else {
                                 /* this should not happen */
                                 ffpmsg_str(" Error: unknown compression algorithm");
@@ -11657,15 +11641,13 @@ pub fn fits_compress_table_safe(
                         ffswap8(outdescript, rowspertile * 2);
                     }
                     /* compress the array contain both sets of descriptors */
-                    unsafe {
-                        compress2mem_from_mem(
-                            &cdescript,
-                            datasize + (rowspertile * 16) as usize,
-                            &mut cvlamem,
-                            Some(&mut dlen),
-                            status,
-                        );
-                    }
+                    compress2mem_from_mem(
+                        &cdescript,
+                        datasize + (rowspertile * 16) as usize,
+                        &mut cvlamem,
+                        Some(&mut dlen),
+                        status,
+                    );
 
                     /* write the compressed descriptors to the output column */
                     fits_set_tscale(outfptr, (ii + 1) as c_int, 1.0, 0.0, status); /* turn off any data scaling, first */
@@ -11799,15 +11781,13 @@ pub fn fits_compress_table_safe(
                     }
                 } else {
                     /* all other cases: gzip compress the column (bytes may have been shuffled previously) */
-                    unsafe {
-                        compress2mem_from_mem(
-                            cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
-                            datasize,
-                            &mut cvlamem,
-                            Some(&mut dlen),
-                            status,
-                        );
-                    }
+                    compress2mem_from_mem(
+                        cast_slice(&cm_buffer[cm_colstart[ii] as usize..]),
+                        datasize,
+                        &mut cvlamem,
+                        Some(&mut dlen),
+                        status,
+                    );
                 }
 
                 if ll == 0 {
@@ -14166,6 +14146,8 @@ mod ricecomp_tests {
 /// on read, etc.) against on-disk FITS files.
 #[cfg(test)]
 mod tests {
+    // fits_set_noise_bits is deprecated upstream; the test below covers it on purpose.
+    #[allow(deprecated)]
     use super::{
         c_char, c_int, fits_get_compression_type_safe, fits_get_dither_seed_safe,
         fits_get_noise_bits_safe, fits_get_quantize_level_safe, fits_get_tile_dim_safe,
@@ -14506,7 +14488,10 @@ mod tests {
             let mut fptr = create_test_image(filename, SHORT_IMG, 64, 64);
             let mut status = 0;
 
-            fits_set_noise_bits_safe(&mut fptr, 4, &mut status);
+            /* fits_set_noise_bits is deprecated in CFITSIO in favour of
+            fits_set_quantize_level; this test covers the deprecated path itself. */
+            #[allow(deprecated)]
+            let _ = fits_set_noise_bits_safe(&mut fptr, 4, &mut status);
             assert_eq!(status, 0);
 
             let mut noisebits = 0;

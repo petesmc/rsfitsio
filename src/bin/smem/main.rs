@@ -1,5 +1,3 @@
-#![allow(deprecated)]
-
 #[cfg(not(windows))]
 use libc::{c_char, c_int};
 #[cfg(not(windows))]

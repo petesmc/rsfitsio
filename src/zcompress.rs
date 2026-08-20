@@ -99,14 +99,9 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(core::ptr::null_mut()),
-            zfree: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(core::ptr::null_mut()),
+            /* the C sets these to NULL so zlib uses its own allocator */
+            zalloc: None,
+            zfree: None,
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -253,14 +248,9 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(core::ptr::null_mut()),
-            zfree: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(core::ptr::null_mut()),
+            /* the C sets these to NULL so zlib uses its own allocator */
+            zalloc: None,
+            zfree: None,
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -338,7 +328,12 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
 
 /*--------------------------------------------------------------------------*/
 /// Uncompress the file into another file.
-pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
+///
+/// The body is one `unsafe` block because it is zlib stream manipulation throughout:
+/// every call reads and writes through `z_stream`'s `next_in`/`next_out` raw
+/// pointers.  The function itself is safe: it owns both buffers and is the only
+/// thing that sets those pointers, so no caller can influence them.
+pub(crate) fn uncompress2file<R: Read, W: Write>(
     _filename: &[c_char], /* name of input file                  */
     indiskfile: &mut R,   /* I - input file pointer                */
     outdiskfile: &mut W,  /* I - output file pointer               */
@@ -379,14 +374,9 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(core::ptr::null_mut()),
-            zfree: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(core::ptr::null_mut()),
+            /* the C sets these to NULL so zlib uses its own allocator */
+            zalloc: None,
+            zfree: None,
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),
@@ -505,120 +495,123 @@ pub(crate) unsafe fn uncompress2file<R: Read, W: Write>(
 /// Compress the file into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
-pub(crate) unsafe fn compress2mem_from_mem(
+pub(crate) fn compress2mem_from_mem(
     inmemptr: &[c_char],          /* I - memory pointer to uncompressed bytes */
     inmemsize: usize,             /* I - size of input uncompressed file      */
     outbuf: &mut Vec<u8>,         /* IO - buffer for compressed file; grown as needed */
     filesize: Option<&mut usize>, /* O - size of compressed file, in bytes    */
     status: &mut c_int,           /* IO - error status                        */
 ) -> c_int {
-    unsafe {
-        let mut err: c_int;
-        let mut c_stream: z_stream; /* compression stream */
+    let mut err: c_int;
+    let mut c_stream: z_stream; /* compression stream */
 
-        if *status > 0 {
-            return *status;
-        }
+    if *status > 0 {
+        return *status;
+    }
 
-        /* make sure there is some output space to start with. If the caller
-        pre-sized the buffer we honor that; otherwise start with one chunk.
-        The buffer is owned by a Rust Vec and grown with the Rust allocator,
-        so there is no dangling pointer or allocator mismatch (see issue #60). */
-        if outbuf.is_empty() {
-            outbuf.resize(BUFFINCR, 0);
-        }
+    /* make sure there is some output space to start with. If the caller
+    pre-sized the buffer we honor that; otherwise start with one chunk.
+    The buffer is owned by a Rust Vec and grown with the Rust allocator,
+    so there is no dangling pointer or allocator mismatch (see issue #60). */
+    if outbuf.is_empty() {
+        outbuf.resize(BUFFINCR, 0);
+    }
 
-        c_stream = z_stream {
-            next_in: ptr::null_mut(),
-            avail_in: Default::default(),
-            total_in: Default::default(),
-            next_out: ptr::null_mut(),
-            avail_out: Default::default(),
-            total_out: Default::default(),
-            msg: ptr::null_mut(),
-            state: ptr::null_mut(),
-            zalloc: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(core::ptr::null_mut()),
-            zfree: core::mem::transmute::<
-                *mut u32,
-                Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(core::ptr::null_mut()),
-            opaque: ptr::null_mut() as voidpf,
-            data_type: Default::default(),
-            adler: Default::default(),
-            reserved: Default::default(),
-        };
+    c_stream = z_stream {
+        next_in: ptr::null_mut(),
+        avail_in: Default::default(),
+        total_in: Default::default(),
+        next_out: ptr::null_mut(),
+        avail_out: Default::default(),
+        total_out: Default::default(),
+        msg: ptr::null_mut(),
+        state: ptr::null_mut(),
+        /* the C sets these to NULL so zlib uses its own allocator */
+        zalloc: None,
+        zfree: None,
+        opaque: ptr::null_mut() as voidpf,
+        data_type: Default::default(),
+        adler: Default::default(),
+        reserved: Default::default(),
+    };
 
-        /* Initialize the compression.  The argument (15+16) tells the
-        compressor that we are to use the gzip algorithm.
-        Also use Z_BEST_SPEED for maximum speed with very minor loss
-        in compression factor. */
-        err = deflateInit2(
+    /* Initialize the compression.  The argument (15+16) tells the
+    compressor that we are to use the gzip algorithm.
+    Also use Z_BEST_SPEED for maximum speed with very minor loss
+    in compression factor. */
+    /* SAFETY: c_stream is a fully initialised z_stream that outlives every zlib
+    call below; the buffers it points at are the two slices above. */
+    err = unsafe {
+        deflateInit2(
             &raw mut c_stream,
             Z_BEST_SPEED,
             Z_DEFLATED,
             15 + 16,
             8,
             Z_DEFAULT_STRATEGY,
-        );
+        )
+    };
 
-        if err != Z_OK {
-            *status = DATA_COMPRESSION_ERR;
-            return *status;
-        }
-
-        c_stream.next_in = inmemptr.as_ptr() as *mut u8; // WARNING: Yes convert const to mut....
-        c_stream.avail_in = inmemsize as uInt;
-
-        c_stream.next_out = outbuf.as_mut_ptr();
-        c_stream.avail_out = outbuf.len() as uInt;
-
-        loop {
-            /* compress as much of the input as will fit in the output */
-            err = deflate(&raw mut c_stream, Z_FINISH);
-
-            if err == Z_STREAM_END {
-                /* We reached the end of the input */
-                break;
-            } else if err == Z_OK {
-                /* need more space in output buffer: grow the Vec and re-point
-                the zlib stream at the (possibly moved) buffer. total_out is the
-                number of bytes already written from the start of the buffer. */
-                let written = c_stream.total_out as usize;
-                let newlen = outbuf.len() + BUFFINCR;
-                outbuf.resize(newlen, 0);
-                c_stream.next_out = outbuf.as_mut_ptr().add(written);
-                c_stream.avail_out = (outbuf.len() - written) as uInt;
-            } else {
-                /* some other error */
-                deflateEnd(&raw mut c_stream);
-                *status = DATA_COMPRESSION_ERR;
-                return *status;
-            }
-        }
-
-        /* Set the output file size to be the total output data */
-        if let Some(filesize) = filesize {
-            *filesize = c_stream.total_out as usize;
-        }
-
-        /* End the compression */
-        err = deflateEnd(&raw mut c_stream);
-
-        if err != Z_OK {
-            *status = DATA_COMPRESSION_ERR;
-            return *status;
-        }
-
-        *status
+    if err != Z_OK {
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
     }
+
+    c_stream.next_in = inmemptr.as_ptr() as *mut u8; // WARNING: Yes convert const to mut....
+    c_stream.avail_in = inmemsize as uInt;
+
+    c_stream.next_out = outbuf.as_mut_ptr();
+    c_stream.avail_out = outbuf.len() as uInt;
+
+    loop {
+        /* compress as much of the input as will fit in the output */
+        err = unsafe { deflate(&raw mut c_stream, Z_FINISH) };
+
+        if err == Z_STREAM_END {
+            /* We reached the end of the input */
+            break;
+        } else if err == Z_OK {
+            /* need more space in output buffer: grow the Vec and re-point
+            the zlib stream at the (possibly moved) buffer. total_out is the
+            number of bytes already written from the start of the buffer. */
+            let written = c_stream.total_out as usize;
+            let newlen = outbuf.len() + BUFFINCR;
+            outbuf.resize(newlen, 0);
+            /* SAFETY: `written` <= outbuf.len(), so this stays in the Vec. */
+            c_stream.next_out = unsafe { outbuf.as_mut_ptr().add(written) };
+            c_stream.avail_out = (outbuf.len() - written) as uInt;
+        } else {
+            /* some other error */
+            unsafe { deflateEnd(&raw mut c_stream) };
+            *status = DATA_COMPRESSION_ERR;
+            return *status;
+        }
+    }
+
+    /* Set the output file size to be the total output data */
+    if let Some(filesize) = filesize {
+        *filesize = c_stream.total_out as usize;
+    }
+
+    /* End the compression */
+    err = unsafe { deflateEnd(&raw mut c_stream) };
+
+    if err != Z_OK {
+        *status = DATA_COMPRESSION_ERR;
+        return *status;
+    }
+
+    *status
 }
 
 /*--------------------------------------------------------------------------*/
 /// Compress the memory file into disk file.
-pub(crate) unsafe fn compress2file_from_mem<W: Write>(
+///
+/// The body is one `unsafe` block because it is zlib stream manipulation throughout:
+/// every call reads and writes through `z_stream`'s `next_in`/`next_out` raw
+/// pointers.  The function itself is safe: it owns both buffers and is the only
+/// thing that sets those pointers, so no caller can influence them.
+pub(crate) fn compress2file_from_mem<W: Write>(
     inmemptr: &[c_char], /* I - memory pointer to uncompressed bytes */
     inmemsize: usize,    /* I - size of input uncompressed file      */
     outdiskfile: &mut W,
@@ -656,14 +649,9 @@ pub(crate) unsafe fn compress2file_from_mem<W: Write>(
             total_out: Default::default(),
             msg: ptr::null_mut(),
             state: ptr::null_mut(),
-            zalloc: core::mem::transmute::<
-                *mut u32,
-                core::option::Option<unsafe extern "C" fn(*mut c_void, u32, u32) -> *mut c_void>,
-            >(core::ptr::null_mut()),
-            zfree: core::mem::transmute::<
-                *mut u32,
-                core::option::Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
-            >(core::ptr::null_mut()),
+            /* the C sets these to NULL so zlib uses its own allocator */
+            zalloc: None,
+            zfree: None,
             opaque: ptr::null_mut() as voidpf,
             data_type: Default::default(),
             adler: Default::default(),

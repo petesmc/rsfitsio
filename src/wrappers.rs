@@ -338,7 +338,11 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
         _ => 1.0,
     };
 
-    let rust_s = unsafe { CStr::from_ptr(s.as_ptr()).to_string_lossy() };
+    /* `s` is already a slice, so find the terminator inside it rather than
+    walking off the end from a raw pointer.  A buffer with no NUL is read to its
+    end instead of overrunning it. */
+    let bytes: &[u8] = cast_slice(s);
+    let rust_s = String::from_utf8_lossy(&bytes[..strnlen_safe(s, s.len())]);
 
     // detect NaN, Inf
     if rust_s.to_lowercase().starts_with("inf") {

@@ -285,13 +285,28 @@ pub unsafe extern "C" fn ffsrow(
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
-        let infptr = infptr.as_mut().expect(NULL_MSG);
-        let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(expr);
 
-        ffsrow_safe(infptr, outfptr, expr, status)
+        /* The C API allows infptr == outfptr, which makes this delete the
+        non-qualifying rows in place.  Two `&mut fitsfile` to one handle can
+        never be legal, so this is the only place the identity test lives and
+        the in-place case gets its own function.
+
+        Note this compares the *handles*: two distinct fitsfile handles sharing
+        one FITSfile (as fits_reopen_file produces) is a supported two-file
+        case, which is how rows are copied between extensions of one file. */
+        if core::ptr::eq(infptr, outfptr) {
+            ffsrow_inplace_safe(infptr.as_mut().expect(NULL_MSG), expr, status)
+        } else {
+            ffsrow_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                outfptr.as_mut().expect(NULL_MSG),
+                expr,
+                status,
+            )
+        }
     }
 }
 
@@ -302,6 +317,8 @@ pub unsafe extern "C" fn ffsrow(
 /// Can copy rows between extensions of the same file, *BUT* if output
 /// extension is before the input extension, the second extension *MUST* be
 /// opened using ffreopen, so that CFITSIO can handle changing file lengths
+/// Both files must be distinct handles.  Passing one file as both input and
+/// output is the C's in-place delete; use [`ffsrow_inplace_safe`] for that.
 pub fn ffsrow_safe(
     infptr: &mut fitsfile,  /* I - Input FITS file                      */
     outfptr: &mut fitsfile, /* I - Output FITS file                     */
@@ -341,337 +358,586 @@ pub fn ffsrow_safe(
 
     let mut lParse: ParseData = ParseData::default();
 
-    unsafe {
-        if *status != 0 {
-            return *status;
-        }
+    if *status != 0 {
+        return *status;
+    }
 
-        if ffiprs(
-            infptr,
+    if ffiprs(
+        infptr,
+        0,
+        expr,
+        MAXDIMS,
+        &mut Info.datatype,
+        &mut nelem,
+        &mut naxis,
+        &mut naxes,
+        &mut lParse,
+        status,
+    ) != 0
+    {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+
+    if nelem < 0 {
+        constant = 1;
+        nelem = -nelem;
+    } else {
+        constant = 0;
+    }
+
+    /**********************************************************************/
+    /* Make sure expression evaluates to the right type... logical scalar */
+    /**********************************************************************/
+
+    if Info.datatype != TLOGICAL || nelem != 1 {
+        ffcprs(&mut lParse);
+        ffpmsg_str("Expression does not evaluate to a logical scalar.");
+        *status = PARSE_BAD_TYPE;
+        return *status;
+    }
+
+    /***********************************************************/
+    /*  Extract various table information from each extension  */
+    /***********************************************************/
+
+    if infptr.HDUposition != (infptr.Fptr).curhdu {
+        ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
+    }
+    if *status != 0 {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    inExt.rowLength = (infptr.Fptr).rowlength as LONGLONG;
+    inExt.numRows = (infptr.Fptr).numrows;
+    inExt.heapSize = (infptr.Fptr).heapsize;
+    if inExt.numRows == 0 {
+        /* Nothing to copy */
+        ffcprs(&mut lParse);
+        return *status;
+    }
+
+    if outfptr.HDUposition != (outfptr.Fptr).curhdu {
+        ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
+    }
+    if (outfptr.Fptr).datastart < 0 {
+        ffrdef_safe(outfptr, status);
+    }
+    if *status != 0 {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    outExt.rowLength = (outfptr.Fptr).rowlength as LONGLONG;
+    outExt.numRows = (outfptr.Fptr).numrows;
+    if outExt.numRows == 0 {
+        (outfptr.Fptr).heapsize = 0;
+    }
+    outExt.heapSize = (outfptr.Fptr).heapsize;
+
+    if inExt.rowLength != outExt.rowLength {
+        ffpmsg_str("Output table has different row length from input");
+        ffcprs(&mut lParse);
+        *status = PARSE_BAD_OUTPUT;
+        return *status;
+    }
+
+    /***********************************/
+    /*  Fill out Info data for parser  */
+    /***********************************/
+
+    /* The row-selection flags are owned here and handed to the parser as a
+    raw pointer, so the error returns below cannot leak them.  `Info.dataPtr`
+    is what `fits_parser_workfn` writes through during `ffiter_safe`; every
+    access from this function reads `row_flags` directly instead, so no raw
+    pointer into the Vec is live once the iterator has returned. */
+    let mut row_flags: Vec<c_char> = Vec::new();
+    if row_flags
+        .try_reserve_exact((inExt.numRows + 1) as usize)
+        .is_err()
+    {
+        ffpmsg_str("Unable to allocate memory for row selection");
+        ffcprs(&mut lParse);
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+    /* resize also zero terminates the array */
+    row_flags.resize((inExt.numRows + 1) as usize, 0);
+
+    Info.dataPtr = row_flags.as_mut_ptr().cast::<c_void>();
+    Info.nullPtr = ptr::null_mut();
+    Info.maxRows = inExt.numRows as c_long;
+    Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
+
+    if constant != 0 {
+        /*  Set all rows to the same value from constant result  */
+
+        result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
+
+        for ntodo in 0..inExt.numRows {
+            row_flags[ntodo as usize] = result;
+        }
+        nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
+    } else {
+        let col_slice = &mut lParse.colData[..];
+        ffiter_safe(
+            lParse.nCols,
+            col_slice,
             0,
-            expr,
-            MAXDIMS,
-            &mut Info.datatype,
-            &mut nelem,
-            &mut naxis,
-            &mut naxes,
-            &mut lParse,
+            0,
+            fits_parser_workfn,
+            core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
             status,
-        ) != 0
-        {
-            ffcprs(&mut lParse);
-            return *status;
-        }
+        );
 
-        if nelem < 0 {
-            constant = 1;
-            nelem = -nelem;
-        } else {
-            constant = 0;
-        }
+        nGood = 0;
 
-        /**********************************************************************/
-        /* Make sure expression evaluates to the right type... logical scalar */
-        /**********************************************************************/
+        for ntodo in 0..inExt.numRows {
+            if row_flags[ntodo as usize] != 0 {
+                nGood += 1;
+            }
+        }
+    }
 
-        if Info.datatype != TLOGICAL || nelem != 1 {
-            ffcprs(&mut lParse);
-            ffpmsg_str("Expression does not evaluate to a logical scalar.");
-            *status = PARSE_BAD_TYPE;
-            return *status;
-        }
+    if *status != 0 {
+        /* Error... Do nothing */
+    } else {
+        rdlen = inExt.rowLength as c_long;
 
-        /***********************************************************/
-        /*  Extract various table information from each extension  */
-        /***********************************************************/
-
-        if infptr.HDUposition != (infptr.Fptr).curhdu {
-            ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
-        }
-        if *status != 0 {
-            ffcprs(&mut lParse);
-            return *status;
-        }
-        inExt.rowLength = (infptr.Fptr).rowlength as LONGLONG;
-        inExt.numRows = (infptr.Fptr).numrows;
-        inExt.heapSize = (infptr.Fptr).heapsize;
-        if inExt.numRows == 0 {
-            /* Nothing to copy */
-            ffcprs(&mut lParse);
-            return *status;
-        }
-
-        if outfptr.HDUposition != (outfptr.Fptr).curhdu {
-            ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
-        }
-        if (outfptr.Fptr).datastart < 0 {
-            ffrdef_safe(outfptr, status);
-        }
-        if *status != 0 {
-            ffcprs(&mut lParse);
-            return *status;
-        }
-        outExt.rowLength = (outfptr.Fptr).rowlength as LONGLONG;
-        outExt.numRows = (outfptr.Fptr).numrows;
-        if outExt.numRows == 0 {
-            (outfptr.Fptr).heapsize = 0;
-        }
-        outExt.heapSize = (outfptr.Fptr).heapsize;
-
-        if inExt.rowLength != outExt.rowLength {
-            ffpmsg_str("Output table has different row length from input");
-            ffcprs(&mut lParse);
-            *status = PARSE_BAD_OUTPUT;
-            return *status;
-        }
-
-        /***********************************/
-        /*  Fill out Info data for parser  */
-        /***********************************/
-
-        /* The row-selection flags are owned here and handed to the parser as a
-        raw pointer, so the error returns below cannot leak them. Everything
-        after this point reaches them through Info.dataPtr, never through
-        `row_flags` directly, so the pointer stays the only live borrow. */
-        let mut row_flags: Vec<c_char> = Vec::new();
-        if row_flags
-            .try_reserve_exact((inExt.numRows + 1) as usize)
+        if buffer
+            .try_reserve_exact(cmp::max(500000, rdlen) as usize)
             .is_err()
         {
-            ffpmsg_str("Unable to allocate memory for row selection");
             ffcprs(&mut lParse);
             *status = MEMORY_ALLOCATION;
             return *status;
-        }
-        /* resize also zero terminates the array */
-        row_flags.resize((inExt.numRows + 1) as usize, 0);
-
-        Info.dataPtr = row_flags.as_mut_ptr().cast::<c_void>();
-        Info.nullPtr = ptr::null_mut();
-        Info.maxRows = inExt.numRows as c_long;
-        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
-
-        if constant != 0 {
-            /*  Set all rows to the same value from constant result  */
-
-            result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
-
-            for ntodo in 0..inExt.numRows {
-                *Info.dataPtr.cast::<c_char>().add(ntodo as usize) = result;
-            }
-            nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
         } else {
-            let col_slice = &mut lParse.colData[..];
-            ffiter_safe(
-                lParse.nCols,
-                col_slice,
-                0,
-                0,
-                fits_parser_workfn,
-                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
+            buffer.resize(cmp::max(500000, rdlen) as usize, 0);
+        }
+
+        maxrows = cmp::max(500000 / rdlen, 1);
+        nbuff = 0;
+        inloc = 1;
+        outloc = (outExt.numRows + 1) as c_long;
+        if outloc > 1 {
+            ffirow_safe(outfptr, outExt.numRows, nGood as LONGLONG, status);
+        }
+
+        loop {
+            if row_flags[(inloc - 1) as usize] != 0 {
+                let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
+
+                ffgtbb_safe(
+                    infptr,
+                    inloc as LONGLONG,
+                    1,
+                    rdlen as LONGLONG,
+                    buffer_part,
+                    status,
+                );
+                nbuff += 1;
+                if nbuff == maxrows {
+                    ffptbb_safe(
+                        outfptr,
+                        outloc as LONGLONG,
+                        1,
+                        (rdlen * nbuff) as LONGLONG,
+                        &buffer,
+                        status,
+                    );
+                    outloc += nbuff;
+                    nbuff = 0;
+                }
+            }
+            inloc += 1;
+            if *status != 0 || (inloc as LONGLONG) > inExt.numRows {
+                break;
+            }
+        }
+
+        if nbuff != 0 {
+            ffptbb_safe(
+                outfptr,
+                outloc as LONGLONG,
+                1,
+                (rdlen * nbuff) as LONGLONG,
+                &buffer,
+                status,
+            );
+            outloc += nbuff;
+        }
+
+        if inExt.heapSize != 0 && nGood != 0 {
+            /* Copy heap, if it exists and at least one row copied */
+
+            /********************************************************/
+            /*  Get location information from the output extension  */
+            /********************************************************/
+
+            if outfptr.HDUposition != (outfptr.Fptr).curhdu {
+                ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
+            }
+            outExt.dataStart = (outfptr.Fptr).datastart;
+            outExt.heapStart = (outfptr.Fptr).heapstart;
+
+            /*************************************************/
+            /*  Insert more space into outfptr if necessary  */
+            /*************************************************/
+
+            hsize = outExt.heapStart + outExt.heapSize;
+            freespace = ((((hsize + (BL!() - 1)) / BL!()) * BL!()) - hsize) as c_long;
+            ntodo = inExt.heapSize;
+
+            if (freespace as LONGLONG - ntodo) < 0 {
+                /* not enough existing space? */
+                ntodo = (ntodo - (freespace as LONGLONG) + (BL!() - 1)) / BL!(); /* number of blocks  */
+                ffiblk(outfptr, ntodo as c_long, 1, status); /* insert the blocks */
+            }
+            ffukyj_safe(
+                outfptr,
+                cs!(c"PCOUNT"),
+                inExt.heapSize + outExt.heapSize,
+                None,
                 status,
             );
 
-            nGood = 0;
+            /*******************************************************/
+            /*  Get location information from the input extension  */
+            /*******************************************************/
 
-            for ntodo in 0..inExt.numRows {
-                if (*Info.dataPtr.cast::<c_char>().add(ntodo as usize)) != 0 {
-                    nGood += 1;
-                }
+            if infptr.HDUposition != (infptr.Fptr).curhdu {
+                ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
             }
-        }
+            inExt.dataStart = (infptr.Fptr).datastart;
+            inExt.heapStart = (infptr.Fptr).heapstart;
 
-        if *status != 0 {
-            /* Error... Do nothing */
-        } else {
-            rdlen = inExt.rowLength as c_long;
+            /**********************************/
+            /*  Finally copy heap to outfptr  */
+            /**********************************/
 
-            if buffer
-                .try_reserve_exact(cmp::max(500000, rdlen) as usize)
-                .is_err()
-            {
-                ffcprs(&mut lParse);
-                *status = MEMORY_ALLOCATION;
-                return *status;
-            } else {
-                buffer.resize(cmp::max(500000, rdlen) as usize, 0);
-            }
+            ntodo = inExt.heapSize;
+            inbyteloc = inExt.heapStart + inExt.dataStart;
+            outbyteloc = outExt.heapStart + outExt.dataStart + outExt.heapSize;
 
-            maxrows = cmp::max(500000 / rdlen, 1);
-            nbuff = 0;
-            inloc = 1;
-            if core::ptr::eq(infptr, outfptr) {
-                /* Skip initial good rows if input==output file */
-                while *Info.dataPtr.cast::<c_char>().add((inloc - 1) as usize) != 0 {
-                    inloc += 1;
-                }
-                outloc = inloc;
-            } else {
-                outloc = (outExt.numRows + 1) as c_long;
-                if outloc > 1 {
-                    ffirow_safe(outfptr, outExt.numRows, nGood as LONGLONG, status);
-                }
-            }
-
-            loop {
-                if *Info.dataPtr.cast::<c_char>().add((inloc - 1) as usize) != 0 {
-                    let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
-
-                    ffgtbb_safe(
-                        infptr,
-                        inloc as LONGLONG,
-                        1,
-                        rdlen as LONGLONG,
-                        buffer_part,
-                        status,
-                    );
-                    nbuff += 1;
-                    if nbuff == maxrows {
-                        ffptbb_safe(
-                            outfptr,
-                            outloc as LONGLONG,
-                            1,
-                            (rdlen * nbuff) as LONGLONG,
-                            &buffer,
-                            status,
-                        );
-                        outloc += nbuff;
-                        nbuff = 0;
-                    }
-                }
-                inloc += 1;
-                if *status != 0 || (inloc as LONGLONG) > inExt.numRows {
-                    break;
-                }
-            }
-
-            if nbuff != 0 {
-                ffptbb_safe(
-                    outfptr,
-                    outloc as LONGLONG,
-                    1,
-                    (rdlen * nbuff) as LONGLONG,
-                    &buffer,
+            while ntodo != 0 && *status == 0 {
+                rdlen = cmp::min(ntodo, 500000) as c_long;
+                ffmbyt_safe(infptr, inbyteloc, REPORT_EOF, status);
+                ffgbyt(
+                    infptr,
+                    rdlen as LONGLONG,
+                    &mut buffer[..rdlen as usize],
                     status,
                 );
-                outloc += nbuff;
-            }
-
-            if core::ptr::eq(infptr, outfptr) {
-                if (outloc as LONGLONG) <= inExt.numRows {
-                    ffdrow_safe(
-                        infptr,
-                        outloc as LONGLONG,
-                        inExt.numRows - outloc as LONGLONG + 1,
-                        status,
-                    );
-                }
-            } else if inExt.heapSize != 0 && nGood != 0 {
-                /* Copy heap, if it exists and at least one row copied */
-
-                /********************************************************/
-                /*  Get location information from the output extension  */
-                /********************************************************/
-
-                if outfptr.HDUposition != (outfptr.Fptr).curhdu {
-                    ffmahd_safe(outfptr, (outfptr.HDUposition) + 1, None, status);
-                }
-                outExt.dataStart = (outfptr.Fptr).datastart;
-                outExt.heapStart = (outfptr.Fptr).heapstart;
-
-                /*************************************************/
-                /*  Insert more space into outfptr if necessary  */
-                /*************************************************/
-
-                hsize = outExt.heapStart + outExt.heapSize;
-                freespace = ((((hsize + (BL!() - 1)) / BL!()) * BL!()) - hsize) as c_long;
-                ntodo = inExt.heapSize;
-
-                if (freespace as LONGLONG - ntodo) < 0 {
-                    /* not enough existing space? */
-                    ntodo = (ntodo - (freespace as LONGLONG) + (BL!() - 1)) / BL!(); /* number of blocks  */
-                    ffiblk(outfptr, ntodo as c_long, 1, status); /* insert the blocks */
-                }
-                ffukyj_safe(
+                ffmbyt_safe(outfptr, outbyteloc, IGNORE_EOF, status);
+                ffpbyt(
                     outfptr,
-                    cs!(c"PCOUNT"),
-                    inExt.heapSize + outExt.heapSize,
-                    None,
+                    rdlen as LONGLONG,
+                    &buffer[..rdlen as usize],
                     status,
                 );
+                inbyteloc += rdlen as LONGLONG;
+                outbyteloc += rdlen as LONGLONG;
+                ntodo -= rdlen as LONGLONG;
+            }
 
-                /*******************************************************/
-                /*  Get location information from the input extension  */
-                /*******************************************************/
+            /***********************************************************/
+            /*  But must update DES if data is being appended to a     */
+            /*  pre-existing heap space.  Edit each new entry in file  */
+            /***********************************************************/
 
-                if infptr.HDUposition != (infptr.Fptr).curhdu {
-                    ffmahd_safe(infptr, (infptr.HDUposition) + 1, None, status);
-                }
-                inExt.dataStart = (infptr.Fptr).datastart;
-                inExt.heapStart = (infptr.Fptr).heapstart;
-
-                /**********************************/
-                /*  Finally copy heap to outfptr  */
-                /**********************************/
-
-                ntodo = inExt.heapSize;
-                inbyteloc = inExt.heapStart + inExt.dataStart;
-                outbyteloc = outExt.heapStart + outExt.dataStart + outExt.heapSize;
-
-                while ntodo != 0 && *status == 0 {
-                    rdlen = cmp::min(ntodo, 500000) as c_long;
-                    ffmbyt_safe(infptr, inbyteloc, REPORT_EOF, status);
-                    ffgbyt(
-                        infptr,
-                        rdlen as LONGLONG,
-                        &mut buffer[..rdlen as usize],
-                        status,
-                    );
-                    ffmbyt_safe(outfptr, outbyteloc, IGNORE_EOF, status);
-                    ffpbyt(
-                        outfptr,
-                        rdlen as LONGLONG,
-                        &buffer[..rdlen as usize],
-                        status,
-                    );
-                    inbyteloc += rdlen as LONGLONG;
-                    outbyteloc += rdlen as LONGLONG;
-                    ntodo -= rdlen as LONGLONG;
-                }
-
-                /***********************************************************/
-                /*  But must update DES if data is being appended to a     */
-                /*  pre-existing heap space.  Edit each new entry in file  */
-                /***********************************************************/
-
-                if outExt.heapSize != 0 {
-                    let mut repeat: LONGLONG = 0;
-                    let mut offset: LONGLONG = 0;
-                    for i in 1..=(outfptr.Fptr).tfield {
-                        if (*(outfptr.Fptr).tableptr.add((i - 1) as usize)).tdatatype < 0 {
-                            for j in (outExt.numRows + 1)..=(outExt.numRows + nGood as LONGLONG) {
-                                ffgdesll_safe(
-                                    outfptr,
-                                    i,
-                                    j,
-                                    Some(&mut repeat),
-                                    Some(&mut offset),
-                                    status,
-                                );
-                                offset += outExt.heapSize;
-                                ffpdes_safe(outfptr, i, j, repeat, offset, status);
-                            }
+            if outExt.heapSize != 0 {
+                let mut repeat: LONGLONG = 0;
+                let mut offset: LONGLONG = 0;
+                for i in 1..=(outfptr.Fptr).tfield {
+                    if outfptr.Fptr.get_tableptr_as_slice()[(i - 1) as usize].tdatatype < 0 {
+                        for j in (outExt.numRows + 1)..=(outExt.numRows + nGood as LONGLONG) {
+                            ffgdesll_safe(
+                                outfptr,
+                                i,
+                                j,
+                                Some(&mut repeat),
+                                Some(&mut offset),
+                                status,
+                            );
+                            offset += outExt.heapSize;
+                            ffpdes_safe(outfptr, i, j, repeat, offset, status);
                         }
                     }
                 }
-            } /*  End of HEAP copy  */
+            }
+        } /*  End of HEAP copy  */
+    }
+
+    ffcprs(&mut lParse);
+
+    ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// Evaluate an expression on all rows of a table, deleting the FALSE rows
+/// (preserving the TRUE ones) in place.
+///
+/// This is the C's `fits_select_rows(fptr, fptr, ...)` case.  The C API allows
+/// the same `fitsfile*` for input and output; safe Rust cannot hand out two
+/// `&mut fitsfile` to one handle, so that case gets its own function and the
+/// `extern "C"` wrapper dispatches on pointer identity.  See [`ffsrow_safe`]
+/// for the two-file form.
+pub fn ffsrow_inplace_safe(
+    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
+    expr: &[c_char],     /* I - Boolean expression                   */
+    status: &mut c_int,  /* O - Error status                         */
+) -> c_int {
+    let mut Info: parseInfo = Default::default();
+    let mut naxis: c_int = 0;
+    let mut constant: c_int = 0;
+    let mut nelem: c_long = 0;
+    let mut rdlen: c_long = 0;
+    let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
+    let mut maxrows: c_long = 0;
+    let mut nbuff: c_long = 0;
+    let mut nGood: c_long = 0;
+    let mut inloc: c_long = 0;
+    let mut outloc: c_long = 0;
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut result: c_char = 0;
+
+    #[derive(Default)]
+    struct in_out_ext {
+        rowLength: LONGLONG,
+        numRows: LONGLONG,
+        heapSize: LONGLONG,
+        dataStart: LONGLONG,
+        heapStart: LONGLONG,
+    }
+
+    let mut inExt: in_out_ext = in_out_ext::default();
+    let mut outExt: in_out_ext = in_out_ext::default();
+
+    let mut lParse: ParseData = ParseData::default();
+
+    if *status != 0 {
+        return *status;
+    }
+
+    if ffiprs(
+        fptr,
+        0,
+        expr,
+        MAXDIMS,
+        &mut Info.datatype,
+        &mut nelem,
+        &mut naxis,
+        &mut naxes,
+        &mut lParse,
+        status,
+    ) != 0
+    {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+
+    if nelem < 0 {
+        constant = 1;
+        nelem = -nelem;
+    } else {
+        constant = 0;
+    }
+
+    /**********************************************************************/
+    /* Make sure expression evaluates to the right type... logical scalar */
+    /**********************************************************************/
+
+    if Info.datatype != TLOGICAL || nelem != 1 {
+        ffcprs(&mut lParse);
+        ffpmsg_str("Expression does not evaluate to a logical scalar.");
+        *status = PARSE_BAD_TYPE;
+        return *status;
+    }
+
+    /***********************************************************/
+    /*  Extract various table information from each extension  */
+    /***********************************************************/
+
+    if fptr.HDUposition != (fptr.Fptr).curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+    if *status != 0 {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    inExt.rowLength = (fptr.Fptr).rowlength as LONGLONG;
+    inExt.numRows = (fptr.Fptr).numrows;
+    inExt.heapSize = (fptr.Fptr).heapsize;
+    if inExt.numRows == 0 {
+        /* Nothing to copy */
+        ffcprs(&mut lParse);
+        return *status;
+    }
+
+    if fptr.HDUposition != (fptr.Fptr).curhdu {
+        ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
+    }
+    if (fptr.Fptr).datastart < 0 {
+        ffrdef_safe(fptr, status);
+    }
+    if *status != 0 {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    outExt.rowLength = (fptr.Fptr).rowlength as LONGLONG;
+    outExt.numRows = (fptr.Fptr).numrows;
+    if outExt.numRows == 0 {
+        (fptr.Fptr).heapsize = 0;
+    }
+    outExt.heapSize = (fptr.Fptr).heapsize;
+
+    if inExt.rowLength != outExt.rowLength {
+        ffpmsg_str("Output table has different row length from input");
+        ffcprs(&mut lParse);
+        *status = PARSE_BAD_OUTPUT;
+        return *status;
+    }
+
+    /***********************************/
+    /*  Fill out Info data for parser  */
+    /***********************************/
+
+    /* The row-selection flags are owned here and handed to the parser as a
+    raw pointer, so the error returns below cannot leak them.  `Info.dataPtr`
+    is what `fits_parser_workfn` writes through during `ffiter_safe`; every
+    access from this function reads `row_flags` directly instead, so no raw
+    pointer into the Vec is live once the iterator has returned. */
+    let mut row_flags: Vec<c_char> = Vec::new();
+    if row_flags
+        .try_reserve_exact((inExt.numRows + 1) as usize)
+        .is_err()
+    {
+        ffpmsg_str("Unable to allocate memory for row selection");
+        ffcprs(&mut lParse);
+        *status = MEMORY_ALLOCATION;
+        return *status;
+    }
+    /* resize also zero terminates the array */
+    row_flags.resize((inExt.numRows + 1) as usize, 0);
+
+    Info.dataPtr = row_flags.as_mut_ptr().cast::<c_void>();
+    Info.nullPtr = ptr::null_mut();
+    Info.maxRows = inExt.numRows as c_long;
+    Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
+
+    if constant != 0 {
+        /*  Set all rows to the same value from constant result  */
+
+        result = (lParse.Nodes[lParse.resultNode as usize]).value.data.log();
+
+        for ntodo in 0..inExt.numRows {
+            row_flags[ntodo as usize] = result;
+        }
+        nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
+    } else {
+        let col_slice = &mut lParse.colData[..];
+        ffiter_safe(
+            lParse.nCols,
+            col_slice,
+            0,
+            0,
+            fits_parser_workfn,
+            core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
+            status,
+        );
+
+        nGood = 0;
+
+        for ntodo in 0..inExt.numRows {
+            if row_flags[ntodo as usize] != 0 {
+                nGood += 1;
+            }
+        }
+    }
+
+    if *status != 0 {
+        /* Error... Do nothing */
+    } else {
+        rdlen = inExt.rowLength as c_long;
+
+        if buffer
+            .try_reserve_exact(cmp::max(500000, rdlen) as usize)
+            .is_err()
+        {
+            ffcprs(&mut lParse);
+            *status = MEMORY_ALLOCATION;
+            return *status;
+        } else {
+            buffer.resize(cmp::max(500000, rdlen) as usize, 0);
         }
 
-        ffcprs(&mut lParse);
+        maxrows = cmp::max(500000 / rdlen, 1);
+        nbuff = 0;
+        inloc = 1;
+        /* Skip initial good rows, since input==output file */
+        while row_flags[(inloc - 1) as usize] != 0 {
+            inloc += 1;
+        }
+        outloc = inloc;
 
-        ffcmph_safe(outfptr, status); /* compress heap, deleting any orphaned data */
-        *status
+        loop {
+            if row_flags[(inloc - 1) as usize] != 0 {
+                let buffer_part = &mut buffer[((rdlen * nbuff) as usize)..];
+
+                ffgtbb_safe(
+                    fptr,
+                    inloc as LONGLONG,
+                    1,
+                    rdlen as LONGLONG,
+                    buffer_part,
+                    status,
+                );
+                nbuff += 1;
+                if nbuff == maxrows {
+                    ffptbb_safe(
+                        fptr,
+                        outloc as LONGLONG,
+                        1,
+                        (rdlen * nbuff) as LONGLONG,
+                        &buffer,
+                        status,
+                    );
+                    outloc += nbuff;
+                    nbuff = 0;
+                }
+            }
+            inloc += 1;
+            if *status != 0 || (inloc as LONGLONG) > inExt.numRows {
+                break;
+            }
+        }
+
+        if nbuff != 0 {
+            ffptbb_safe(
+                fptr,
+                outloc as LONGLONG,
+                1,
+                (rdlen * nbuff) as LONGLONG,
+                &buffer,
+                status,
+            );
+            outloc += nbuff;
+        }
+
+        if (outloc as LONGLONG) <= inExt.numRows {
+            ffdrow_safe(
+                fptr,
+                outloc as LONGLONG,
+                inExt.numRows - outloc as LONGLONG + 1,
+                status,
+            );
+        }
     }
+
+    ffcprs(&mut lParse);
+
+    ffcmph_safe(fptr, status); /* compress heap, deleting any orphaned data */
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -808,15 +1074,33 @@ pub unsafe extern "C" fn ffcalc(
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
-        let infptr = infptr.as_mut().expect(NULL_MSG);
-        let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
         raw_to_slice!(expr);
         raw_to_slice!(parName);
         raw_to_slice!(parInfo);
 
-        ffcalc_safe(infptr, expr, outfptr, parName, parInfo, status)
+        /* The C API allows infptr == outfptr; two `&mut fitsfile` to one handle
+        can never be legal, so the in-place case gets its own function and this
+        is the only place the identity test lives. */
+        if core::ptr::eq(infptr, outfptr) {
+            ffcalc_inplace_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                expr,
+                parName,
+                parInfo,
+                status,
+            )
+        } else {
+            ffcalc_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                expr,
+                outfptr.as_mut().expect(NULL_MSG),
+                parName,
+                parInfo,
+                status,
+            )
+        }
     }
 }
 
@@ -845,6 +1129,23 @@ pub fn ffcalc_safe(
         &[end],
         status,
     )
+}
+
+/*--------------------------------------------------------------------------*/
+/// In-place twin of [`ffcalc_safe`]: evaluate an expression for all rows of a
+/// table and write the result back into the *same* file.  Calls
+/// [`ffcalc_rng_inplace_safe`] with a row range of 1-MAX.
+pub fn ffcalc_inplace_safe(
+    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
+    expr: &[c_char],     /* I - Arithmetic expression                */
+    parName: &[c_char],  /* I - Name of output parameter             */
+    parInfo: &[c_char],  /* I - Extra information on parameter       */
+    status: &mut c_int,  /* O - Error status                         */
+) -> c_int {
+    let start: c_long = 1;
+    let end: c_long = LONG_MAX;
+
+    ffcalc_rng_inplace_safe(fptr, expr, parName, parInfo, 1, &[start], &[end], status)
 }
 
 /*--------------------------------------------------------------------------*/
@@ -878,15 +1179,35 @@ pub unsafe extern "C" fn ffcalc_rng(
         raw_to_slice!(expr);
         raw_to_slice!(parName);
         raw_to_slice!(parInfo);
-        let infptr = infptr.as_mut().expect(NULL_MSG);
-        let outfptr = outfptr.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
         let start = slice::from_raw_parts(start, nRngs as usize);
         let end = slice::from_raw_parts(end, nRngs as usize);
 
-        ffcalc_rng_safe(
-            infptr, expr, outfptr, parName, parInfo, nRngs, start, end, status,
-        )
+        /* The C API allows infptr == outfptr; see ffcalc above. */
+        if core::ptr::eq(infptr, outfptr) {
+            ffcalc_rng_inplace_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                expr,
+                parName,
+                parInfo,
+                nRngs,
+                start,
+                end,
+                status,
+            )
+        } else {
+            ffcalc_rng_safe(
+                infptr.as_mut().expect(NULL_MSG),
+                expr,
+                outfptr.as_mut().expect(NULL_MSG),
+                parName,
+                parInfo,
+                nRngs,
+                start,
+                end,
+                status,
+            )
+        }
     }
 }
 
@@ -904,6 +1225,8 @@ pub unsafe extern "C" fn ffcalc_rng(
 ///        constant, put result there, using parInfo as the new comment.    
 ///    (4) Else, create a new column with name parName and TFORM parInfo.   
 ///        If parInfo is NULL, use a default data type for the column.      
+/// NOTE: [`ffcalc_rng_inplace_safe`] is a copy of this body for the case where the
+/// caller passes one file as both input and output.  Any fix here belongs there too.
 pub fn ffcalc_rng_safe(
     infptr: &mut fitsfile,  /* I - Input FITS file                  */
     expr: &[c_char],        /* I - Arithmetic expression            */
@@ -1267,6 +1590,394 @@ pub fn ffcalc_rng_safe(
                 } else {
                     ffukys_safe(
                         outfptr,
+                        parName,
+                        result.value.data.text(),
+                        Some(parInfo),
+                        status,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    ffcprs(&mut lParse);
+    *status
+}
+
+/*--------------------------------------------------------------------------*/
+/// In-place twin of [`ffcalc_rng_safe`]: evaluate an expression over the rows
+/// of a table and write the result back into the *same* file.
+///
+/// This is the C's `fits_calculator_rng(fptr, expr, fptr, ...)` case.  The C API
+/// allows the same `fitsfile*` for input and output; safe Rust cannot hand out
+/// two `&mut fitsfile` to one handle, so that case gets its own function and the
+/// `extern "C"` wrapper dispatches on pointer identity.
+///
+/// NOTE: this body is a copy of [`ffcalc_rng_safe`] with `infptr`/`outfptr`
+/// collapsed to one handle.  Any fix to one belongs in the other.
+pub fn ffcalc_rng_inplace_safe(
+    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
+    expr: &[c_char],     /* I - Arithmetic expression            */
+    parName: &[c_char],  /* I - Name of output parameter         */
+    parInfo: &[c_char],  /* I - Extra information on parameter   */
+    nRngs: c_int,        /* I - Row range info                   */
+    start: &[c_long],    /* I - Row range info                   */
+    end: &[c_long],      /* I - Row range info                   */
+    status: &mut c_int,  /* O - Error status                     */
+) -> c_int {
+    let mut Info: parseInfo = Default::default();
+    let mut naxis: c_int = 0;
+    let constant: c_int;
+    let mut typecode: c_int = 0;
+    let mut newNullKwd: c_int = 0;
+    let mut nelem: c_long = 0;
+    let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
+    let mut repeat: c_long = 0;
+    let mut width: c_long = 0;
+    let col_cnt: c_int;
+    let mut colNo: c_int;
+    let result: &mut Node;
+    let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
+    let mut tform: [c_char; 16] = [0; 16];
+    let mut nullKwd: [c_char; 9] = [0; 9];
+    let mut tdimKwd: [c_char; 9] = [0; 9];
+    let mut lParse: ParseData = ParseData::default();
+
+    let mut parInfo = parInfo;
+    let mut parName = parName;
+
+    if *status != 0 {
+        return *status;
+    }
+
+    if ffiprs(
+        fptr,
+        0,
+        expr,
+        MAXDIMS,
+        &mut Info.datatype,
+        &mut nelem,
+        &mut naxis,
+        &mut naxes,
+        &mut lParse,
+        status,
+    ) != 0
+    {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+    if nelem < 0 {
+        constant = 1;
+        nelem = -nelem;
+    } else {
+        constant = 0;
+    }
+
+    Info.parseData = &raw mut lParse;
+    /*  Case (1): If column exists put it there  */
+
+    colNo = 0;
+    ffpmrk_safe(); /* prevent lack of column name from sullying the stack */
+    ffgcno_safe(fptr, CASEINSEN as c_int, parName, &mut colNo, status);
+    ffcmsg_safe();
+    if *status != 0 {
+        /*  Output column doesn't exist.  Test for keyword. */
+
+        /* Case (2): Does parName indicate result should be put into keyword */
+
+        *status = 0;
+        if parName[0] == b'#' as c_char {
+            if constant == 0 {
+                ffcprs(&mut lParse);
+                ffpmsg_str("Cannot put tabular result into keyword (ffcalc)");
+                *status = PARSE_BAD_TYPE;
+                return *status;
+            }
+            parName = &parName[1..]; /* Advance past '#' */
+            if (fits_strcasecmp(parName, cs!(c"HISTORY")) == 0
+                || fits_strcasecmp(parName, cs!(c"COMMENT")) == 0)
+                && Info.datatype != TSTRING
+            {
+                ffcprs(&mut lParse);
+                ffpmsg_str("HISTORY and COMMENT values must be strings (ffcalc)");
+                *status = PARSE_BAD_TYPE;
+                return *status;
+            }
+        } else if constant != 0 {
+            /* Case (3): Does a keyword named parName already exist */
+
+            if ffgcrd_safe(fptr, parName, &mut card, status) == KEY_NO_EXIST {
+                colNo = -1;
+            } else if *status != 0 {
+                ffcprs(&mut lParse);
+                return *status;
+            }
+        } else {
+            colNo = -1;
+        }
+
+        if colNo < 0 {
+            /* Case (4): Create new column */
+
+            *status = 0;
+            ffgncl_safe(fptr, &mut colNo, status);
+            colNo += 1;
+            if parInfo.is_empty() || parInfo[0] == 0 {
+                /*  Figure out best default column type  */
+                if lParse.hdutype == BINARY_TBL {
+                    int_snprintf!(&mut tform, 15, "{}", nelem);
+                    match Info.datatype {
+                        TLOGICAL => {
+                            strcat_safe(&mut tform, cs!(c"L"));
+                        }
+                        TLONG => {
+                            strcat_safe(&mut tform, cs!(c"J"));
+                        }
+                        TDOUBLE => {
+                            strcat_safe(&mut tform, cs!(c"D"));
+                        }
+                        TSTRING => {
+                            strcat_safe(&mut tform, cs!(c"A"));
+                        }
+                        TBIT => {
+                            strcat_safe(&mut tform, cs!(c"X"));
+                        }
+                        TLONGLONG => {
+                            strcat_safe(&mut tform, cs!(c"K"));
+                        }
+                        _ => {}
+                    }
+                } else {
+                    match Info.datatype {
+                        TLOGICAL => {
+                            ffcprs(&mut lParse);
+                            ffpmsg_str("Cannot create LOGICAL column in ASCII table");
+                            *status = NOT_BTABLE;
+                            return *status;
+                        }
+                        TLONG => {
+                            strcpy_safe(&mut tform, cs!(c"I11"));
+                        }
+                        TDOUBLE => {
+                            strcpy_safe(&mut tform, cs!(c"D23.15"));
+                        }
+                        TSTRING | TBIT => {
+                            int_snprintf!(&mut tform, 16, "A{}", nelem);
+                        }
+                        _ => {}
+                    }
+                }
+                parInfo = &tform;
+            } else if !((parInfo[0] as u8) as char).is_ascii_digit() && lParse.hdutype == BINARY_TBL
+            {
+                if Info.datatype == TBIT && parInfo[0] == b'B' as c_char {
+                    nelem = (nelem + 7) / 8;
+                }
+                int_snprintf!(
+                    &mut tform,
+                    16,
+                    "{}{}",
+                    nelem,
+                    core::str::from_utf8(cast_slice(parInfo)).unwrap_or("")
+                );
+                parInfo = &tform;
+            }
+            fficol_safe(fptr, colNo, parName, parInfo, status);
+
+            if naxis > 1 {
+                ffptdm_safe(fptr, colNo, naxis, &naxes[..naxis as usize], status);
+            }
+
+            /*  Setup TNULLn keyword in case NULLs are encountered  */
+
+            ffkeyn_safe(cs!(c"TNULL"), colNo, &mut nullKwd, status);
+            if ffgcrd_safe(fptr, &nullKwd, &mut card, status) == KEY_NO_EXIST {
+                *status = 0;
+                if lParse.hdutype == BINARY_TBL {
+                    let mut nullVal: LONGLONG = 0;
+                    fits_binary_tform(
+                        parInfo,
+                        Some(&mut typecode),
+                        Some(&mut repeat),
+                        Some(&mut width),
+                        status,
+                    );
+                    if typecode == TBYTE {
+                        nullVal = UCHAR_MAX;
+                    } else if typecode == TSHORT {
+                        nullVal = SHRT_MIN;
+                    } else if typecode == TINT {
+                        nullVal = INT_MIN;
+                    } else if typecode == TLONG {
+                        if core::mem::size_of::<c_long>() == 8 && core::mem::size_of::<c_int>() == 4
+                        {
+                            nullVal = INT_MIN;
+                        } else {
+                            nullVal = LONG_MIN;
+                        }
+                    } else if typecode == TLONGLONG {
+                        nullVal = LONGLONG_MIN;
+                    }
+
+                    if nullVal != 0 {
+                        ffpkyj_safe(fptr, &nullKwd, nullVal, Some(cs!(c"Null value")), status);
+                        fits_set_btblnull(fptr, colNo, nullVal, status);
+                        newNullKwd = 1;
+                    }
+                } else if lParse.hdutype == ASCII_TBL {
+                    ffpkys_safe(
+                        fptr,
+                        &nullKwd,
+                        cs!(c"NULL"),
+                        Some(cs!(c"Null value string")),
+                        status,
+                    );
+                    fits_set_atblnull(fptr, colNo, cs!(c"NULL"), status);
+                    newNullKwd = 1;
+                }
+            }
+        }
+    } else {
+        /********************************************************/
+        /*  Check if a TDIM keyword should be written/updated.  */
+        /********************************************************/
+
+        ffkeyn_safe(cs!(c"TDIM"), colNo, &mut tdimKwd, status);
+        ffgcrd_safe(fptr, &tdimKwd, &mut card, status);
+        if *status == 0 {
+            /*  TDIM exists, so update it with result's dimension  */
+            ffptdm_safe(fptr, colNo, naxis, &naxes[..naxis as usize], status);
+        } else if *status == KEY_NO_EXIST {
+            /*  TDIM does not exist, so clear error stack and     */
+            /*  write a TDIM only if result is multi-dimensional  */
+            *status = 0;
+            ffcmsg_safe();
+            if naxis > 1 {
+                ffptdm_safe(fptr, colNo, naxis, &naxes[..naxis as usize], status);
+            }
+        }
+        if *status != 0 {
+            /*  Either some other error happened in ffgcrd   */
+            /*  or one happened in ffptdm                    */
+            ffcprs(&mut lParse);
+            return *status;
+        }
+    }
+
+    if colNo > 0 {
+        /*  Output column exists (now)... put results into it  */
+
+        let mut anyNull: c_int = 0;
+        let mut nPerLp: c_int;
+        let mut i: c_int;
+        let mut totaln: c_long = 0;
+
+        ffgkyj_safe(fptr, cs!(c"NAXIS2"), &mut totaln, None, status);
+
+        /*************************************/
+        /* Create new iterator Output Column */
+        /*************************************/
+
+        col_cnt = lParse.nCols;
+        if fits_parser_allocateCol(&mut lParse, col_cnt, status) != 0 {
+            ffcprs(&mut lParse);
+            return *status;
+        }
+
+        fits_iter_set_by_num_safe(
+            &mut lParse.colData[col_cnt as usize],
+            fptr,
+            colNo,
+            0,
+            OUTPUT_COL,
+        );
+
+        lParse.nCols += 1;
+
+        for i in 0..nRngs {
+            Info.dataPtr = core::ptr::null_mut();
+            Info.maxRows = end[i as usize] - start[i as usize] + 1;
+
+            /*
+               If there is only 1 range, and it includes all the rows,
+               and there are 10 or more rows, then set nPerLp = 0 so
+               that the iterator function will dynamically choose the
+               most efficient number of rows to process in each loop.
+               Otherwise, set nPerLp to the number of rows in this range.
+            */
+
+            if (Info.maxRows >= 10) && (nRngs == 1) && (start[0] == 1) && (end[0] == totaln) {
+                nPerLp = 0;
+            } else {
+                nPerLp = Info.maxRows as c_int;
+            }
+
+            let colData_slice = &mut lParse.colData[..];
+            if ffiter_safe(
+                lParse.nCols,
+                colData_slice,
+                start[i as usize] - 1,
+                c_long::from(nPerLp),
+                fits_parser_workfn,
+                core::ptr::from_ref(&Info) as *mut c_void,
+                status,
+            ) == -1
+            {
+                *status = 0;
+            } else if *status != 0 {
+                ffcprs(&mut lParse);
+                return *status;
+            }
+            if Info.anyNull != 0 {
+                anyNull = 1;
+            }
+        }
+
+        if newNullKwd != 0 && anyNull == 0 {
+            ffdkey_safe(fptr, &nullKwd, status);
+        }
+    } else {
+        /* Put constant result into keyword */
+
+        result = &mut lParse.Nodes[lParse.resultNode as usize];
+        match Info.datatype {
+            TDOUBLE => {
+                ffukyd_safe(
+                    fptr,
+                    parName,
+                    result.value.data.dbl(),
+                    15,
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TLONG => {
+                ffukyj_safe(
+                    fptr,
+                    parName,
+                    result.value.data.lng() as LONGLONG,
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TLOGICAL => {
+                ffukyl_safe(
+                    fptr,
+                    parName,
+                    i32::from(result.value.data.log()),
+                    Some(parInfo),
+                    status,
+                );
+            }
+            TBIT | TSTRING => {
+                if fits_strcasecmp(parName, cs!(c"HISTORY")) == 0 {
+                    ffphis_safe(fptr, result.value.data.text(), status);
+                } else if fits_strcasecmp(parName, cs!(c"COMMENT")) == 0 {
+                    ffpcom_safe(fptr, result.value.data.text(), status);
+                } else {
+                    ffukys_safe(
+                        fptr,
                         parName,
                         result.value.data.text(),
                         Some(parInfo),
@@ -3290,212 +4001,211 @@ pub fn fffrwc_safe(
     time_status: &mut [c_char], /* O - Array of boolean results           */
     status: &mut c_int,         /* O - Error status                       */
 ) -> c_int {
-    unsafe {
-        let mut Info: parseInfo = Default::default();
-        let mut alen: c_long = 0;
-        let mut width: c_long = 0;
-        let mut parNo: c_int = 0;
-        let mut typecode: c_int = 0;
-        let mut naxis: c_int = 0;
-        let mut constant: c_int = 0;
-        let mut nCol: c_int = 0;
-        let mut nelem: c_long = 0;
-        let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
-        let mut result: c_char = 0;
-        let mut lParse: ParseData = ParseData::default();
+    let mut Info: parseInfo = Default::default();
+    let mut alen: c_long = 0;
+    let mut width: c_long = 0;
+    let mut parNo: c_int = 0;
+    let mut typecode: c_int = 0;
+    let mut naxis: c_int = 0;
+    let mut constant: c_int = 0;
+    let mut nCol: c_int = 0;
+    let mut nelem: c_long = 0;
+    let mut naxes: [c_long; MAXDIMS as usize] = [0; MAXDIMS as usize];
+    let mut result: c_char = 0;
+    let mut lParse: ParseData = ParseData::default();
 
-        if *status != 0 {
-            return *status;
-        }
-
-        if ffiprs(
-            fptr,
-            1,
-            expr,
-            MAXDIMS,
-            &mut Info.datatype,
-            &mut nelem,
-            &mut naxis,
-            &mut naxes,
-            &mut lParse,
-            status,
-        ) != 0
-        {
-            ffcprs(&mut lParse);
-            return *status;
-        }
-
-        fits_get_colnum(
-            fptr,
-            CASEINSEN.try_into().unwrap(),
-            timeCol,
-            &mut lParse.timeCol,
-            status,
-        );
-        fits_get_colnum(
-            fptr,
-            CASEINSEN.try_into().unwrap(),
-            parCol,
-            &mut lParse.parCol,
-            status,
-        );
-        fits_get_colnum(
-            fptr,
-            CASEINSEN.try_into().unwrap(),
-            valCol,
-            &mut lParse.valCol,
-            status,
-        );
-        if *status != 0 {
-            return *status;
-        }
-
-        if nelem < 0 {
-            constant = 1;
-            nelem = -nelem;
-            nCol = lParse.nCols;
-            lParse.nCols = 0; /*  Ignore all column references  */
-        } else {
-            constant = 0;
-        }
-
-        if Info.datatype != TLOGICAL || nelem != 1 {
-            ffcprs(&mut lParse);
-            ffpmsg_str("Expression does not evaluate to a logical scalar.");
-            *status = PARSE_BAD_TYPE;
-            return *status;
-        }
-
-        /*******************************************/
-        /* Allocate data arrays for each parameter */
-        /*******************************************/
-
-        /* The C wrote each array straight into lParse.colData[parNo].array.
-        `iteratorCol` is Copy here, so pulling the descriptor out into a local
-        and assigning through that -- as this used to -- set the field on a
-        copy that was then dropped: the allocation leaked and the parser saw
-        whatever array the descriptor already had. Index the vector directly.
-
-        The arrays are owned for the length of the call instead of malloc'd,
-        so the error return below and every path after it release them without
-        a cleanup loop. Pushing to these outer vectors moves the inner Vec
-        headers but not their heap data, so the pointers handed to colData
-        stay valid. */
-        let mut lng_arrays: Vec<Vec<c_long>> = Vec::new();
-        let mut dbl_arrays: Vec<Vec<c_double>> = Vec::new();
-        let mut str_blocks: Vec<Vec<c_char>> = Vec::new();
-        let mut str_ptrs: Vec<Vec<*mut c_char>> = Vec::new();
-
-        parNo = lParse.nCols;
-        while parNo > 0 {
-            parNo -= 1;
-            match lParse.colData[parNo as usize].datatype {
-                TLONG => {
-                    let mut v: Vec<c_long> = Vec::new();
-                    if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
-                        *status = MEMORY_ALLOCATION;
-                    } else {
-                        v.resize((ntimes + 1) as usize, 0);
-                        v[0] = 1234554321;
-                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
-                        lng_arrays.push(v);
-                    }
-                }
-                TDOUBLE => {
-                    let mut v: Vec<c_double> = Vec::new();
-                    if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
-                        *status = MEMORY_ALLOCATION;
-                    } else {
-                        v.resize((ntimes + 1) as usize, 0.0);
-                        v[0] = DOUBLENULLVALUE;
-                        lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
-                        dbl_arrays.push(v);
-                    }
-                }
-                TSTRING => {
-                    if fits_get_coltype(
-                        fptr,
-                        lParse.valCol,
-                        Some(&mut typecode),
-                        Some(&mut alen),
-                        Some(&mut width),
-                        status,
-                    ) == 0
-                    {
-                        alen += 1;
-                        let nelems = (ntimes + 1) as usize;
-                        let mut block: Vec<c_char> = Vec::new();
-                        let mut ptrs: Vec<*mut c_char> = Vec::new();
-                        if block.try_reserve_exact(nelems * alen as usize).is_err()
-                            || ptrs.try_reserve_exact(nelems).is_err()
-                        {
-                            *status = MEMORY_ALLOCATION;
-                        } else {
-                            /* one block, `alen` characters per element -- the
-                            zero fill also gives element 0 its empty string */
-                            block.resize(nelems * alen as usize, 0);
-                            let base = block.as_mut_ptr();
-                            for elem in 0..nelems {
-                                ptrs.push(base.add(elem * alen as usize));
-                            }
-                            lParse.colData[parNo as usize].array =
-                                ptrs.as_mut_ptr().cast::<c_void>();
-                            str_blocks.push(block);
-                            str_ptrs.push(ptrs);
-                        }
-                    }
-                }
-                _ => {}
-            }
-
-            if *status != 0 {
-                return *status;
-            }
-        }
-
-        /**********************************************************************/
-        /* Read data from columns needed for the expression and then parse it */
-        /**********************************************************************/
-
-        if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
-            if constant != 0 {
-                let result_node = &lParse.Nodes[lParse.resultNode as usize];
-                result = (result_node).value.data.log();
-                let mut elem = ntimes;
-                while elem > 0 {
-                    elem -= 1;
-                    time_status[elem as usize] = result;
-                }
-            } else {
-                Info.dataPtr = time_status.as_mut_ptr().cast::<c_void>();
-                Info.nullPtr = ptr::null_mut();
-                Info.maxRows = ntimes;
-                *status = fits_parser_workfn_safe(
-                    ntimes,
-                    0,
-                    1,
-                    ntimes,
-                    lParse.nCols,
-                    &mut lParse.colData,
-                    core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
-                );
-            }
-        }
-
-        /************/
-        /* Clean up */
-        /************/
-
-        /* No cleanup loop: lng_arrays/dbl_arrays/str_blocks/str_ptrs own the
-        column arrays and drop at the end of this function. */
-
-        if constant != 0 {
-            lParse.nCols = nCol;
-        }
-
-        ffcprs(&mut lParse);
-        *status
+    if *status != 0 {
+        return *status;
     }
+
+    if ffiprs(
+        fptr,
+        1,
+        expr,
+        MAXDIMS,
+        &mut Info.datatype,
+        &mut nelem,
+        &mut naxis,
+        &mut naxes,
+        &mut lParse,
+        status,
+    ) != 0
+    {
+        ffcprs(&mut lParse);
+        return *status;
+    }
+
+    fits_get_colnum(
+        fptr,
+        CASEINSEN.try_into().unwrap(),
+        timeCol,
+        &mut lParse.timeCol,
+        status,
+    );
+    fits_get_colnum(
+        fptr,
+        CASEINSEN.try_into().unwrap(),
+        parCol,
+        &mut lParse.parCol,
+        status,
+    );
+    fits_get_colnum(
+        fptr,
+        CASEINSEN.try_into().unwrap(),
+        valCol,
+        &mut lParse.valCol,
+        status,
+    );
+    if *status != 0 {
+        return *status;
+    }
+
+    if nelem < 0 {
+        constant = 1;
+        nelem = -nelem;
+        nCol = lParse.nCols;
+        lParse.nCols = 0; /*  Ignore all column references  */
+    } else {
+        constant = 0;
+    }
+
+    if Info.datatype != TLOGICAL || nelem != 1 {
+        ffcprs(&mut lParse);
+        ffpmsg_str("Expression does not evaluate to a logical scalar.");
+        *status = PARSE_BAD_TYPE;
+        return *status;
+    }
+
+    /*******************************************/
+    /* Allocate data arrays for each parameter */
+    /*******************************************/
+
+    /* The C wrote each array straight into lParse.colData[parNo].array.
+    `iteratorCol` is Copy here, so pulling the descriptor out into a local
+    and assigning through that -- as this used to -- set the field on a
+    copy that was then dropped: the allocation leaked and the parser saw
+    whatever array the descriptor already had. Index the vector directly.
+
+    The arrays are owned for the length of the call instead of malloc'd,
+    so the error return below and every path after it release them without
+    a cleanup loop. Pushing to these outer vectors moves the inner Vec
+    headers but not their heap data, so the pointers handed to colData
+    stay valid. */
+    let mut lng_arrays: Vec<Vec<c_long>> = Vec::new();
+    let mut dbl_arrays: Vec<Vec<c_double>> = Vec::new();
+    let mut str_blocks: Vec<Vec<c_char>> = Vec::new();
+    let mut str_ptrs: Vec<Vec<*mut c_char>> = Vec::new();
+
+    parNo = lParse.nCols;
+    while parNo > 0 {
+        parNo -= 1;
+        match lParse.colData[parNo as usize].datatype {
+            TLONG => {
+                let mut v: Vec<c_long> = Vec::new();
+                if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
+                    *status = MEMORY_ALLOCATION;
+                } else {
+                    v.resize((ntimes + 1) as usize, 0);
+                    v[0] = 1234554321;
+                    lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                    lng_arrays.push(v);
+                }
+            }
+            TDOUBLE => {
+                let mut v: Vec<c_double> = Vec::new();
+                if v.try_reserve_exact((ntimes + 1) as usize).is_err() {
+                    *status = MEMORY_ALLOCATION;
+                } else {
+                    v.resize((ntimes + 1) as usize, 0.0);
+                    v[0] = DOUBLENULLVALUE;
+                    lParse.colData[parNo as usize].array = v.as_mut_ptr().cast::<c_void>();
+                    dbl_arrays.push(v);
+                }
+            }
+            TSTRING => {
+                if fits_get_coltype(
+                    fptr,
+                    lParse.valCol,
+                    Some(&mut typecode),
+                    Some(&mut alen),
+                    Some(&mut width),
+                    status,
+                ) == 0
+                {
+                    alen += 1;
+                    let nelems = (ntimes + 1) as usize;
+                    let mut block: Vec<c_char> = Vec::new();
+                    let mut ptrs: Vec<*mut c_char> = Vec::new();
+                    if block.try_reserve_exact(nelems * alen as usize).is_err()
+                        || ptrs.try_reserve_exact(nelems).is_err()
+                    {
+                        *status = MEMORY_ALLOCATION;
+                    } else {
+                        /* one block, `alen` characters per element -- the
+                        zero fill also gives element 0 its empty string */
+                        block.resize(nelems * alen as usize, 0);
+                        let base = block.as_mut_ptr();
+                        for elem in 0..nelems {
+                            /* SAFETY: `block` holds nelems*alen chars, so every
+                            offset below is within the same allocation. */
+                            ptrs.push(unsafe { base.add(elem * alen as usize) });
+                        }
+                        lParse.colData[parNo as usize].array = ptrs.as_mut_ptr().cast::<c_void>();
+                        str_blocks.push(block);
+                        str_ptrs.push(ptrs);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        if *status != 0 {
+            return *status;
+        }
+    }
+
+    /**********************************************************************/
+    /* Read data from columns needed for the expression and then parse it */
+    /**********************************************************************/
+
+    if fits_uncompress_hkdata(&mut lParse, fptr, ntimes, times, status) == 0 {
+        if constant != 0 {
+            let result_node = &lParse.Nodes[lParse.resultNode as usize];
+            result = (result_node).value.data.log();
+            let mut elem = ntimes;
+            while elem > 0 {
+                elem -= 1;
+                time_status[elem as usize] = result;
+            }
+        } else {
+            Info.dataPtr = time_status.as_mut_ptr().cast::<c_void>();
+            Info.nullPtr = ptr::null_mut();
+            Info.maxRows = ntimes;
+            *status = fits_parser_workfn_safe(
+                ntimes,
+                0,
+                1,
+                ntimes,
+                lParse.nCols,
+                &mut lParse.colData,
+                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
+            );
+        }
+    }
+
+    /************/
+    /* Clean up */
+    /************/
+
+    /* No cleanup loop: lng_arrays/dbl_arrays/str_blocks/str_ptrs own the
+    column arrays and drop at the end of this function. */
+
+    if constant != 0 {
+        lParse.nCols = nCol;
+    }
+
+    ffcprs(&mut lParse);
+    *status
 }
 
 /*---------------------------------------------------------------------------*/
@@ -3948,6 +4658,11 @@ pub unsafe extern "C" fn fits_pixel_filter(
 /// Apply pixel filtering operations (safe version)
 /* Evaluate an expression using the data in the input FITS file(s)          */
 /*--------------------------------------------------------------------------*/
+/// # Safety
+/// `PixelFilter` is a C struct of raw pointers (`tag: *mut *mut c_char`,
+/// `ifptr: *mut *mut fitsfile`, `ofptr: *mut fitsfile`, `expression`), so the body
+/// is raw-pointer work throughout and the block is genuinely function-wide.  Narrowing
+/// it means changing `PixelFilter` itself, not this function.
 pub fn fits_pixel_filter_safer(
     filter: &mut PixelFilter, /* I - pixel filter structure */
     status: &mut c_int,       /* IO - error status */
@@ -4335,10 +5050,8 @@ pub fn fits_pixel_filter_safer(
                     );
                 }
                 TBIT | TSTRING => {
-                    let str_val = core::slice::from_raw_parts(
-                        result.value.data.text().as_ptr(),
-                        strlen_safe(result.value.data.text()),
-                    );
+                    let text = result.value.data.text();
+                    let str_val = &text[..strlen_safe(text)];
                     ffukys_safe(
                         outfptr.as_mut().unwrap(),
                         par_name,
@@ -6582,11 +7295,9 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 2.5"),
-                unsafe { &mut *fp_self },
                 &cc("DOUBLECOL"),
                 &cc(""),
                 &mut status,
@@ -6621,11 +7332,9 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL + 100"),
-                unsafe { &mut *fp_self },
                 &cc("FLOATCOL"),
                 &cc(""),
                 &mut status,
@@ -6659,11 +7368,9 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 3.14159"),
-                unsafe { &mut *fp_self },
                 &cc("NEWCOL"),
                 &cc("1D"),
                 &mut status,
@@ -6696,11 +7403,9 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0.0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("3.14159"),
-                unsafe { &mut *fp_self },
                 &cc("#MYCONST"),
                 &cc(""),
                 &mut status,
@@ -6725,11 +7430,9 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL > 5"),
-                unsafe { &mut *fp_self },
                 &cc("BIGVAL"),
                 &cc("1L"),
                 &mut status,
@@ -6764,11 +7467,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("'test'"),
-                unsafe { &mut *fp_self },
                 &cc("STRCOL2"),
                 &cc("4A"),
                 &mut status,
@@ -6805,11 +7506,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 2"),
-                unsafe { &mut *fp_self },
                 &cc("#BADKEY"),
                 &cc(""),
                 &mut status,
@@ -6830,11 +7529,9 @@ mod tests {
             let mut results = [0u8; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL"),
-                unsafe { &mut *fp_self },
                 &cc("BYTECOL"),
                 &cc("1B"),
                 &mut status,
@@ -6872,11 +7569,9 @@ mod tests {
             let mut results = [0i16; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 100"),
-                unsafe { &mut *fp_self },
                 &cc("SHORTCOL"),
                 &cc("1I"),
                 &mut status,
@@ -6915,11 +7610,9 @@ mod tests {
             let mut results = [0 as LONGLONG; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 1000000000"),
-                unsafe { &mut *fp_self },
                 &cc("BIGCOL"),
                 &cc("1K"),
                 &mut status,
@@ -6957,11 +7650,9 @@ mod tests {
             let mut results = [0 as c_int; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL + 500"),
-                unsafe { &mut *fp_self },
                 &cc("INTCOL2"),
                 &cc("J"),
                 &mut status,
@@ -6997,15 +7688,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("42"),
-                unsafe { &mut *fp_self },
-                &cc("#INTKEY"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("42"), &cc("#INTKEY"), &cc(""), &mut status);
             assert_eq!(status, 0);
 
             fits_read_key_lng(&mut f, &cc("INTKEY"), &mut keyval, None, &mut status);
@@ -7023,15 +7706,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("1==1"),
-                unsafe { &mut *fp_self },
-                &cc("#LOGKEY"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("1==1"), &cc("#LOGKEY"), &cc(""), &mut status);
             assert_eq!(status, 0);
 
             fits_read_key_log(&mut f, &cc("LOGKEY"), &mut keyval, None, &mut status);
@@ -7049,15 +7724,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut keyval = [0 as c_char; FLEN_VALUE];
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("'hello'"),
-                unsafe { &mut *fp_self },
-                &cc("#STRKEY"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("'hello'"), &cc("#STRKEY"), &cc(""), &mut status);
             assert_eq!(status, 0);
 
             fits_read_key_str(&mut f, &cc("STRKEY"), &mut keyval, None, &mut status);
@@ -7074,11 +7741,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("'Test history entry'"),
-                unsafe { &mut *fp_self },
                 &cc("#HISTORY"),
                 &cc(""),
                 &mut status,
@@ -7095,11 +7760,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("'Test comment entry'"),
-                unsafe { &mut *fp_self },
                 &cc("#COMMENT"),
                 &cc(""),
                 &mut status,
@@ -7116,15 +7779,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("42"),
-                unsafe { &mut *fp_self },
-                &cc("#HISTORY"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("42"), &cc("#HISTORY"), &cc(""), &mut status);
             assert_ne!(status, 0);
 
             status = 0;
@@ -7142,11 +7797,9 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL > 5"),
-                unsafe { &mut *fp_self },
                 &cc("LOGCOL2"),
                 &cc(""),
                 &mut status,
@@ -7182,15 +7835,7 @@ mod tests {
             let mut f = create_test_table(&to_buf(filename));
             let mut ncols = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("'test'"),
-                unsafe { &mut *fp_self },
-                &cc("STRCOL3"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("'test'"), &cc("STRCOL3"), &cc(""), &mut status);
             assert_eq!(status, 0);
 
             fits_get_num_cols(&mut f, &mut ncols, &mut status);
@@ -7229,11 +7874,9 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynull = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("FLOATCOL * 2.5"),
-                unsafe { &mut *fp_self },
                 &cc("DBLCOL"),
                 &cc(""),
                 &mut status,
@@ -7267,11 +7910,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("b11110000"),
-                unsafe { &mut *fp_self },
                 &cc("BITCOL"),
                 &cc(""),
                 &mut status,
@@ -7302,11 +7943,9 @@ mod tests {
             let mut results = [0 as LONGLONG; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 1000000000"),
-                unsafe { &mut *fp_self },
                 &cc("BIGNUM"),
                 &cc("1K"),
                 &mut status,
@@ -7355,11 +7994,9 @@ mod tests {
             fits_write_tdim(f.as_deref_mut().unwrap(), 1, 2, &naxes, &mut status);
             fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 9, &matdata, &mut status);
 
-            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
-            fits_calculator(
-                unsafe { &mut *fp },
+            ffcalc_inplace_safe(
+                f.as_deref_mut().unwrap(),
                 &cc("MATRIX * 2"),
-                unsafe { &mut *fp },
                 &cc("DOUBLED"),
                 &cc("9J"),
                 &mut status,
@@ -7399,11 +8036,9 @@ mod tests {
             let start: [c_long; 1] = [3];
             let end: [c_long; 1] = [7];
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator_rng(
-                unsafe { &mut *fp_self },
+            ffcalc_rng_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 10"),
-                unsafe { &mut *fp_self },
                 &cc("COMPUTED"),
                 &cc(""),
                 1,
@@ -7442,11 +8077,9 @@ mod tests {
             let start: [c_long; 2] = [1, 8];
             let end: [c_long; 2] = [3, 10];
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator_rng(
-                unsafe { &mut *fp_self },
+            ffcalc_rng_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 5"),
-                unsafe { &mut *fp_self },
                 &cc("RANGED"),
                 &cc(""),
                 2,
@@ -7679,13 +8312,7 @@ mod tests {
             fits_open_file(&mut f, &name, READWRITE, &mut status);
             fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
 
-            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
-            fits_select_rows(
-                unsafe { &mut *fp },
-                unsafe { &mut *fp },
-                &cc("INTCOL <= 5"),
-                &mut status,
-            );
+            ffsrow_inplace_safe(f.as_deref_mut().unwrap(), &cc("INTCOL <= 5"), &mut status);
             assert_eq!(status, 0);
 
             let mut nrows = 0;
@@ -8054,13 +8681,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_test_table(&to_buf(filename));
 
-            let fp: *mut fitsfile = &raw mut *f;
-            fits_select_rows(
-                unsafe { &mut *fp },
-                unsafe { &mut *fp },
-                &cc("INTCOL + 5"),
-                &mut status,
-            );
+            ffsrow_inplace_safe(&mut f, &cc("INTCOL + 5"), &mut status);
             assert_eq!(status, PARSE_BAD_TYPE);
 
             status = 0;
@@ -8078,11 +8699,9 @@ mod tests {
             let mut results = [0 as c_long; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL * 2"),
-                unsafe { &mut *fp_self },
                 &cc("DOUBLED"),
                 &cc(""),
                 &mut status,
@@ -8117,11 +8736,9 @@ mod tests {
             let mut results = [0.0f64; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("FLOATCOL + 0.5"),
-                unsafe { &mut *fp_self },
                 &cc("SHIFTED"),
                 &cc(""),
                 &mut status,
@@ -8153,15 +8770,7 @@ mod tests {
             let mut status = 0;
             let mut f = create_ascii_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
-                &cc("'test'"),
-                unsafe { &mut *fp_self },
-                &cc("NEWSTR"),
-                &cc(""),
-                &mut status,
-            );
+            ffcalc_inplace_safe(&mut f, &cc("'test'"), &cc("NEWSTR"), &cc(""), &mut status);
             assert_eq!(status, 0);
 
             let mut buffer = [0 as c_char; 20];
@@ -8193,11 +8802,9 @@ mod tests {
             let mut status = 0;
             let mut f = create_ascii_table(&to_buf(filename));
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("INTCOL > 5"),
-                unsafe { &mut *fp_self },
                 &cc("LOGCOL"),
                 &cc(""),
                 &mut status,
@@ -8386,11 +8993,9 @@ mod tests {
             );
             fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
 
-            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
-            fits_calculator(
-                unsafe { &mut *fp },
+            ffcalc_inplace_safe(
+                f.as_deref_mut().unwrap(),
                 &cc("VECCOL[99]"),
-                unsafe { &mut *fp },
                 &cc("BADCOL"),
                 &cc(""),
                 &mut status,
@@ -8423,11 +9028,9 @@ mod tests {
             );
             fits_write_col_lng(f.as_deref_mut().unwrap(), 1, 1, 1, 5, &vecdata, &mut status);
 
-            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
-            fits_calculator(
-                unsafe { &mut *fp },
+            ffcalc_inplace_safe(
+                f.as_deref_mut().unwrap(),
                 &cc("VECCOL[0]"),
-                unsafe { &mut *fp },
                 &cc("BADCOL"),
                 &cc(""),
                 &mut status,
@@ -8873,11 +9476,9 @@ mod tests {
             let mut nullarr = [0 as c_char; 10];
             let mut anynul = 0;
 
-            let fp_self: *mut fitsfile = &raw mut *f;
-            fits_calculator(
-                unsafe { &mut *fp_self },
+            ffcalc_inplace_safe(
+                &mut f,
                 &cc("(INTCOL = 3:7)"),
-                unsafe { &mut *fp_self },
                 &cc("INRANGE"),
                 &cc("1L"),
                 &mut status,
@@ -8916,10 +9517,8 @@ mod tests {
             fits_open_file(&mut f, &name, READWRITE, &mut status);
             fits_movabs_hdu(f.as_deref_mut().unwrap(), 2, None, &mut status);
 
-            let fp: *mut fitsfile = f.as_deref_mut().unwrap();
-            fits_select_rows(
-                unsafe { &mut *fp },
-                unsafe { &mut *fp },
+            ffsrow_inplace_safe(
+                f.as_deref_mut().unwrap(),
                 &cc("(INTCOL = 3:7)"),
                 &mut status,
             );
