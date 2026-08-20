@@ -2437,6 +2437,15 @@ pub(crate) fn fits_parser_workfn_safe(
             .parseData
             .as_mut()
             .unwrap();
+        /* `pv` borrows only the parseVariables field, while `pv.userInfo`
+        below points at the whole parseInfo containing it. That is not an
+        aliasing problem: every later access goes through
+        `(*(pv.userInfo)).field`, a raw place expression that touches only
+        that field's bytes, and borrows are tracked per location. The only
+        whole-struct `&mut parseInfo` retags are the two above, both taken
+        before `pv` exists. Keep it that way -- reintroducing a
+        `userPtr.cast::<parseInfo>().as_mut()` below this point would
+        invalidate `pv`. */
         let pv: &mut ParseStatusVariables =
             &mut userPtr.cast::<parseInfo>().as_mut().unwrap().parseVariables;
 
@@ -4239,6 +4248,11 @@ pub fn fffrwc_safe(
             work function reaches the same array through `parseData`. */
             let n_cols = lParse.nCols;
             let cols_ptr = lParse.colData.as_mut_ptr();
+            /* The work function's first act is
+               `userPtr.parseData.as_mut().unwrap()`, so this branch used to
+               unwrap a null: unlike every other caller, it never set the
+               field. Taken after cols_ptr, as elsewhere. */
+            Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
             *status = fits_parser_workfn_safe(
                 ntimes,
                 0,
@@ -5268,7 +5282,11 @@ fn find_column(
 
             colnum = -1;
             for i in 0..(*lParse.pixFilter).count {
-                if !(*lParse.pixFilter).tag.add(i as usize).is_null()
+                /* The C is `pixFilter->tag[i] &&`, i.e. it tests the element.
+                Testing `tag.add(i)` tests the address, which is never null for
+                a non-null tag, so the guard never fired and a NULL tag[i] went
+                straight into CStr::from_ptr below. */
+                if !(*lParse.pixFilter).tag.add(i as usize).read().is_null()
                     && fits_strcasecmp(
                         colName,
                         cast_slice::<u8, c_char>(
@@ -5308,7 +5326,10 @@ fn find_column(
             varInfo = &mut lParse.varData[col_cnt as usize];
             colIter = &mut lParse.colData[col_cnt as usize];
 
-            if (*lParse.pixFilter).ifptr.add(colnum as usize).is_null() {
+            /* As above: the C is `pixFilter->ifptr[colnum] == NULL`, testing
+            the element. The address form never fired, so a NULL ifptr[colnum]
+            reached the `&mut *fptr` below. */
+            if (*lParse.pixFilter).ifptr.add(colnum as usize).read().is_null() {
                 ffpmsg_str("find_column: PixelFilter missing image pointer");
                 lParse.status = COL_NOT_FOUND;
                 return P_ERROR;
