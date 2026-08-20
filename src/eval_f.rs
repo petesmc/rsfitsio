@@ -2437,6 +2437,15 @@ pub(crate) fn fits_parser_workfn_safe(
             .parseData
             .as_mut()
             .unwrap();
+        /* `pv` borrows only the parseVariables field, while `pv.userInfo`
+        below points at the whole parseInfo containing it. That is not an
+        aliasing problem: every later access goes through
+        `(*(pv.userInfo)).field`, a raw place expression that touches only
+        that field's bytes, and borrows are tracked per location. The only
+        whole-struct `&mut parseInfo` retags are the two above, both taken
+        before `pv` exists. Keep it that way -- reintroducing a
+        `userPtr.cast::<parseInfo>().as_mut()` below this point would
+        invalidate `pv`. */
         let pv: &mut ParseStatusVariables =
             &mut userPtr.cast::<parseInfo>().as_mut().unwrap().parseVariables;
 
