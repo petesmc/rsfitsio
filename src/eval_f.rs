@@ -92,7 +92,7 @@ use crate::getcols::{ffgcfs_safe, ffgcvs_safe};
 use crate::getkey::ffgkyj_safe;
 use crate::getkey::{ffgcrd_safe, ffgknjj_safe};
 use crate::modkey::{ffdkey_safe, ffukyd_safe, ffukyj_safe, ffukyl_safe, ffukys_safe};
-use crate::putcol::{ffiter_safe, fits_iter_set_by_num_safe};
+use crate::putcol::{ffiter_internal, fits_iter_set_by_num_safe};
 use crate::putkey::{ffpcom_safe, ffphis_safe, ffpkyj_safe, ffpkys_safe, ffptdm_safe};
 use crate::wrappers::{strcat_safe, strcpy_safe, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
@@ -229,16 +229,25 @@ pub fn fffrow_safe(
         Info.dataPtr = row_status.as_mut_ptr().cast::<c_void>();
         Info.nullPtr = ptr::null_mut();
         Info.maxRows = nrows;
+
+        /* The iterator's column array *is* `lParse.colData`, and the work
+        function reaches it again through `Info.parseData`. Take the raw
+        pointer to the array first, then (re-)establish `Info.parseData`:
+        borrowing `lParse` mutably would invalidate a raw pointer taken
+        before it. */
+        let n_cols = lParse.nCols;
+        let cols_ptr = lParse.colData.as_mut_ptr();
+        let cols_len = lParse.colData.len();
         Info.parseData = &raw mut lParse;
 
-        let colData_slice = &mut lParse.colData[..];
-        if ffiter_safe(
-            lParse.nCols,
-            colData_slice,
+        if ffiter_internal(
+            n_cols,
+            cols_ptr,
+            cols_len,
             firstrow - 1,
             0,
             fits_parser_workfn,
-            core::ptr::from_ref(&Info) as *mut c_void,
+            core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
             status,
         ) == -1
         {
@@ -447,7 +456,7 @@ pub fn ffsrow_safe(
 
     /* The row-selection flags are owned here and handed to the parser as a
     raw pointer, so the error returns below cannot leak them.  `Info.dataPtr`
-    is what `fits_parser_workfn` writes through during `ffiter_safe`; every
+    is what `fits_parser_workfn` writes through during `ffiter_internal`; every
     access from this function reads `row_flags` directly instead, so no raw
     pointer into the Vec is live once the iterator has returned. */
     let mut row_flags: Vec<c_char> = Vec::new();
@@ -478,10 +487,18 @@ pub fn ffsrow_safe(
         }
         nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
     } else {
-        let col_slice = &mut lParse.colData[..];
-        ffiter_safe(
-            lParse.nCols,
-            col_slice,
+        /* Take the raw pointer to `lParse.colData` before re-establishing
+        `Info.parseData`: the work function reaches the same array through
+        both, so neither may be derived from the other. */
+        let n_cols = lParse.nCols;
+        let cols_ptr = lParse.colData.as_mut_ptr();
+        let cols_len = lParse.colData.len();
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
+
+        ffiter_internal(
+            n_cols,
+            cols_ptr,
+            cols_len,
             0,
             0,
             fits_parser_workfn,
@@ -804,7 +821,7 @@ pub fn ffsrow_inplace_safe(
 
     /* The row-selection flags are owned here and handed to the parser as a
     raw pointer, so the error returns below cannot leak them.  `Info.dataPtr`
-    is what `fits_parser_workfn` writes through during `ffiter_safe`; every
+    is what `fits_parser_workfn` writes through during `ffiter_internal`; every
     access from this function reads `row_flags` directly instead, so no raw
     pointer into the Vec is live once the iterator has returned. */
     let mut row_flags: Vec<c_char> = Vec::new();
@@ -835,10 +852,18 @@ pub fn ffsrow_inplace_safe(
         }
         nGood = if result != 0 { inExt.numRows } else { 0 } as c_long;
     } else {
-        let col_slice = &mut lParse.colData[..];
-        ffiter_safe(
-            lParse.nCols,
-            col_slice,
+        /* Take the raw pointer to `lParse.colData` before re-establishing
+        `Info.parseData`: the work function reaches the same array through
+        both, so neither may be derived from the other. */
+        let n_cols = lParse.nCols;
+        let cols_ptr = lParse.colData.as_mut_ptr();
+        let cols_len = lParse.colData.len();
+        Info.parseData = core::ptr::from_mut::<ParseData>(&mut lParse);
+
+        ffiter_internal(
+            n_cols,
+            cols_ptr,
+            cols_len,
             0,
             0,
             fits_parser_workfn,
@@ -1039,12 +1064,17 @@ pub fn ffcrow_safe(
     Info.dataPtr = array.as_mut_ptr().cast::<c_void>();
     Info.nullPtr = nulval.cast_mut();
     Info.maxRows = nelements / nelem1;
+    /* Take the raw pointer to `lParse.colData` before re-establishing
+    `Info.parseData`: the work function reaches the same array through both. */
+    let n_cols = lParse.nCols;
+    let cols_ptr = lParse.colData.as_mut_ptr();
+    let cols_len = lParse.colData.len();
     Info.parseData = &raw mut lParse;
 
-    let colData_slice = &mut lParse.colData[..];
-    if ffiter_safe(
-        lParse.nCols,
-        colData_slice,
+    if ffiter_internal(
+        n_cols,
+        cols_ptr,
+        cols_len,
         firstrow - 1,
         0,
         fits_parser_workfn,
@@ -1525,14 +1555,22 @@ pub fn ffcalc_rng_safe(
                 nPerLp = Info.maxRows as c_int;
             }
 
-            let colData_slice = &mut lParse.colData[..];
-            if ffiter_safe(
-                lParse.nCols,
-                colData_slice,
+            /* Take the raw pointer to `lParse.colData` before re-establishing
+            `Info.parseData`: the work function reaches the same array through
+            both. */
+            let n_cols = lParse.nCols;
+            let cols_ptr = lParse.colData.as_mut_ptr();
+            let cols_len = lParse.colData.len();
+            Info.parseData = &raw mut lParse;
+
+            if ffiter_internal(
+                n_cols,
+                cols_ptr,
+                cols_len,
                 start[i as usize] - 1,
                 c_long::from(nPerLp),
                 fits_parser_workfn,
-                core::ptr::from_ref(&Info) as *mut c_void,
+                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 status,
             ) == -1
             {
@@ -1913,14 +1951,22 @@ pub fn ffcalc_rng_inplace_safe(
                 nPerLp = Info.maxRows as c_int;
             }
 
-            let colData_slice = &mut lParse.colData[..];
-            if ffiter_safe(
-                lParse.nCols,
-                colData_slice,
+            /* Take the raw pointer to `lParse.colData` before re-establishing
+            `Info.parseData`: the work function reaches the same array through
+            both. */
+            let n_cols = lParse.nCols;
+            let cols_ptr = lParse.colData.as_mut_ptr();
+            let cols_len = lParse.colData.len();
+            Info.parseData = &raw mut lParse;
+
+            if ffiter_internal(
+                n_cols,
+                cols_ptr,
+                cols_len,
                 start[i as usize] - 1,
                 c_long::from(nPerLp),
                 fits_parser_workfn,
-                core::ptr::from_ref(&Info) as *mut c_void,
+                core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
                 status,
             ) == -1
             {
@@ -2335,8 +2381,6 @@ pub(crate) extern "C" fn fits_parser_workfn(
     colData: *mut iteratorCol, /* IO- Column information/data        */
     userPtr: *mut c_void,      /* I - Data handling instructions     */
 ) -> c_int {
-    let colData = unsafe { core::slice::from_raw_parts_mut(colData, nCols as usize) };
-
     fits_parser_workfn_safe(totalrows, offset, firstrow, nrows, nCols, colData, userPtr)
 }
 
@@ -2367,9 +2411,14 @@ pub(crate) fn fits_parser_workfn_safe(
     mut firstrow: c_long,        /* I - First row of this iteration    */
     mut nrows: c_long,           /* I - Number of rows in this iter    */
     nCols: c_int,                /* I - Number of columns in use       */
-    colData: &mut [iteratorCol], /* IO- Column information/data        */
+    colData: *mut iteratorCol,   /* IO- Column information/data        */
     userPtr: *mut c_void,        /* I - Data handling instructions     */
 ) -> c_int {
+    /* `colData` is a raw pointer rather than a `&mut [iteratorCol]` because it
+    may be the very same array as `lParse.colData` -- the parser's own copy,
+    reached below through `userPtr->parseData`. An exclusive slice borrow held
+    across those accesses would be invalidated by them, so the array is
+    re-borrowed from `colData` at each point of use instead. */
     unsafe {
         let mut status: c_int = 0;
         let mut constant: c_int = 0;
@@ -2415,7 +2464,10 @@ pub(crate) fn fits_parser_workfn_safe(
             multiple parsers being managed at one time.) Upon the first
             call we make sure they match */
             for jj in 0..(nCols as usize) {
-                lParse.colData[jj].repeat = colData[jj].repeat;
+                /* Read through `colData` first: writing to `lParse.colData`
+                is the other route to (possibly) the same element. */
+                let repeat = (*colData.add(jj)).repeat;
+                lParse.colData[jj].repeat = repeat;
             }
 
             if (*(pv.userInfo)).maxRows > 0 {
@@ -2432,7 +2484,7 @@ pub(crate) fn fits_parser_workfn_safe(
             means that the first value will be a null value and the remaining
             values will be the where the outputs are placed */
             if (*(pv.userInfo)).dataPtr.is_null() {
-                outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
+                outcol = &mut *colData.add((nCols - 1) as usize); // Re-bind
                 if outcol.iotype == INPUT_COL {
                     ffpmsg_str("Output column for parser results not found!");
                     return PARSE_NO_OUTPUT;
@@ -2557,7 +2609,7 @@ pub(crate) fn fits_parser_workfn_safe(
         */
 
         if (*(pv.userInfo)).dataPtr.is_null() {
-            outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
+            outcol = &mut *colData.add((nCols - 1) as usize); // Re-bind
 
             /* First, reset Data pointer to start of output array, plus 1
             because the 0th element is the null value (cute undocumented
@@ -2612,7 +2664,13 @@ pub(crate) fn fits_parser_workfn_safe(
         let Data0: *mut c_void = pv.Data; /* Record starting point */
         nrows = cmp::min(nrows, (pv.lastRow) - firstrow + 1);
 
-        Setup_DataArrays(lParse, nCols, colData, firstrow, nrows);
+        Setup_DataArrays(
+            lParse,
+            nCols,
+            core::slice::from_raw_parts_mut(colData, nCols as usize),
+            firstrow,
+            nrows,
+        );
 
         /* Parser allocates arrays for each column and calculation it performs. */
         /* Limit number of rows processed during each pass to reduce memory     */
@@ -2966,11 +3024,7 @@ pub(crate) fn fits_parser_workfn_safe(
 
         // WARNING - THIS IS DANGEROUS. If nCols = 0, points to invalid memory.
         // In the case of the where expr = "#ROW > 2" there are no columns.
-        outcol = colData
-            .as_mut_ptr()
-            .offset((nCols - 1) as isize)
-            .as_mut()
-            .unwrap();
+        outcol = colData.offset((nCols - 1) as isize).as_mut().unwrap();
         // outcol = &mut colData[(nCols - 1) as usize]; // Re-bind
 
         if pv.Null != outcol.array
@@ -4181,13 +4235,17 @@ pub fn fffrwc_safe(
             Info.dataPtr = time_status.as_mut_ptr().cast::<c_void>();
             Info.nullPtr = ptr::null_mut();
             Info.maxRows = ntimes;
+            /* Address the columns through the vector's own pointer: the
+            work function reaches the same array through `parseData`. */
+            let n_cols = lParse.nCols;
+            let cols_ptr = lParse.colData.as_mut_ptr();
             *status = fits_parser_workfn_safe(
                 ntimes,
                 0,
                 1,
                 ntimes,
-                lParse.nCols,
-                &mut lParse.colData,
+                n_cols,
+                cols_ptr,
                 core::ptr::from_mut::<parseInfo>(&mut Info).cast::<c_void>(),
             );
         }
@@ -4293,14 +4351,20 @@ pub fn ffffrw_safer(
                 };
             };
         } else {
+            /* Take the raw pointer to `lParse.colData` before handing a raw
+            `lParse` to the work function: the work function reaches the same
+            array through both, so neither may be derived from the other. */
+            let n_cols = lParse.nCols;
+            let cols_ptr = lParse.colData.as_mut_ptr();
+            let cols_len = lParse.colData.len();
             let mut workData = ffffrw_workdata {
                 prownum: rownum,
                 lParse: core::ptr::from_mut::<ParseData>(&mut lParse),
             };
-            let colData_slice = &mut lParse.colData[..];
-            if ffiter_safe(
-                (lParse).nCols,
-                colData_slice,
+            if ffiter_internal(
+                n_cols,
+                cols_ptr,
+                cols_len,
                 0,
                 0,
                 ffffrw_work,
@@ -4966,20 +5030,25 @@ pub fn fits_pixel_filter_safer(
             );
 
             info.maxRows = -1;
+
+            /* Take the raw pointer to `lParse.colData` before establishing
+            `info.parseData`: the work function reaches the same array through
+            both. */
+            let n_cols = lParse.nCols;
+            let cols_ptr = lParse.colData.as_mut_ptr();
+            let cols_len = lParse.colData.len();
             info.parseData = &raw mut lParse;
 
-            if {
-                let colData_slice = &mut lParse.colData[..];
-                ffiter_safe(
-                    lParse.nCols,
-                    colData_slice,
-                    0,
-                    0,
-                    fits_parser_workfn,
-                    core::ptr::from_mut::<parseInfo>(&mut info).cast::<c_void>(),
-                    status,
-                )
-            } == -1
+            if ffiter_internal(
+                n_cols,
+                cols_ptr,
+                cols_len,
+                0,
+                0,
+                fits_parser_workfn,
+                core::ptr::from_mut::<parseInfo>(&mut info).cast::<c_void>(),
+                status,
+            ) == -1
             {
                 *status = 0;
             } else if *status != 0 {

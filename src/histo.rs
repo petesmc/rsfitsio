@@ -25,7 +25,7 @@ use crate::fitscore::ffpmsg_slice;
 use crate::fitscore::ffpmsg_str;
 use crate::fitscore::fits_copy_pixlist2image_safe;
 use crate::fitscore::fits_recalloc;
-use crate::putcol::ffiter_safe;
+use crate::putcol::ffiter_internal;
 use crate::putcol::fits_iter_set_by_num_safe;
 
 use crate::aliases::rust_api::*;
@@ -4565,7 +4565,6 @@ extern "C" fn histo_minmax_expr_workfn(
     colData: *mut iteratorCol, /* IO- Column information/data        */
     userPtr: *mut c_void,      /* I - Data handling instructions     */
 ) -> c_int {
-    let colData = unsafe { slice::from_raw_parts_mut(colData, nCols as usize) };
     let userPtr = unsafe { &mut *userPtr.cast::<histo_minmax_workfn_struct>() };
     let mut status: c_int = 0;
     let mut i: c_long;
@@ -4585,7 +4584,9 @@ extern "C" fn histo_minmax_expr_workfn(
         wf.Info.cast::<c_void>(),
     );
 
-    let outcol: &mut iteratorCol = &mut (colData[nCols as usize - 1]);
+    /* Re-borrow from `colData` only now: the parser work function above may
+    have reached the same array by its own route. */
+    let outcol: &mut iteratorCol = unsafe { &mut *colData.add(nCols as usize - 1) };
 
     /* The result of the calculation is in pv->Data, and null value in pv->Null */
     let data = unsafe {
@@ -4752,6 +4753,16 @@ fn fits_get_expr_minmax(
         return *status;
     }
 
+    /* Take the raw pointer to `lParse.colData` before re-establishing
+    `Info.parseData`: the work function reaches the same array through both, so
+    neither may be derived from the other. `Info.parseData` must also be written
+    before `&raw mut Info` is taken below, since writing to `Info` through the
+    local invalidates that pointer. */
+    let n_cols = lParse.nCols;
+    let cols_ptr = lParse.colData.as_mut_ptr();
+    let cols_len = lParse.colData.len();
+    Info.parseData = &raw mut lParse;
+
     /* Initialize the work function computing min/max */
     minmaxWorkFn.Info = &raw mut Info;
     minmaxWorkFn.datamax = DOUBLENULLVALUE;
@@ -4759,9 +4770,10 @@ fn fits_get_expr_minmax(
     minmaxWorkFn.ngood = 0;
     minmaxWorkFn.ntotal = 0;
 
-    if ffiter_safe(
-        lParse.nCols,
-        &mut lParse.colData,
+    if ffiter_internal(
+        n_cols,
+        cols_ptr,
+        cols_len,
         0,
         0,
         histo_minmax_expr_workfn
@@ -4876,13 +4888,18 @@ fn ffwritehisto_safe(
     let n_cols = histData.numIterCols;
 
     // TODO / WARNING this is super unsafe
-    unsafe {
+    {
+        /* `ffcalchist` reaches `histData.iterCols` again through `histData`
+        itself, so the iterator must not hold an exclusive borrow of it. */
+        /* Length first: `<[T]>::len` re-borrows the slice, which would
+        invalidate a pointer taken before it. */
+        let iterCols_len = histData.iterCols.len();
         let iterCols = histData.iterCols.as_mut_ptr();
-        let iterCols = slice::from_raw_parts_mut(iterCols, n_cols as usize);
 
-        ffiter_safe(
+        ffiter_internal(
             n_cols,
             iterCols,
+            iterCols_len,
             offset,
             rows_per_loop,
             ffcalchist
@@ -4914,7 +4931,10 @@ extern "C" fn ffcalchist(
     colpars: *mut iteratorCol,
     userPointer: *mut c_void,
 ) -> c_int {
-    let colpars = unsafe { &mut *colpars };
+    /* `colpars` is left as the raw pointer the iterator handed us: every access
+    to the column array below goes through it rather than through
+    `histData.iterCols`, so that those accesses and the iterator's own stay
+    siblings instead of invalidating one another. */
     let userPointer = unsafe { &mut *userPointer.cast::<HistType>() };
     let mut ii: c_long;
     let mut ipix: c_long;
@@ -4949,8 +4969,16 @@ extern "C" fn ffcalchist(
         /* We have a parser for this, evaluate it */
         if histData.parsers[ii].nCols > 0 {
             let nCols: c_int = histData.parsers[ii].nCols;
-            let colData_slice: &mut [iteratorCol] =
-                &mut histData.iterCols[startCol as usize..][..nCols as usize];
+            /* Address the columns through the iterator's own pointer rather
+            than an exclusive slice borrow: the parser work function reaches
+            this array again through its `parseInfo`. */
+            let colData_ptr: *mut iteratorCol = unsafe { colpars.add(startCol as usize) };
+
+            /* Re-take `parseData` here: the pointer stored by
+            `fits_parser_set_temporary_col` predates `histData.parsers` and
+            every read of `histData.parsers[..]` since. It names the same
+            `ParseData` either way. */
+            histData.infos[ii].parseData = &raw mut histData.parsers[ii];
 
             status = fits_parser_workfn_safe(
                 totalrows,
@@ -4958,16 +4986,16 @@ extern "C" fn ffcalchist(
                 firstrow,
                 nrows,
                 nCols,
-                colData_slice,
+                colData_ptr,
                 core::ptr::from_mut::<parseInfo>(&mut (histData.infos[ii])).cast::<c_void>(),
             );
             if status != 0 {
                 return status;
             }
             /* Output column is last iterator column, which better be a TemporaryCol */
-            outcol = Some(&mut histData.iterCols[(startCol + nCols - 1) as usize]);
+            outcol = Some(unsafe { &mut *colpars.add((startCol + nCols - 1) as usize) });
         } else {
-            outcol = Some(&mut histData.iterCols[startCol as usize]);
+            outcol = Some(unsafe { &mut *colpars.add(startCol as usize) });
         }
 
         if let Some(outcol) = outcol {
