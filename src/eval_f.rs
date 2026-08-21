@@ -3223,7 +3223,7 @@ fn Setup_DataArrays(
                             v.resize(len as usize, 0);
                         }
 
-                        varData.undef = Some(v.into_boxed_slice());
+                        varData.undef = Some(v);
                     }
                     row = nRows;
                     while row > 0 {
@@ -3256,7 +3256,7 @@ fn Setup_DataArrays(
                             v.resize(len as usize, 0);
                         }
 
-                        varData.undef = Some(v.into_boxed_slice());
+                        varData.undef = Some(v);
                     }
                     while len > 0 {
                         len -= 1;
@@ -3282,7 +3282,7 @@ fn Setup_DataArrays(
                             v.resize(len as usize, 0);
                         }
 
-                        varData.undef = Some(v.into_boxed_slice());
+                        varData.undef = Some(v);
                     }
                     while len > 0 {
                         len -= 1;
@@ -3309,7 +3309,7 @@ fn Setup_DataArrays(
                             v.resize(len as usize, 0);
                         }
 
-                        varData.undef = Some(v.into_boxed_slice());
+                        varData.undef = Some(v);
                     }
                     while len > 0 {
                         len -= 1;

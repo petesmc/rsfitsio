@@ -3676,8 +3676,6 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 let mut zero_1: c_long = 0;
 
-                                let rc_parse: Rc<ParseData> = Rc::from_raw(lParse);
-
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
@@ -8845,9 +8843,20 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                 column = -((lParse.Nodes)[i as usize]).operation;
                 offset = ((lParse.varData)[column as usize]).nelem * rowOffset;
 
+                /* Take the pointer with Vec::as_mut_ptr rather than through a
+                `&mut [c_char]`: the node keeps it until the row is evaluated,
+                and a reference to the contents would be a child of this borrow
+                of lParse, so the next loop iteration invalidated it. Reading
+                the Vec's own pointer carries the buffer's root tag instead. */
                 (((lParse.Nodes)[i as usize]).value).undef =
-                    match (((lParse.varData)[column as usize]).undef).as_deref_mut() {
-                        Some(ud) => ud[(offset as usize)..].as_mut_ptr(),
+                    match (((lParse.varData)[column as usize]).undef).as_mut() {
+                        Some(ud) => {
+                            assert!(
+                                (offset as usize) <= ud.len(),
+                                "undef offset past the end of the column buffer"
+                            );
+                            ud.as_mut_ptr().add(offset as usize)
+                        }
                         None => ptr::null_mut(),
                     };
 
