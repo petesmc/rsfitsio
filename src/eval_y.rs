@@ -3676,8 +3676,6 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             {
                                 let mut zero_1: c_long = 0;
 
-                                let rc_parse: Rc<ParseData> = Rc::from_raw(lParse);
-
                                 let new_node = New_Const(
                                     lParse,
                                     fits_parser_yytokentype::LONG as c_int,
