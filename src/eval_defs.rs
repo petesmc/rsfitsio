@@ -67,7 +67,7 @@ pub(crate) struct DataInfo {
     pub nelem: c_long,
     pub naxis: c_int,
     pub naxes: [c_long; MAXDIMS as usize],
-    pub undef: Option<Box<[c_char]>>,
+    pub undef: Option<Vec<c_char>>,
     pub data: *mut c_void,
 }
 
