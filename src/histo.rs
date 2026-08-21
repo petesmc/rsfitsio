@@ -4396,8 +4396,12 @@ pub(crate) fn fits_make_histde(
     // cleanup:
     /* Free any allocated memory ... */
     if !iterCols.is_null() {
-        // SAFETY / TODO
-        // unsafe { free(iterCols as *mut c_void) };
+        /* The C frees this with free(). It comes from fits_recalloc, i.e. the
+        Rust allocator, so hand it back the same way -- new_num == 0 is
+        fits_recalloc's deallocate case, and it uses the layout it allocated
+        with. Leaving it unfreed leaked the array on every call. */
+        unsafe { fits_recalloc::<iteratorCol>(iterCols, numAllocCols as usize, 0) };
+        iterCols = ptr::null_mut();
     }
     /* ... and parsers */
     for ii in 0..=4 {
