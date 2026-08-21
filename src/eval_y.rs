@@ -1958,13 +1958,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         18 => {
                             /* bits: BITSTR  */
+                            /* Measure first: `text_mut()` reborrows the whole yyvs Vec, so
+                               taking the length after the pointer invalidated it and New_Const
+                               then read through a dead tag. */
+                            let text_len = (strlen_safe(yyvs[yyvsp].text_mut()))
+                                .wrapping_add((1).try_into().unwrap()) as c_long;
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
                                 yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
-                                (strlen_safe(yyvs[yyvsp].text_mut()))
-                                    .wrapping_add((1).try_into().unwrap())
-                                    as c_long,
+                                text_len,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -5225,12 +5228,20 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         63 => {
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ')'  */
+                            let yy_v1 = yyvs[yyvsp - 3].node();
+                            let yy_v2 = yyvs[yyvsp - 1].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 5)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIOVER_FCT,
-                                yyvs[yyvsp - 5].text_mut_ptr(),
-                                yyvs[yyvsp - 3].node(),
-                                yyvs[yyvsp - 1].node(),
+                                yy_p1,
+                                yy_v1,
+                                yy_v2,
                                 c"*START*".as_ptr().cast_mut(),
                                 c"*STOP*".as_ptr().cast_mut(),
                             ));
@@ -5242,14 +5253,24 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         64 => {
                             /* expr: GTIOVERLAP STRING ',' expr ',' expr ',' STRING ',' STRING ')'  */
+                            let yy_v1 = yyvs[yyvsp - 7].node();
+                            let yy_v2 = yyvs[yyvsp - 5].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 9)).text_mut_ptr();
+                            let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
+                            let yy_p3 = (*yy_base.add(yyvsp - 1)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIOVER_FCT,
-                                yyvs[yyvsp - 9].text_mut_ptr(),
-                                yyvs[yyvsp - 7].node(),
-                                yyvs[yyvsp - 5].node(),
-                                yyvs[yyvsp - 3].text_mut_ptr(),
-                                yyvs[yyvsp - 1].text_mut_ptr(),
+                                yy_p1,
+                                yy_v1,
+                                yy_v2,
+                                yy_p2,
+                                yy_p3,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6852,11 +6873,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         111 => {
                             /* bexpr: GTIFILTER STRING ',' expr ')'  */
+                            let yy_v1 = yyvs[yyvsp - 1].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFILT_FCT,
-                                yyvs[yyvsp - 3].text_mut_ptr(),
-                                yyvs[yyvsp - 1].node(),
+                                yy_p1,
+                                yy_v1,
                                 -99,
                                 c"*START*".as_ptr().cast_mut(),
                                 c"*STOP*".as_ptr().cast_mut(),
@@ -6869,14 +6897,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         112 => {
                             /* bexpr: GTIFILTER STRING ',' expr ',' STRING ',' STRING ')'  */
+                            let yy_v1 = yyvs[yyvsp - 5].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
+                            let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
+                            let yy_p3 = (*yy_base.add(yyvsp - 1)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFILT_FCT,
-                                yyvs[yyvsp - 7].text_mut_ptr(),
-                                yyvs[yyvsp - 5].node(),
+                                yy_p1,
+                                yy_v1,
                                 -99,
-                                yyvs[yyvsp - 3].text_mut_ptr(),
-                                yyvs[yyvsp - 1].text_mut_ptr(),
+                                yy_p2,
+                                yy_p3,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6922,11 +6959,18 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         115 => {
                             /* bexpr: GTIFIND STRING ',' expr ')'  */
+                            let yy_v1 = yyvs[yyvsp - 1].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFIND_FCT,
-                                yyvs[yyvsp - 3].text_mut_ptr(),
-                                yyvs[yyvsp - 1].node(),
+                                yy_p1,
+                                yy_v1,
                                 -99,
                                 c"*START*".as_ptr().cast_mut(),
                                 c"*STOP*".as_ptr().cast_mut(),
@@ -6939,14 +6983,23 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         116 => {
                             /* bexpr: GTIFIND STRING ',' expr ',' STRING ',' STRING ')'  */
+                            let yy_v1 = yyvs[yyvsp - 5].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
+                            let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
+                            let yy_p3 = (*yy_base.add(yyvsp - 1)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
                                 lParse,
                                 funcOp::GTIFIND_FCT,
-                                yyvs[yyvsp - 7].text_mut_ptr(),
-                                yyvs[yyvsp - 5].node(),
+                                yy_p1,
+                                yy_v1,
                                 -99,
-                                yyvs[yyvsp - 3].text_mut_ptr(),
-                                yyvs[yyvsp - 1].text_mut_ptr(),
+                                yy_p2,
+                                yy_p3,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -6973,11 +7026,19 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         118 => {
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ')'  */
                             let mut dummy = [0];
+                            let yy_v1 = yyvs[yyvsp - 3].node();
+                            let yy_v2 = yyvs[yyvsp - 1].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 5)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
-                                yyvs[yyvsp - 5].text_mut_ptr(),
-                                yyvs[yyvsp - 3].node(),
-                                yyvs[yyvsp - 1].node(),
+                                yy_p1,
+                                yy_v1,
+                                yy_v2,
                                 dummy.as_mut_ptr(),
                             ));
                             if yyval.node() < 0 {
@@ -6988,12 +7049,21 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         119 => {
                             /* bexpr: REGFILTER STRING ',' expr ',' expr ',' STRING ')'  */
+                            let yy_v1 = yyvs[yyvsp - 5].node();
+                            let yy_v2 = yyvs[yyvsp - 3].node();
+                            /* Derive every slot pointer from the stack's own allocation pointer.
+                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                               any other yyvs access -- that way invalidated the first, and this
+                               constructor is handed up to three of them at once. */
+                            let yy_base = yyvs.as_mut_ptr();
+                            let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
+                            let yy_p2 = (*yy_base.add(yyvsp - 1)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
                                 lParse,
-                                yyvs[yyvsp - 7].text_mut_ptr(),
-                                yyvs[yyvsp - 5].node(),
-                                yyvs[yyvsp - 3].node(),
-                                yyvs[yyvsp - 1].text_mut_ptr(),
+                                yy_p1,
+                                yy_v1,
+                                yy_v2,
+                                yy_p2,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -7112,13 +7182,16 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         }
                         127 => {
                             /* sexpr: STRING  */
+                            /* Measure first: `text_mut()` reborrows the whole yyvs Vec, so
+                               taking the length after the pointer invalidated it and New_Const
+                               then read through a dead tag. */
+                            let text_len = (strlen_safe(yyvs[yyvsp].text_mut()))
+                                .wrapping_add((1).try_into().unwrap()) as c_long;
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
                                 yyvs[yyvsp].text_mut_ptr().cast::<c_void>(),
-                                (strlen_safe(yyvs[yyvsp].text_mut()))
-                                    .wrapping_add((1).try_into().unwrap())
-                                    as c_long,
+                                text_len,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
