@@ -235,6 +235,7 @@ pub fn fffrow_safe(
         pointer to the array first, then (re-)establish `Info.parseData`:
         borrowing `lParse` mutably would invalidate a raw pointer taken
         before it. */
+        refresh_file_ptrs(&mut lParse, fptr);
         let n_cols = lParse.nCols;
         let cols_ptr = lParse.colData.as_mut_ptr();
         let cols_len = lParse.colData.len();
@@ -490,6 +491,7 @@ pub fn ffsrow_safe(
         /* Take the raw pointer to `lParse.colData` before re-establishing
         `Info.parseData`: the work function reaches the same array through
         both, so neither may be derived from the other. */
+        refresh_file_ptrs(&mut lParse, infptr);
         let n_cols = lParse.nCols;
         let cols_ptr = lParse.colData.as_mut_ptr();
         let cols_len = lParse.colData.len();
@@ -855,6 +857,7 @@ pub fn ffsrow_inplace_safe(
         /* Take the raw pointer to `lParse.colData` before re-establishing
         `Info.parseData`: the work function reaches the same array through
         both, so neither may be derived from the other. */
+        refresh_file_ptrs(&mut lParse, fptr);
         let n_cols = lParse.nCols;
         let cols_ptr = lParse.colData.as_mut_ptr();
         let cols_len = lParse.colData.len();
@@ -1066,6 +1069,7 @@ pub fn ffcrow_safe(
     Info.maxRows = nelements / nelem1;
     /* Take the raw pointer to `lParse.colData` before re-establishing
     `Info.parseData`: the work function reaches the same array through both. */
+    refresh_file_ptrs(&mut lParse, fptr);
     let n_cols = lParse.nCols;
     let cols_ptr = lParse.colData.as_mut_ptr();
     let cols_len = lParse.colData.len();
@@ -1558,6 +1562,7 @@ pub fn ffcalc_rng_safe(
             /* Take the raw pointer to `lParse.colData` before re-establishing
             `Info.parseData`: the work function reaches the same array through
             both. */
+            refresh_file_ptrs(&mut lParse, infptr);
             let n_cols = lParse.nCols;
             let cols_ptr = lParse.colData.as_mut_ptr();
             let cols_len = lParse.colData.len();
@@ -1954,6 +1959,7 @@ pub fn ffcalc_rng_inplace_safe(
             /* Take the raw pointer to `lParse.colData` before re-establishing
             `Info.parseData`: the work function reaches the same array through
             both. */
+            refresh_file_ptrs(&mut lParse, fptr);
             let n_cols = lParse.nCols;
             let cols_ptr = lParse.colData.as_mut_ptr();
             let cols_len = lParse.colData.len();
@@ -2100,6 +2106,29 @@ pub fn fftexp_safe(
 /*--------------------------------------------------------------------------*/
 /// Initialize the parser and determine what type of result the expression
 /// produces.
+/// Re-establish the file pointers the parse recorded.
+///
+/// `ffiprs` stores `fptr` in `ParseData::def_fptr`, and `find_column` copies
+/// that into each `iteratorCol`. Every later call taking `fptr: &mut fitsfile`
+/// -- `ffgcno_safe` and friends -- is a protected retag that invalidates those
+/// copies, and the iterator then dereferences them. Re-take them here from one
+/// raw pointer, so the columns and def_fptr share a tag that is live at the
+/// point of use.
+///
+/// Only columns that pointed at the same file are rewritten; a cross-HDU
+/// column legitimately refers to a different one. Comparing the addresses does
+/// not dereference them, so it is fine to do with the stale values.
+fn refresh_file_ptrs(lParse: &mut ParseData, fptr: &mut fitsfile) {
+    let old = lParse.def_fptr;
+    let raw: *mut fitsfile = fptr;
+    lParse.def_fptr = raw;
+    for col in lParse.colData.iter_mut() {
+        if core::ptr::eq(col.fptr, old) {
+            col.fptr = raw;
+        }
+    }
+}
+
 pub(crate) fn ffiprs(
     fptr: &mut fitsfile,    /* I - Input FITS file                     */
     compressed: c_int,      /* I - Is FITS file hkunexpanded?          */
@@ -4265,6 +4294,7 @@ pub fn fffrwc_safe(
             Info.maxRows = ntimes;
             /* Address the columns through the vector's own pointer: the
             work function reaches the same array through `parseData`. */
+            refresh_file_ptrs(&mut lParse, fptr);
             let n_cols = lParse.nCols;
             let cols_ptr = lParse.colData.as_mut_ptr();
             /* The work function's first act is
@@ -4387,6 +4417,7 @@ pub fn ffffrw_safer(
             /* Take the raw pointer to `lParse.colData` before handing a raw
             `lParse` to the work function: the work function reaches the same
             array through both, so neither may be derived from the other. */
+            refresh_file_ptrs(&mut lParse, fptr);
             let n_cols = lParse.nCols;
             let cols_ptr = lParse.colData.as_mut_ptr();
             let cols_len = lParse.colData.len();
