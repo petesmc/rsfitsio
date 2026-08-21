@@ -10482,8 +10482,13 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 }
                 Operator::Power => {
-                    (lParse.Nodes[this_node_idx]).value.data =
-                        NodeValue::Long(pow(val1 as c_double, val2 as c_double) as c_long);
+                    /* Round, don't truncate. Both operands are integers, so the
+                    result is one too, but powf need not land exactly on it --
+                    5**2 comes back as 24.999999999999996 under some libm
+                    implementations, and `as c_long` then yields 24. */
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(
+                        pow(val1 as c_double, val2 as c_double).round() as c_long,
+                    );
                 }
                 Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1);
@@ -10672,9 +10677,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                             }
                         }
                         Operator::Power => {
+                            /* Rounded, as in the scalar case above. */
                             *((lParse.Nodes[this_node_idx]).value.data.lng_buf())
                                 .offset(elem as isize) =
-                                pow(val1 as c_double, val2 as c_double) as c_long;
+                                pow(val1 as c_double, val2 as c_double).round() as c_long;
                         }
                         _ => {}
                     }
