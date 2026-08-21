@@ -123,7 +123,7 @@ pub type flex_int16_t = int16_t;
 #[derive(Default)]
 pub struct yy_buffer_state {
     pub yy_input_file: *mut FILE,
-    pub yy_ch_buf: Option<Box<[c_char]>>,
+    pub yy_ch_buf: Option<Vec<c_char>>,
     pub yy_buf_pos: usize,
     pub yy_buf_size: c_int,
     pub yy_n_chars: c_int,
@@ -824,9 +824,9 @@ pub(crate) fn fits_parser_yylex(
                             5 => {
                                 let mut constval: c_long = 0;
                                 let mut p: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p = core::ptr::from_mut::<c_char>(
-                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
-                                );
+                                /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
+                                   byte, so the scan below immediately ran past that provenance. */
+                                p = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p != 0 {
                                     constval = constval << 1
                                         | c_int::from(c_int::from(*p) == '1' as i32) as c_long;
@@ -838,9 +838,9 @@ pub(crate) fn fits_parser_yylex(
                             6 => {
                                 let mut constval_0: c_long = 0;
                                 let mut p_0: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_0 = core::ptr::from_mut::<c_char>(
-                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
-                                );
+                                /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
+                                   byte, so the scan below immediately ran past that provenance. */
+                                p_0 = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p_0 != 0 {
                                     constval_0 = constval_0 << 3 as c_int
                                         | c_long::from(c_int::from(*p_0) - '0' as i32);
@@ -852,9 +852,9 @@ pub(crate) fn fits_parser_yylex(
                             7 => {
                                 let mut constval_1: c_long = 0;
                                 let mut p_1: *mut c_char = core::ptr::null_mut::<c_char>();
-                                p_1 = core::ptr::from_mut::<c_char>(
-                                    &mut *(yyscanner.yytext_r).offset(2 as c_int as isize),
-                                );
+                                /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
+                                   byte, so the scan below immediately ran past that provenance. */
+                                p_1 = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p_1 != 0 {
                                     let v: c_int = if isdigit_safe(*p_1) {
                                         c_int::from(*p_1) - '0' as i32
@@ -961,9 +961,13 @@ pub(crate) fn fits_parser_yylex(
                                         yyscanner.yytext_r = (*yyscanner.yylval_r).text_mut_ptr();
                                     }
 
-                                    let yytext_r_slice = cast_slice(
-                                        CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
-                                    );
+                                    /* yytext_r points into the same yylval slot that is passed as
+                                       `&mut` below, so the two arguments would alias. Copy the name
+                                       out first -- owned, so an overlong name keeps its terminator
+                                       rather than being truncated out of one. */
+                                    let name_owned: Vec<c_char> =
+                                        cast_slice(CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul()).to_vec();
+                                    let yytext_r_slice: &[c_char] = &name_owned;
 
                                     let get_data =
                                         (lParse.getData).expect("non-null function pointer");
@@ -1032,9 +1036,13 @@ pub(crate) fn fits_parser_yylex(
                                     yyscanner.yytext_r = (*yyscanner.yylval_r).text_mut_ptr();
                                 }
 
-                                let yytext_r_slice = cast_slice(
-                                    CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
-                                );
+                                /* yytext_r points into the same yylval slot that is passed as
+                                   `&mut` below, so the two arguments would alias. Copy the name
+                                   out first -- owned, so an overlong name keeps its terminator
+                                   rather than being truncated out of one. */
+                                let name_owned: Vec<c_char> =
+                                    cast_slice(CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul()).to_vec();
+                                let yytext_r_slice: &[c_char] = &name_owned;
 
                                 dtype = fits_parser_yyGetVariable(
                                     lParse,
@@ -1296,12 +1304,13 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int
         let top_state = (*(yyscanner.yy_buffer_stack).add(yyscanner.yy_buffer_stack_top))
             .as_deref_mut()
             .unwrap();
-        let mut dest: *mut c_char = top_state.yy_ch_buf.as_deref_mut().unwrap().as_mut_ptr();
+        /* One root pointer for the buffer: `as_deref_mut()` hands out a
+        reference to the contents, so taking `dest` that way and then taking
+        another for the bound below invalidated the first. */
+        let buf_base: *mut c_char = top_state.yy_ch_buf.as_mut().unwrap().as_mut_ptr();
+        let mut dest: *mut c_char = buf_base;
 
-        if yyscanner.yy_c_buf_p
-            > (top_state.yy_ch_buf).as_deref_mut().unwrap()[(yyscanner.yy_n_chars + 1) as usize..]
-                .as_mut_ptr()
-        {
+        if yyscanner.yy_c_buf_p > buf_base.add((yyscanner.yy_n_chars + 1) as usize) {
             yy_fatal_error("fatal flex scanner internal error--end of buffer missed");
         }
 
@@ -1368,7 +1377,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int
                         v.push(*i);
                     }
 
-                    (top_state).yy_ch_buf = Some(v.into_boxed_slice());
+                    (top_state).yy_ch_buf = Some(v);
                 } else {
                     /* Can't grow it, we don't own it. */
                     (top_state).yy_ch_buf = None;
@@ -1436,7 +1445,7 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int
                 v.push(*i);
             }
 
-            top_state.yy_ch_buf = Some(v.into_boxed_slice());
+            top_state.yy_ch_buf = Some(v);
 
             /* "- 2" to take care of EOB's */
             top_state.yy_buf_size = new_size_0 - 2;
@@ -1450,7 +1459,11 @@ fn yy_get_next_buffer(yyscanner: &mut yyguts_t, lParse: &mut ParseData) -> c_int
             YY_END_OF_BUFFER_CHAR;
         /* Take the slice pointer directly rather than round-tripping it
         through a place expression. */
-        yyscanner.yytext_r = (top_state.yy_ch_buf).as_deref_mut().unwrap().as_mut_ptr();
+        /* Vec::as_mut_ptr, not as_deref_mut(): yytext_r outlives this borrow of
+        the buffer, and a reference to the contents would be invalidated by the
+        next as_deref_mut() on the same slot. Reading the Vec's own pointer
+        carries the buffer's root tag. */
+        yyscanner.yytext_r = (top_state.yy_ch_buf).as_mut().unwrap().as_mut_ptr();
         ret_val
     }
 }
@@ -1629,7 +1642,7 @@ pub(crate) fn fits_parser_yy_create_buffer(
     }
 
     b.yy_ch_buf = None;
-    b.yy_ch_buf = Some(v.into_boxed_slice());
+    b.yy_ch_buf = Some(v);
     b.yy_is_our_buffer = true;
 
     fits_parser_yy_init_buffer(&raw mut *b, file, yyscanner);

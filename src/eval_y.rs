@@ -8882,11 +8882,20 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                                 .offset(rowOffset as isize)
                                 .cast(),
                         );
-                        let fresh15 = &mut (((lParse.Nodes)[i as usize]).value).undef;
-                        *fresh15 = (((lParse.varData)[column as usize]).undef)
-                            .as_deref_mut()
-                            .unwrap()[(rowOffset as usize)..]
-                            .as_mut_ptr();
+                        /* Vec::as_mut_ptr, as in the other arm: the node keeps
+                        this pointer, so a reference to the contents would be a
+                        child of this borrow of lParse and die with it. */
+                        let undef_ptr = {
+                            let ud = (((lParse.varData)[column as usize]).undef)
+                                .as_mut()
+                                .unwrap();
+                            assert!(
+                                (rowOffset as usize) <= ud.len(),
+                                "undef offset past the end of the column buffer"
+                            );
+                            ud.as_mut_ptr().add(rowOffset as usize)
+                        };
+                        (((lParse.Nodes)[i as usize]).value).undef = undef_ptr;
                     }
                     ValueSort::Boolean => {
                         (((lParse.Nodes)[i as usize]).value).data.set_buffer(
