@@ -9066,7 +9066,7 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-unsafe fn free_node_buffer(node: &mut Node) {
+pub(crate) unsafe fn free_node_buffer(node: &mut Node) {
     unsafe {
         if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
             if !node.value.data.str_buf().is_null() {
@@ -9341,7 +9341,7 @@ fn Do_Unary(lParse: &mut ParseData, this_node_idx: usize) {
         let that_idx = (lParse.Nodes[this_node_idx]).SubNodes[0];
 
         if (lParse.Nodes[that_idx]).is_computed() {
-            free((lParse.Nodes[that_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that_idx]));
         }
     }
 }
@@ -9812,24 +9812,10 @@ fn Do_BinOp_bit(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).is_computed() {
-            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
-            free(
-                (lParse.Nodes[that1_idx])
-                    .value
-                    .data
-                    .str_buf()
-                    .cast::<c_void>(),
-            );
+            free_node_buffer(&mut (lParse.Nodes[that1_idx]));
         }
         if (lParse.Nodes[that2_idx]).is_computed() {
-            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
-            free(
-                (lParse.Nodes[that2_idx])
-                    .value
-                    .data
-                    .str_buf()
-                    .cast::<c_void>(),
-            );
+            free_node_buffer(&mut (lParse.Nodes[that2_idx]));
         }
     }
 }
@@ -10134,24 +10120,10 @@ fn Do_BinOp_str(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).is_computed() {
-            free((*((lParse.Nodes[that1_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
-            free(
-                (lParse.Nodes[that1_idx])
-                    .value
-                    .data
-                    .str_buf()
-                    .cast::<c_void>(),
-            );
+            free_node_buffer(&mut (lParse.Nodes[that1_idx]));
         }
         if (lParse.Nodes[that2_idx]).is_computed() {
-            free((*((lParse.Nodes[that2_idx]).value.data.str_buf()).offset(0)).cast::<c_void>());
-            free(
-                (lParse.Nodes[that2_idx])
-                    .value
-                    .data
-                    .str_buf()
-                    .cast::<c_void>(),
-            );
+            free_node_buffer(&mut (lParse.Nodes[that2_idx]));
         }
     }
 }
@@ -10386,10 +10358,10 @@ fn Do_BinOp_log(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).is_computed() {
-            free((lParse.Nodes[that1_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that1_idx]));
         }
         if (lParse.Nodes[that2_idx]).is_computed() {
-            free((lParse.Nodes[that2_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that2_idx]));
         }
     }
 }
@@ -10702,10 +10674,10 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).is_computed() {
-            free((lParse.Nodes[that1_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that1_idx]));
         }
         if (lParse.Nodes[that2_idx]).is_computed() {
-            free((lParse.Nodes[that2_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that2_idx]));
         }
     }
 }
@@ -11015,10 +10987,10 @@ fn Do_BinOp_dbl(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[that1_idx]).is_computed() {
-            free((lParse.Nodes[that1_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that1_idx]));
         }
         if (lParse.Nodes[that2_idx]).is_computed() {
-            free((lParse.Nodes[that2_idx]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[that2_idx]));
         }
     }
 }
@@ -11686,7 +11658,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                 lParse,
                                 cs!(c"AXISELEM(V,n) n value exceeded maximum dimension"),
                             );
-                            free((lParse.Nodes[this_node_idx]).value.data.raw());
+                            free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                         } else {
                             ielem = 0;
                             while ielem < elem {
@@ -12254,7 +12226,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.raw());
+                                free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                             } else {
                                 mvec.resize(nelem as usize, 0);
                                 irow = 0;
@@ -12306,7 +12278,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Could not allocate temporary memory in median function"),
                                 );
-                                free((lParse.Nodes[this_node_idx]).value.data.raw());
+                                free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                             } else {
                                 mvec_0.resize(nelem as usize, 0.0);
                                 irow_0 = 0;
@@ -14452,7 +14424,7 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
             }
             if (lParse.Nodes[theParams[i as usize]]).is_computed() {
                 /*  Currently only numeric params allowed  */
-                free((lParse.Nodes[theParams[i as usize]]).value.data.raw());
+                free_node_buffer(&mut (lParse.Nodes[theParams[i as usize]]));
             }
         }
     }
@@ -14852,18 +14824,14 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theVar]).is_computed() {
-            if (lParse.Nodes[theVar]).ntype == ValueSort::String
-                || (lParse.Nodes[theVar]).ntype == ValueSort::Bits
-            {
-                free((*((lParse.Nodes[theVar]).value.data.str_buf()).offset(0)).cast::<c_void>());
-            } else {
-                free((lParse.Nodes[theVar]).value.data.raw());
-            }
+            /* free_node_buffer covers both shapes; the String/Bits arm here
+            used to free only the backing block and leak the pointer array. */
+            free_node_buffer(&mut (lParse.Nodes[theVar]));
         }
         i = 0;
         while i < nDims {
             if (lParse.Nodes[theDims[i as usize]]).is_computed() {
-                free((lParse.Nodes[theDims[i as usize]]).value.data.raw());
+                free_node_buffer(&mut (lParse.Nodes[theDims[i as usize]]));
             }
             i += 1;
         }
@@ -14979,7 +14947,7 @@ fn Do_GTI(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theExpr]).is_computed() {
-            free((lParse.Nodes[theExpr]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[theExpr]));
         }
     }
 }
@@ -15099,10 +15067,10 @@ fn Do_GTI_Over(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theStart]).is_computed() {
-            free((lParse.Nodes[theStart]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[theStart]));
         }
         if (lParse.Nodes[theStop]).is_computed() {
-            free((lParse.Nodes[theStop]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[theStop]));
         }
     }
 }
@@ -15377,10 +15345,10 @@ fn Do_REG(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theX]).is_computed() {
-            free((lParse.Nodes[theX]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[theX]));
         }
         if (lParse.Nodes[theY]).is_computed() {
-            free((lParse.Nodes[theY]).value.data.raw());
+            free_node_buffer(&mut (lParse.Nodes[theY]));
         }
     }
 }
@@ -15559,13 +15527,9 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                 .operation
                 > 0
             {
-                free(
-                    ((lParse.Nodes)
-                        [(lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize])
-                        .value
-                        .data
-                        .raw(),
-                );
+                let sub_idx =
+                    (lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize;
+                free_node_buffer(&mut ((lParse.Nodes)[sub_idx]));
             }
             node += 1;
         }
@@ -15684,12 +15648,8 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
             }
 
             if ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]]).is_computed() {
-                free(
-                    ((lParse.Nodes)[lParse.Nodes[this_node_idx].SubNodes[0]])
-                        .value
-                        .data
-                        .raw(),
-                );
+                let sub_idx = lParse.Nodes[this_node_idx].SubNodes[0];
+                free_node_buffer(&mut ((lParse.Nodes)[sub_idx]));
             }
         }
     }
