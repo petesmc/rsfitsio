@@ -74,7 +74,7 @@ use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, funcOp};
+use crate::eval_y::{free_node_buffer, Evaluate_Parser, fits_parser_yyparse, funcOp};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
@@ -2355,6 +2355,17 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                 /* REGFILT nodes used to be freed here by hand. The region now
                 lives in lParse.regions behind an Rc, so it goes when the
                 ParseData does. */
+
+                /* Release any row buffer the node still owns. Allocate_Ptrs
+                mallocs these and the Do_* kernels free their children after
+                consuming them, so whatever is left here -- the result node
+                above all -- had nothing to free it and leaked. Only computed
+                nodes own their buffer: a column node's points into
+                varData, which it does not own. free_node_buffer marks the
+                value Empty, so the nodes already freed above are a no-op. */
+                if (lParse.Nodes[node as usize]).is_computed() {
+                    free_node_buffer(&mut (lParse.Nodes[node as usize]));
+                }
             }
             lParse.nNodes = 0;
         }
