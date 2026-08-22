@@ -1,3 +1,19 @@
+//! Safe replacements for the C string and number-parsing functions.
+//!
+//! The port calls these instead of `libc`. Each takes a `&[c_char]` slice and
+//! returns an index or a value rather than an interior pointer, so the whole
+//! `strcpy` / `strcmp` / `strlen` family is expressible without `unsafe`. The
+//! `_safe` suffix marks them as the safe counterpart of the C function of the
+//! same name.
+//!
+//! The slices are still C strings: they are expected to hold a NUL, and the
+//! routines stop there rather than at the end of the buffer, so trailing
+//! padding in a fixed-size FITS buffer is ignored.
+//!
+//! Several of these were taken from the Redox relibc project,
+//! <https://gitlab.redox-os.org/redox-os/relibc>.
+#![warn(missing_docs)]
+
 use core::{cmp, ffi::CStr, str::FromStr};
 
 use bytemuck::cast_slice;
@@ -6,10 +22,13 @@ use crate::c_types::{c_char, c_int, c_long};
 
 use crate::bb;
 
-// Several wrappers in this file were taken from the Redoc Relibc
-// project. The original source code can be found at:
-// https://gitlab.redox-os.org/redox-os/relibc
-
+/// Copies at most `n` characters of the NUL-terminated `src` into `dst`,
+/// padding the remainder of the `n` with NULs. The safe counterpart of C
+/// `strncpy`.
+///
+/// # Panics
+///
+/// Panics if `n` exceeds the length of `dst`.
 pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     let mut i = 0;
 
@@ -25,10 +44,14 @@ pub fn strncpy_safe(dst: &mut [c_char], src: &[c_char], n: usize) {
     }
 }
 
+/// Length of the initial run of `cs` made up of characters *not* in the set
+/// `ct`. The safe counterpart of C `strcspn`.
 pub fn strcspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
     strcspn_inner(cs, ct, false)
 }
 
+/// Shared implementation of [`strcspn_safe`] and [`strspn_safe`]: counts the
+/// leading characters of `cs` whose membership of `ct` equals `cmp`.
 fn strcspn_inner(cs: &[c_char], ct: &[c_char], cmp: bool) -> usize {
     let mut it = 0;
     while ct[it] != 0 {
@@ -46,10 +69,14 @@ fn strcspn_inner(cs: &[c_char], ct: &[c_char], cmp: bool) -> usize {
     is
 }
 
+/// Length of the initial run of `cs` made up entirely of characters in the set
+/// `ct`. The safe counterpart of C `strspn`.
 pub fn strspn_safe(cs: &[c_char], ct: &[c_char]) -> usize {
     strcspn_inner(cs, ct, true)
 }
 
+/// Copies the NUL-terminated `src` into `dst`, including the terminator. The
+/// safe counterpart of C `strcpy`.
 pub fn strcpy_safe(dst: &mut [c_char], src: &[c_char]) {
     let mut i = 0;
     loop {
@@ -61,10 +88,21 @@ pub fn strcpy_safe(dst: &mut [c_char], src: &[c_char]) {
     }
 }
 
+/// Compares two NUL-terminated strings. The safe counterpart of C `strcmp`.
+///
+/// # Returns
+///
+/// Negative, zero or positive as `cs` sorts before, equal to, or after `ct`.
 pub fn strcmp_safe(cs: &[c_char], ct: &[c_char]) -> c_int {
     strncmp_safe(cs, ct, cmp::max(cs.len(), ct.len()))
 }
 
+/// Compares at most `n` characters of two NUL-terminated strings. The safe
+/// counterpart of C `strncmp`.
+///
+/// # Returns
+///
+/// Negative, zero or positive as `cs` sorts before, equal to, or after `ct`.
 pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     let min_len = cmp::min(cs.len(), ct.len());
     let min_n = cmp::min(n, min_len);
@@ -94,6 +132,8 @@ pub fn strncmp_safe(cs: &[c_char], ct: &[c_char], n: usize) -> c_int {
     0
 }
 
+/// Length of a `CStr`, not counting the NUL terminator. The `CStr` form of
+/// [`strlen_safe`].
 pub(crate) fn strlen_safe_cstr(str: &CStr) -> usize {
     str.to_bytes().len()
 }
@@ -117,6 +157,12 @@ pub fn strnlen_safe(cs: &[c_char], n: usize) -> usize {
     cs[..limit].iter().position(|&c| c == 0).unwrap_or(limit)
 }
 
+/// Parses a leading integer out of `input`, skipping leading whitespace and any
+/// non-numeric prefix. The safe counterpart of C `strtol`.
+///
+/// # Returns
+///
+/// The parsed value and the index one past its last digit, or the parse error.
 pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F as FromStr>::Err> {
     let strlen = input.len() - 1;
     let input: &[u8] = cast_slice(input);
@@ -150,10 +196,23 @@ pub(crate) fn strtol_safe<F: FromStr>(input: &[c_char]) -> Result<(F, usize), <F
     Ok((res, end))
 }
 
+/// Parses a leading floating point number out of `s`. The safe counterpart of C
+/// `strtod`.
+///
+/// # Parameters
+///
+/// * `s`    — (I) the string to parse
+/// * `endp` — (O) index one past the last character consumed
 pub fn strtod_safe(s: &[c_char], endp: &mut usize) -> f64 {
     strto_float_impl(s, endp)
 }
 
+/// Index of the first occurrence of `c` in `cs`, or `None` if not found. The
+/// safe counterpart of C `strchr`, returning an index rather than an interior
+/// pointer.
+///
+/// Unlike [`strrchr_safe`], the search covers the whole slice rather than
+/// stopping at the NUL, so passing `0` for `c` finds the terminator.
 pub fn strchr_safe(cs: &[c_char], c: c_char) -> Option<usize> {
     cs.iter().position(|&x| x == c)
 }
@@ -184,12 +243,17 @@ pub fn strstr_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
+/// Appends the NUL-terminated `ct` to the NUL-terminated `s`. The safe
+/// counterpart of C `strcat`.
 pub fn strcat_safe(s: &mut [c_char], ct: &[c_char]) {
     let ct_len = strlen_safe(ct);
 
     strncat_safe(s, ct, ct_len);
 }
 
+/// Appends at most `n` characters of the NUL-terminated `ct` to the
+/// NUL-terminated `s`, adding a terminator. The safe counterpart of C
+/// `strncat`.
 pub fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
     let s_len = strlen_safe(s);
     let ct_len = strlen_safe(ct);
@@ -208,6 +272,8 @@ pub fn strncat_safe(s: &mut [c_char], ct: &[c_char], n: usize) {
     s[s_len + i] = 0;
 }
 
+/// Maps an ASCII lower-case letter to upper case, leaving anything else
+/// unchanged. The safe counterpart of C `toupper`.
 pub(crate) fn toupper(c: c_char) -> c_char {
     if islower(c) {
         return c & 0x5f;
@@ -215,6 +281,8 @@ pub(crate) fn toupper(c: c_char) -> c_char {
     c
 }
 
+/// Maps an ASCII upper-case letter to lower case, leaving anything else
+/// unchanged. The safe counterpart of C `tolower`.
 pub(crate) fn tolower(c: c_char) -> c_char {
     if isupper(c) {
         return c | 0x20;
@@ -222,20 +290,27 @@ pub(crate) fn tolower(c: c_char) -> c_char {
     c
 }
 
+/// Whether `c` is an ASCII lower-case letter. The safe counterpart of C
+/// `islower`.
 pub(crate) fn islower(c: c_char) -> bool {
     (c >= 97) && (c <= 122)
 }
 
+/// Whether `c` is an ASCII upper-case letter. The safe counterpart of C
+/// `isupper`.
 pub(crate) fn isupper(c: c_char) -> bool {
     (c >= 65) && (c <= 90)
 }
 
+/// Whether `c` is ASCII whitespace. The safe counterpart of C `isspace`.
 pub(crate) fn isspace(c: c_char) -> bool {
     let c = c as c_char;
     c == bb(b' ') || c == bb(b'\t') || c == bb(b'\n') || c == bb(b'\r') || c == 0x0b || c == 0x0c
 }
 
 /// C `atol`: leading optional whitespace and sign, then decimal digits.
+///
+/// Parses `cs` as a `long`. The safe counterpart of C `atol`.
 ///
 /// Matches the C on the two edge cases Rust's `parse` gets differently:
 /// a value that does not fit saturates to `c_long::MIN`/`MAX` rather than
@@ -287,11 +362,14 @@ pub fn atol_safe(cs: &[c_char]) -> c_long {
     }
 }
 
+/// Parses `cs` as a `double`, yielding 0.0 rather than an error on anything
+/// unparseable. The safe counterpart of C `atof`.
 pub fn atof_safe(cs: &[c_char]) -> f64 {
     let mut dummy = 0;
     strtod_safe(cs, &mut dummy)
 }
 
+/// Whether `c` is an ASCII decimal digit. The safe counterpart of C `isdigit`.
 pub fn isdigit_safe(c: c_char) -> bool {
     (b'0' as c_char) <= c && c <= (b'9' as c_char)
 }
@@ -304,7 +382,11 @@ pub fn strpbrk_safe(cs: &[c_char], ct: &[c_char]) -> Option<usize> {
     (cs[i] != 0).then_some(i)
 }
 
-// Copied and modified from Redox's Relibc: https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/macros.rs
+/// Parses a leading floating point number, the shared implementation behind
+/// [`strtod_safe`].
+///
+/// Copied and modified from Redox's relibc,
+/// <https://gitlab.redox-os.org/redox-os/relibc/-/blob/master/src/macros.rs>.
 fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     let mut s = s;
 
@@ -452,7 +534,6 @@ fn strto_float_impl(s: &[c_char], endptr: &mut usize) -> f64 {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read into `buf` until it is full or end-of-file is reached, returning the
 /// total number of bytes read.
 ///
