@@ -30,7 +30,7 @@ use crate::getcolj::{
 };
 use crate::getcolk::{ffgclk, ffgpfk_safe, ffgpvk_safe, ffgsvk_safe};
 use crate::getcoll::{ffgcll, ffgcx_safe};
-use crate::getcols::ffgcls;
+use crate::getcols::{ffgcdw_safe, ffgcls};
 use crate::getcolsb::{ffgclsb, ffgpfsb_safe, ffgpvsb_safe, ffgsvsb_safe};
 use crate::getcolui::{ffgclui, ffgpfui_safe, ffgpvui_safe, ffgsvui_safe};
 use crate::getcoluj::{
@@ -2780,6 +2780,23 @@ pub fn ffgcv_safe(
             }
         }
     } else if datatype == TSTRING {
+        /* Each `char *` the caller handed us points at a buffer it sized from
+        the column's display width -- the only per-string size the C API ever
+        implies, since the `char **` carries no lengths.  Ask ffgcdw for that
+        width instead of assuming FLEN_VALUE, which is the maximum length of a
+        *keyword value* and has nothing to do with a column: it is larger than
+        a correctly sized buffer for most columns, so claiming it both builds a
+        slice running past the caller's allocation and raises the bound ffgcls
+        writes to, since ffgcls derives its own bounds from this same ffgcdw
+        width.  Every ffgcls path writes at most `width` characters plus the
+        terminating NUL (the complex path halves the width back and spends the
+        rest on the "(re,im)" punctuation), so width + 1 is exact. */
+        let mut dwidth: c_int = 0;
+        if ffgcdw_safe(fptr, colnum, &mut dwidth, status) > 0 {
+            return *status;
+        }
+        let item_len = dwidth as usize + 1;
+
         // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
         // as in the C. Derive the pointer with as_mut_ptr() rather than
         // as_ptr(): the latter reborrows `array` shared and casting that to
@@ -2795,7 +2812,7 @@ pub fn ffgcv_safe(
             let array = slice::from_raw_parts_mut(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
-                let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
+                let array_item = slice::from_raw_parts_mut(*item, item_len);
                 v_array.push(array_item);
             }
 
@@ -3437,6 +3454,23 @@ pub fn ffgcf_safe(
             status,
         );
     } else if datatype == TSTRING {
+        /* Each `char *` the caller handed us points at a buffer it sized from
+        the column's display width -- the only per-string size the C API ever
+        implies, since the `char **` carries no lengths.  Ask ffgcdw for that
+        width instead of assuming FLEN_VALUE, which is the maximum length of a
+        *keyword value* and has nothing to do with a column: it is larger than
+        a correctly sized buffer for most columns, so claiming it both builds a
+        slice running past the caller's allocation and raises the bound ffgcls
+        writes to, since ffgcls derives its own bounds from this same ffgcdw
+        width.  Every ffgcls path writes at most `width` characters plus the
+        terminating NUL (the complex path halves the width back and spends the
+        rest on the "(re,im)" punctuation), so width + 1 is exact. */
+        let mut dwidth: c_int = 0;
+        if ffgcdw_safe(fptr, colnum, &mut dwidth, status) > 0 {
+            return *status;
+        }
+        let item_len = dwidth as usize + 1;
+
         // SAFETY: for TSTRING the caller's buffer holds an array of `char *`,
         // as in the C, so it carries pointer alignment even though the
         // signature types it as bytes (clippy's cast_ptr_alignment); assert
@@ -3448,7 +3482,7 @@ pub fn ffgcf_safe(
             let array = slice::from_raw_parts_mut(p, nelem as usize);
             let mut v_array = Vec::new();
             for item in array {
-                let array_item = slice::from_raw_parts_mut(*item, FLEN_VALUE);
+                let array_item = slice::from_raw_parts_mut(*item, item_len);
                 v_array.push(array_item);
             }
 
