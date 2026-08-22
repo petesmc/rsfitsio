@@ -1,9 +1,22 @@
-/*  This file, checksum.rs, contains the checksum-related routines in the   */
-/*  FITSIO library.                                                        */
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
-/*------------------------------------------------------------------------*/
+//! The checksum-related routines.
+//!
+//! FITS records the integrity of an HDU in two keywords: `DATASUM` holds the
+//! checksum of the data unit as a decimal string, and `CHECKSUM` holds an
+//! ASCII-encoded value chosen so that the checksum of the *entire* HDU, header
+//! and data together, comes out as zero. Verifying an HDU therefore means
+//! recomputing both and checking that the data sum matches `DATASUM` and that
+//! the whole-HDU sum is zero.
+//!
+//! The algorithm is the 32-bit 1's complement checksum developed by Rob Seaman
+//! at NOAO and presented at the 1994 ADASS conference, in which the overflow
+//! bits are permuted back into the sum so that all bit positions are sampled
+//! evenly.
+//!
+//! Ported from CFITSIO's `checksum.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center. The routine descriptions draw on the "File Checksum
+//! Routines" section of the CFITSIO User's Reference Guide.
+#![warn(missing_docs)]
 
 use core::slice;
 
@@ -23,21 +36,20 @@ use crate::swapproc::ffswap2;
 use crate::wrappers::*;
 use crate::{buffers::*, int_snprintf};
 
-/*--------------------------------------------------------------------------*/
 /// Calculate a 32-bit 1's complement checksum of the FITS 2880-byte blocks.
 ///
-/// This routine is based on the C algorithm developed by Rob
-/// Seaman at NOAO that was presented at the 1994 ADASS conference,  
-/// published in the Astronomical Society of the Pacific Conference Series.
-/// This uses a 32-bit 1's complement checksum in which the overflow bits
-/// are permuted back into the sum and therefore all bit positions are
-/// sampled evenly.
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) number of 2880-byte blocks to sum
+/// * `sum`    — (IO) accumulated checksum
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcsum(
-    fptr: *mut fitsfile, /* I - FITS file pointer                  */
-    nrec: c_long,        /* I - number of 2880-byte blocks to sum  */
-    sum: *mut c_ulong,   /* IO - accumulated checksum              */
-    status: *mut c_int,  /* IO - error status                      */
+    fptr: *mut fitsfile,
+    nrec: c_long,
+    sum: *mut c_ulong,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -54,7 +66,6 @@ pub unsafe extern "C" fn ffcsum(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Calculate a 32-bit 1's complement checksum of the FITS 2880-byte blocks.
 /// This routine is based on the C algorithm developed by Rob
 /// Seaman at NOAO that was presented at the 1994 ADASS conference,  
@@ -62,11 +73,18 @@ pub unsafe extern "C" fn ffcsum(
 /// This uses a 32-bit 1's complement checksum in which the overflow bits
 /// are permuted back into the sum and therefore all bit positions are
 /// sampled evenly.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) number of 2880-byte blocks to sum
+/// * `sum`    — (IO) accumulated checksum
+/// * `status` — (IO) error status
 pub fn ffcsum_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                  */
-    nrec: c_long,        /* I - number of 2880-byte blocks to sum  */
-    sum: &mut c_ulong,   /* IO - accumulated checksum              */
-    status: &mut c_int,  /* IO - error status                      */
+    fptr: &mut fitsfile,
+    nrec: c_long,
+    sum: &mut c_ulong,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut sbuf: [u16; 1440] = [0; 1440];
@@ -115,23 +133,20 @@ pub fn ffcsum_safe(
     *status
 }
 
-/*-------------------------------------------------------------------------*/
-/// encode the 32 bit checksum by converting every
-/// 2 bits of each byte into an ASCII character (32 bit word encoded
-/// as 16 character string).   Only ASCII letters and digits are used
-/// to encode the values (no ASCII punctuation characters).
+/// Encode a 32-bit checksum into a 16-character ASCII string.
+///
+/// Every 2 bits of each byte become one ASCII character. Only letters and
+/// digits are used, no punctuation.
 ///
 /// If complm=TRUE, then the complement of the sum will be encoded.
 ///
-/// This routine is based on the C algorithm developed by Rob
-/// Seaman at NOAO that was presented at the 1994 ADASS conference,
-/// published in the Astronomical Society of the Pacific Conference Series.
+/// # Parameters
+///
+/// * `sum`    — (I) accumulated checksum
+/// * `complm` — (I) = 1 to encode complement of the sum
+/// * `ascii`  — (O) 16-char ASCII encoded checksum
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffesum(
-    sum: c_ulong,             /* I - accumulated checksum                */
-    complm: c_int,            /* I - = 1 to encode complement of the sum */
-    ascii: *mut [c_char; 17], /* O - 16-char ASCII encoded checksum      */
-) {
+pub unsafe extern "C" fn ffesum(sum: c_ulong, complm: c_int, ascii: *mut [c_char; 17]) {
     // FFI WRAPPER
     unsafe {
         let ascii = ascii.as_mut().expect(NULL_MSG);
@@ -139,22 +154,19 @@ pub unsafe extern "C" fn ffesum(
     }
 }
 
-/*-------------------------------------------------------------------------*/
-/// encode the 32 bit checksum by converting every
-/// 2 bits of each byte into an ASCII character (32 bit word encoded
-/// as 16 character string).   Only ASCII letters and digits are used
-/// to encode the values (no ASCII punctuation characters).
+/// Encode a 32-bit checksum into a 16-character ASCII string.
+///
+/// Every 2 bits of each byte become one ASCII character. Only letters and
+/// digits are used, no punctuation.
 ///
 /// If complm=TRUE, then the complement of the sum will be encoded.
 ///
-/// This routine is based on the C algorithm developed by Rob
-/// Seaman at NOAO that was presented at the 1994 ADASS conference,
-/// published in the Astronomical Society of the Pacific Conference Series.
-pub fn ffesum_safe(
-    sum: c_ulong,             /* I - accumulated checksum                */
-    complm: bool,             /* I - = 1 to encode complement of the sum */
-    ascii: &mut [c_char; 17], /* O - 16-char ASCII encoded checksum      */
-) {
+/// # Parameters
+///
+/// * `sum`    — (I) accumulated checksum
+/// * `complm` — (I) = 1 to encode complement of the sum
+/// * `ascii`  — (O) 16-char ASCII encoded checksum
+pub fn ffesum_safe(sum: c_ulong, complm: bool, ascii: &mut [c_char; 17]) {
     let exclude: [c_uint; 13] = [
         0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60,
     ];
@@ -212,19 +224,17 @@ pub fn ffesum_safe(
     ascii[16] = 0;
 }
 
-/*-------------------------------------------------------------------------*/
-/// decode the 16-char ASCII encoded checksum into an unsigned 32-bit long.
+/// Decode a 16-character ASCII encoded checksum into an unsigned 32-bit
+/// value.
 /// If complm=TRUE, then the complement of the sum will be decoded.
 ///
-/// This routine is based on the C algorithm developed by Rob
-/// Seaman at NOAO that was presented at the 1994 ADASS conference,
-/// published in the Astronomical Society of the Pacific Conference Series.
+/// # Parameters
+///
+/// * `ascii`  — (I) 16-char ASCII encoded checksum
+/// * `complm` — (I) =1 to decode complement of the
+/// * `sum`    — (O) 32-bit checksum
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffdsum(
-    ascii: *const c_char, /* I - 16-char ASCII encoded checksum   */
-    complm: c_int,        /* I - =1 to decode complement of the   */
-    sum: *mut c_ulong,    /* O - 32-bit checksum           */
-) -> c_ulong {
+pub unsafe extern "C" fn ffdsum(ascii: *const c_char, complm: c_int, sum: *mut c_ulong) -> c_ulong {
     // FFI WRAPPER
     unsafe {
         let sum = sum.as_mut().expect(NULL_MSG);
@@ -234,17 +244,19 @@ pub unsafe extern "C" fn ffdsum(
     }
 }
 
-/*-------------------------------------------------------------------------*/
-/// decode the 16-char ASCII encoded checksum into an unsigned 32-bit long.
+/// Decode a 16-character ASCII encoded checksum into an unsigned 32-bit
+/// value.
 /// If complm=TRUE, then the complement of the sum will be decoded.
 /// This routine is based on the C algorithm developed by Rob
 /// Seaman at NOAO that was presented at the 1994 ADASS conference,
 /// published in the Astronomical Society of the Pacific Conference Series.
-pub fn ffdsum_safe(
-    ascii: &[c_char; 17], /* I - 16-char ASCII encoded checksum   */
-    complm: bool,         /* I - =1 to decode complement of the   */
-    sum: &mut c_ulong,    /* O - 32-bit checksum           */
-) -> c_ulong {
+///
+/// # Parameters
+///
+/// * `ascii`  — (I) 16-char ASCII encoded checksum
+/// * `complm` — (I) =1 to decode complement of the
+/// * `sum`    — (O) 32-bit checksum
+pub fn ffdsum_safe(ascii: &[c_char; 17], complm: bool, sum: &mut c_ulong) -> c_ulong {
     let mut cbuf: [c_char; 16] = [0; 16];
     let mut hi: c_ulong = 0;
     let mut lo: c_ulong = 0;
@@ -275,15 +287,18 @@ pub fn ffdsum_safe(
     *sum
 }
 
-/*------------------------------------------------------------------------*/
-/// Create or update the checksum keywords in the CHDU.  These keywords
-/// provide a checksum verification of the FITS HDU based on the ASCII
-/// coded 1's complement checksum algorithm developed by Rob Seaman at NOAO.
+/// Compute and write the DATASUM and CHECKSUM keyword values for the CHDU.
+///
+/// If the keywords already exist their values are updated only if necessary,
+/// that is, if the file has been modified since the original values were
+/// computed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffpcks(
-    fptr: *mut fitsfile, /* I - FITS file pointer                  */
-    status: *mut c_int,  /* IO - error status                      */
-) -> c_int {
+pub unsafe extern "C" fn ffpcks(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -293,14 +308,17 @@ pub unsafe extern "C" fn ffpcks(
     }
 }
 
-/*------------------------------------------------------------------------*/
-/// Create or update the checksum keywords in the CHDU.  These keywords
-/// provide a checksum verification of the FITS HDU based on the ASCII
-/// coded 1's complement checksum algorithm developed by Rob Seaman at NOAO.
-pub fn ffpcks_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                  */
-    status: &mut c_int,  /* IO - error status                      */
-) -> c_int {
+/// Compute and write the DATASUM and CHECKSUM keyword values for the CHDU.
+///
+/// If the keywords already exist their values are updated only if necessary,
+/// that is, if the file has been modified since the original values were
+/// computed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffpcks_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut datestr: [c_char; 20] = [0; 20];
     let mut checksum: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut datasum: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -461,14 +479,19 @@ pub fn ffpcks_safe(
     *status
 }
 
-/*------------------------------------------------------------------------*/
-/// Update the CHECKSUM keyword value.  This assumes that the DATASUM
-/// keyword exists and has the correct value.
+/// Update the CHECKSUM keyword value, assuming the DATASUM keyword exists and
+/// already has the correct value.
+///
+/// Calculates the new checksum for the current header unit, adds it to the data
+/// unit checksum, encodes the result into an ASCII string and writes that to
+/// the CHECKSUM keyword.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffupck(
-    fptr: *mut fitsfile, /* I - FITS file pointer                  */
-    status: *mut c_int,  /* IO - error status                      */
-) -> c_int {
+pub unsafe extern "C" fn ffupck(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -478,13 +501,18 @@ pub unsafe extern "C" fn ffupck(
     }
 }
 
-/*------------------------------------------------------------------------*/
-/// Update the CHECKSUM keyword value.  This assumes that the DATASUM
-/// keyword exists and has the correct value.
-pub fn ffupck_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                  */
-    status: &mut c_int,  /* IO - error status                      */
-) -> c_int {
+/// Update the CHECKSUM keyword value, assuming the DATASUM keyword exists and
+/// already has the correct value.
+///
+/// Calculates the new checksum for the current header unit, adds it to the data
+/// unit checksum, encodes the result into an ASCII string and writes that to
+/// the CHECKSUM keyword.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffupck_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut datestr: [c_char; 20] = [0; 20];
     let mut chkcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -592,18 +620,31 @@ pub fn ffupck_safe(
     *status
 }
 
-/*------------------------------------------------------------------------*/
 /// Verify the HDU by comparing the value of the computed checksums against
 /// the values of the DATASUM and CHECKSUM keywords if they are present.
+///
+/// The data unit verifies correctly if the computed checksum equals the value
+/// of the DATASUM keyword. The checksum for the entire HDU, header plus data
+/// unit, is correct if it equals zero.
+///
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `datastatus` — (O) data checksum status
+/// * `hdustatus`  — (O) HDU checksum status
+/// * `status`     — (IO) error status
+///
+/// `datastatus` and `hdustatus` are each set to:
+///
+/// * ` 1` — verification is correct
+/// * ` 0` — the checksum keyword is not present
+/// * `-1` — verification is not correct
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffvcks(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                  */
-    datastatus: *mut c_int, /* O - data checksum status               */
-    hdustatus: *mut c_int,  /* O - hdu checksum status                */
-    /*     1  verification is correct         */
-    /*     0  checksum keyword is not present */
-    /*    -1 verification not correct         */
-    status: *mut c_int, /* IO - error status                      */
+    fptr: *mut fitsfile,
+    datastatus: *mut c_int,
+    hdustatus: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -616,17 +657,30 @@ pub unsafe extern "C" fn ffvcks(
     }
 }
 
-/*------------------------------------------------------------------------*/
 /// Verify the HDU by comparing the value of the computed checksums against
 /// the values of the DATASUM and CHECKSUM keywords if they are present.
+///
+/// The data unit verifies correctly if the computed checksum equals the value
+/// of the DATASUM keyword. The checksum for the entire HDU, header plus data
+/// unit, is correct if it equals zero.
+///
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `datastatus` — (O) data checksum status
+/// * `hdustatus`  — (O) HDU checksum status
+/// * `status`     — (IO) error status
+///
+/// `datastatus` and `hdustatus` are each set to:
+///
+/// * ` 1` — verification is correct
+/// * ` 0` — the checksum keyword is not present
+/// * `-1` — verification is not correct
 pub fn ffvcks_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                  */
-    datastatus: &mut c_int, /* O - data checksum status               */
-    hdustatus: &mut c_int,  /* O - hdu checksum status                */
-    /*     1  verification is correct         */
-    /*     0  checksum keyword is not present */
-    /*    -1 verification not correct         */
-    status: &mut c_int, /* IO - error status                      */
+    fptr: &mut fitsfile,
+    datastatus: &mut c_int,
+    hdustatus: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut datasum: c_ulong = 0;
     let mut hdusum: c_ulong = 0;
@@ -691,14 +745,24 @@ pub fn ffvcks_safe(
     *status
 }
 
-/*------------------------------------------------------------------------*/
-/// calculate the checksums of the data unit and the total HDU
+/// Compute and return the checksum values for the CHDU, without creating or
+/// modifying the CHECKSUM and DATASUM keywords.
+///
+/// Used internally by [`ffvcks_safe`], but may be useful in other situations as
+/// well.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `datasum` — (O) data checksum
+/// * `hdusum`  — (O) HDU checksum
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcks(
-    fptr: *mut fitsfile,   /* I - FITS file pointer             */
-    datasum: *mut c_ulong, /* O - data checksum                 */
-    hdusum: *mut c_ulong,  /* O - hdu checksum                  */
-    status: *mut c_int,    /* IO - error status                 */
+    fptr: *mut fitsfile,
+    datasum: *mut c_ulong,
+    hdusum: *mut c_ulong,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -711,13 +775,23 @@ pub unsafe extern "C" fn ffgcks(
     }
 }
 
-/*------------------------------------------------------------------------*/
-/// calculate the checksums of the data unit and the total HDU
+/// Compute and return the checksum values for the CHDU, without creating or
+/// modifying the CHECKSUM and DATASUM keywords.
+///
+/// Used internally by [`ffvcks_safe`], but may be useful in other situations as
+/// well.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `datasum` — (O) data checksum
+/// * `hdusum`  — (O) HDU checksum
+/// * `status`  — (IO) error status
 pub fn ffgcks_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer             */
-    datasum: &mut c_ulong, /* O - data checksum                 */
-    hdusum: &mut c_ulong,  /* O - hdu checksum                  */
-    status: &mut c_int,    /* IO - error status                 */
+    fptr: &mut fitsfile,
+    datasum: &mut c_ulong,
+    hdusum: &mut c_ulong,
+    status: &mut c_int,
 ) -> c_int {
     let mut headstart: LONGLONG = 0;
     let mut datastart: LONGLONG = 0;
