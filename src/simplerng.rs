@@ -1,3 +1,12 @@
+//! A small, reproducible random number generator.
+//!
+//! Used by the tile compression code to generate the dither pattern in
+//! [`crate::quantize`]. It must be reproducible across platforms and runs: a
+//! dithered image can only be reconstructed by subtracting exactly the values
+//! that were added, so this generator's sequence is part of the file format
+//! rather than an implementation detail.
+#![warn(missing_docs)]
+
 use std::sync::Mutex;
 
 use crate::c_types::{c_int, c_uint};
@@ -41,7 +50,7 @@ fn simplerng_getstate(u: &mut c_uint, v: &mut c_uint) {
     *v = *M_V.lock().unwrap();
 }
 
-/// srand() equivalent to seed the two state variables
+/// Srand() equivalent to seed the two state variables
 pub(crate) fn simplerng_srand(seed: c_uint) {
     fastrand::seed(u64::from(seed));
 }
@@ -64,7 +73,7 @@ fn simplerng_getuint_pr(u: &mut c_uint, v: &mut c_uint) -> c_uint {
     (*v).wrapping_shl(16).wrapping_add(*u)
 }
 
-/// Get uniform deviate [0,1]
+/// Get uniform deviate in `[0,1]`
 pub(crate) fn simplerng_getuniform() -> f64 {
     let r = fastrand::u64(..);
 
