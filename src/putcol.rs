@@ -1,9 +1,18 @@
-/*  This file, putcol.rs, contains routines that write data elements to     */
-/*  a FITS image or table. These are the generic routines.                 */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Generic-datatype routines that write data elements to a FITS image or table.
+//!
+//! The write-side counterpart of [`crate::getcol`]: these take a `datatype`
+//! code at run time and dispatch to the corresponding typed module -- `putcolb`
+//! for [`TBYTE`], `putcold` for [`TDOUBLE`], and so on.
+//!
+//! Writing converts in the opposite direction to reading: the value stored is
+//! `(the value supplied - TZEROn) / TSCALn`, cast to the column's own type, so
+//! a column stored as 16-bit integers can be written from doubles. A supplied
+//! value equal to `nulval` is stored as the column's null value.
+//!
+//! Ported from CFITSIO's `putcol.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -59,7 +68,6 @@ use crate::raw_to_slice;
 use crate::wrappers::*;
 use crate::{bytes_per_datatype, fitsio::*, int_snprintf};
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of pixels to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -67,14 +75,23 @@ use crate::{bytes_per_datatype, fitsio::*, int_snprintf};
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to write(1 based)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppx(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    datatype: c_int,         /* I - datatype of the value                   */
-    firstpix: *const c_long, /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,         /* I - number of values to write               */
-    array: *const c_void,    /* I - array of values that are written        */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const c_long,
+    nelem: LONGLONG,
+    array: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -100,7 +117,6 @@ pub unsafe extern "C" fn ffppx(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of pixels to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -108,13 +124,22 @@ pub unsafe extern "C" fn ffppx(
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to write(1 based)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 pub fn ffppx_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    datatype: c_int,     /* I - datatype of the value                   */
-    firstpix: &[c_long], /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[u8],        /* I - array of values that are written        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[c_long],
+    nelem: LONGLONG,
+    array: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: c_int = 0;
     let group: c_long = 1;
@@ -181,7 +206,6 @@ pub fn ffppx_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of pixels to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -189,14 +213,23 @@ pub fn ffppx_safe(
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to write(1 based)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppxll(
-    fptr: *mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: *const LONGLONG, /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: *const c_void,      /* I - array of values that are written        */
-    status: *mut c_int,        /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -221,7 +254,6 @@ pub unsafe extern "C" fn ffppxll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of pixels to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -229,13 +261,22 @@ pub unsafe extern "C" fn ffppxll(
 ///
 /// This routine is simillar to ffppr, except it supports writing to
 /// large images with more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to write(1 based)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 pub fn ffppxll_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    firstpix: &[LONGLONG], /* I - coord of  first pixel to write(1 based) */
-    nelem: LONGLONG,       /* I - number of values to write               */
-    array: &[u8],          /* I - array of values that are written        */
-    status: &mut c_int,    /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[LONGLONG],
+    nelem: LONGLONG,
+    array: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: c_int = 0;
     let group: c_long = 1;
@@ -302,7 +343,6 @@ pub fn ffppxll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -310,15 +350,25 @@ pub fn ffppxll_safe(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) first vector element to write(1 = 1st)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `nulval`   — (I) pointer to the null value
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppxn(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    firstpix: *mut c_long, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to write               */
-    array: *const c_void,  /* I - array of values that are written        */
-    nulval: *const c_void, /* I - pointer to the null value               */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *mut c_long,
+    nelem: LONGLONG,
+    array: *const c_void,
+    nulval: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -345,7 +395,6 @@ pub unsafe extern "C" fn ffppxn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -353,14 +402,24 @@ pub unsafe extern "C" fn ffppxn(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) first vector element to write(1 = 1st)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `nulval`   — (I) pointer to the null value
+/// * `status`   — (IO) error status
 pub fn ffppxn_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: &[c_long],       /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: &[u8],              /* I - array of values that are written        */
-    nulval: Option<NullValue>, /* I - pointer to the null value               */
-    status: &mut c_int,        /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[c_long],
+    nelem: LONGLONG,
+    array: &[u8],
+    nulval: Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis = 0;
 
@@ -533,7 +592,6 @@ pub fn ffppxn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -541,15 +599,25 @@ pub fn ffppxn_safe(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) first vector element to write(1 = 1st)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `nulval`   — (I) pointer to the null value
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppxnll(
-    fptr: *mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: *const LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: *const c_void,      /* I - array of values that are written        */
-    nulval: *const c_void,     /* I - pointer to the null value               */
-    status: *mut c_int,        /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    nulval: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -575,7 +643,6 @@ pub unsafe extern "C" fn ffppxnll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -583,14 +650,24 @@ pub unsafe extern "C" fn ffppxnll(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) first vector element to write(1 = 1st)
+/// * `nelem`    — (I) number of values to write
+/// * `array`    — (I) array of values that are written
+/// * `nulval`   — (I) pointer to the null value
+/// * `status`   — (IO) error status
 pub fn ffppxnll_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: &[LONGLONG],     /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: &[u8],              /* I - array of values that are written        */
-    nulval: Option<NullValue>, /* I - pointer to the null value               */
-    status: &mut c_int,        /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[LONGLONG],
+    nelem: LONGLONG,
+    array: &[u8],
+    nulval: Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis = 0;
 
@@ -765,19 +842,27 @@ pub fn ffppxnll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppr(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    datatype: c_int,      /* I - datatype of the value                   */
-    firstelem: LONGLONG,  /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,      /* I - number of values to write               */
-    array: *const c_void, /* I - array of values that are written        */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -798,18 +883,26 @@ pub unsafe extern "C" fn ffppr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 pub fn ffppr_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    datatype: c_int,     /* I - datatype of the value                   */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[u8],        /* I - array of values that are written        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let group: c_long = 1;
 
@@ -860,20 +953,29 @@ pub fn ffppr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) pointer to the null value
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppn(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    firstelem: LONGLONG,   /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to write               */
-    array: *const c_void,  /* I - array of values that are written        */
-    nulval: *const c_void, /* I - pointer to the null value               */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    nulval: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -895,19 +997,28 @@ pub unsafe extern "C" fn ffppn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) pointer to the null value
+/// * `status`    — (IO) error status
 pub fn ffppn_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstelem: LONGLONG,       /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,           /* I - number of values to write               */
-    array: &[u8],              /* I - array of values that are written        */
-    nulval: Option<NullValue>, /* I - pointer to the null value               */
-    status: &mut c_int,        /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[u8],
+    nulval: Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     let group: c_long = 1;
 
@@ -1114,7 +1225,6 @@ pub fn ffppn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write a section of values to the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1122,14 +1232,23 @@ pub fn ffppn_safe(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `blc`      — (I) 'bottom left corner' of the subsection
+/// * `trc`      — (I) 'top right corner' of the subsection
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpss(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    datatype: c_int,      /* I - datatype of the value                   */
-    blc: *const c_long,   /* I - 'bottom left corner' of the subsection  */
-    trc: *const c_long,   /* I - 'top right corner' of the subsection    */
-    array: *const c_void, /* I - array of values that are written        */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    blc: *const c_long,
+    trc: *const c_long,
+    array: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1160,7 +1279,6 @@ pub unsafe extern "C" fn ffpss(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write a section of values to the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1168,13 +1286,22 @@ pub unsafe extern "C" fn ffpss(
 ///
 /// This routine supports writing to large images with
 /// more than 2**31 pixels.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `blc`      — (I) 'bottom left corner' of the subsection
+/// * `trc`      — (I) 'top right corner' of the subsection
+/// * `array`    — (I) array of values that are written
+/// * `status`   — (IO) error status
 pub fn ffpss_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    datatype: c_int,     /* I - datatype of the value                   */
-    blc: &[c_long],      /* I - 'bottom left corner' of the subsection  */
-    trc: &[c_long],      /* I - 'top right corner' of the subsection    */
-    array: &[u8],        /* I - array of values that are written        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    blc: &[c_long],
+    trc: &[c_long],
+    array: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: c_int = 0;
     let mut naxes: [c_long; 9] = [0; 9];
@@ -1233,21 +1360,31 @@ pub fn ffpss_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a table column.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of elements to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcl(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    datatype: c_int,      /* I - datatype of the value                   */
-    colnum: c_int,        /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,   /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,  /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,      /* I - number of elements to write             */
-    array: *const c_void, /* I - array of values that are written        */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1277,20 +1414,30 @@ pub unsafe extern "C" fn ffpcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a table column.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of elements to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 pub fn ffpcl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    datatype: c_int,     /* I - datatype of the value                   */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of elements to write             */
-    array: &[u8],        /* I - array of values that are written        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -1522,22 +1669,33 @@ pub fn ffpcl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a table column.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of elements to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) pointer to the null value
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcn(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    colnum: c_int,         /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,    /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,   /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,       /* I - number of elements to write             */
-    array: *const c_void,  /* I - array of values that are written        */
-    nulval: *const c_void, /* I - pointer to the null value               */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_void,
+    nulval: *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1569,21 +1727,32 @@ pub unsafe extern "C" fn ffpcn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a table column.  The datatype of the
 /// input array is defined by the 2nd argument. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS column is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of elements to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) pointer to the null value
+/// * `status`    — (IO) error status
 pub fn ffpcn_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    colnum: c_int,             /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,        /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,       /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,           /* I - number of elements to write             */
-    array: &[u8],              /* I - array of values that are written        */
-    nulval: Option<NullValue>, /* I - pointer to the null value               */
-    status: &mut c_int,        /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[u8],
+    nulval: Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -1878,26 +2047,37 @@ pub fn ffpcn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write arrays of values to NCOLS table columns. This is an optimization
 /// to write all columns in one pass through the table.  The datatypes of the
 /// input arrays are defined by the 3rd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
-/// Undefined elements for column i that are equal to *(nulval[i]) are set to
-/// the defined null value, unless nulval[i]=0,
+/// Undefined elements for column `i` that are equal to `*(nulval[i])` are set to
+/// the defined null value, unless `nulval[i]=0`,
 /// in which case no checking for undefined values will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `ncols`    — (I) number of columns to write
+/// * `datatype` — (I) datatypes of the values
+/// * `colnum`   — (I) columns numbers to write (1 = 1st col)
+/// * `firstrow` — (I) first row to write (1 = 1st row)
+/// * `nrows`    — (I) number of rows to write
+/// * `array`    — (I) array of pointers to values to write
+/// * `nulval`   — (I) array of pointers to values for undefined pixels
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcln(
-    fptr: *mut fitsfile,          /* I - FITS file pointer                       */
-    ncols: c_int,                 /* I - number of columns to write              */
-    datatype: *const c_int,       /* I - datatypes of the values                 */
-    colnum: *const c_int,         /* I - columns numbers to write (1 = 1st col)  */
-    firstrow: LONGLONG,           /* I - first row to write (1 = 1st row)    */
-    nrows: LONGLONG,              /* I - number of rows to write             */
-    array: *const *const c_void,  /* I - array of pointers to values to write    */
-    nulval: *const *const c_void, /* I - array of pointers to values for undefined pixels */
-    status: *mut c_int,           /* IO - error status                           */
+    fptr: *mut fitsfile,
+    ncols: c_int,
+    datatype: *const c_int,
+    colnum: *const c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    array: *const *const c_void,
+    nulval: *const *const c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1914,25 +2094,36 @@ pub unsafe extern "C" fn ffpcln(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write arrays of values to NCOLS table columns. This is an optimization
 /// to write all columns in one pass through the table.  The datatypes of the
 /// input arrays are defined by the 3rd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
-/// Undefined elements for column i that are equal to *(nulval[i]) are set to
-/// the defined null value, unless nulval[i]=0,
+/// Undefined elements for column `i` that are equal to `*(nulval[i])` are set to
+/// the defined null value, unless `nulval[i]=0`,
 /// in which case no checking for undefined values will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `ncols`    — (I) number of columns to write
+/// * `datatype` — (I) datatypes of the values
+/// * `colnum`   — (I) columns numbers to write (1 = 1st col)
+/// * `firstrow` — (I) first row to write (1 = 1st row)
+/// * `nrows`    — (I) number of rows to write
+/// * `array`    — (I) array of pointers to values to write
+/// * `nulval`   — (I) array of pointers to values for undefined pixels
+/// * `status`   — (IO) error status
 pub fn ffpcln_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer                       */
-    ncols: c_int,             /* I - number of columns to write              */
-    datatype: &[c_int],       /* I - datatypes of the values                 */
-    colnum: &[c_int],         /* I - columns numbers to write (1 = 1st col)  */
-    firstrow: LONGLONG,       /* I - first row to write (1 = 1st row)    */
-    nrows: LONGLONG,          /* I - number of rows to write             */
-    array: &[*const c_void],  /* I - array of pointers to values to write    */
-    nulval: &[*const c_void], /* I - array of pointers to values for undefined pixels */
-    status: &mut c_int,       /* IO - error status                           */
+    fptr: &mut fitsfile,
+    ncols: c_int,
+    datatype: &[c_int],
+    colnum: &[c_int],
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    array: &[*const c_void],
+    nulval: &[*const c_void],
+    status: &mut c_int,
 ) -> c_int {
     let mut ntotrows: LONGLONG = 0;
     let mut nrowbuf: c_long = 0;
@@ -2084,15 +2275,22 @@ pub fn ffpcln_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// set all the parameters for an iterator column, by column name
+/// Set all the parameters for an iterator column, by column name
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `fptr`     — (I) FITS file pointer
+/// * `colname`  — (I) column name
+/// * `datatype` — (I) column datatype
+/// * `iotype`   — (I) InputCol, InputOutputCol, or OutputCol
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_iter_set_by_name(
-    col: *mut iteratorCol,  /* I - iterator col structure */
-    fptr: *mut fitsfile,    /* I - FITS file pointer                      */
-    colname: *const c_char, /* I - column name                            */
-    datatype: c_int,        /* I - column datatype                        */
-    iotype: c_int,          /* I - InputCol, InputOutputCol, or OutputCol */
+    col: *mut iteratorCol,
+    fptr: *mut fitsfile,
+    colname: *const c_char,
+    datatype: c_int,
+    iotype: c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2105,14 +2303,21 @@ pub unsafe extern "C" fn fits_iter_set_by_name(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set all the parameters for an iterator column, by column name
+/// Set all the parameters for an iterator column, by column name
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `fptr`     — (I) FITS file pointer
+/// * `colname`  — (I) column name
+/// * `datatype` — (I) column datatype
+/// * `iotype`   — (I) InputCol, InputOutputCol, or OutputCol
 pub fn fits_iter_set_by_name_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-    fptr: &mut fitsfile,   /* I - FITS file pointer                      */
-    colname: &[c_char],    /* I - column name                            */
-    datatype: c_int,       /* I - column datatype                        */
-    iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
+    col: &mut iteratorCol,
+    fptr: &mut fitsfile,
+    colname: &[c_char],
+    datatype: c_int,
+    iotype: c_int,
 ) -> c_int {
     col.fptr = fptr;
     strncpy_safe(&mut col.colname, colname, 69);
@@ -2124,15 +2329,22 @@ pub fn fits_iter_set_by_name_safe(
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set all the parameters for an iterator column, by column number
+/// Set all the parameters for an iterator column, by column number
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `datatype` — (I) column datatype
+/// * `iotype`   — (I) InputCol, InputOutputCol, or OutputCol
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_iter_set_by_num(
-    col: *mut iteratorCol, /* I - iterator col structure */
-    fptr: *mut fitsfile,   /* I - FITS file pointer                      */
-    colnum: c_int,         /* I - column number                          */
-    datatype: c_int,       /* I - column datatype                        */
-    iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
+    col: *mut iteratorCol,
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    datatype: c_int,
+    iotype: c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2143,14 +2355,21 @@ pub unsafe extern "C" fn fits_iter_set_by_num(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set all the parameters for an iterator column, by column number
+/// Set all the parameters for an iterator column, by column number
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `datatype` — (I) column datatype
+/// * `iotype`   — (I) InputCol, InputOutputCol, or OutputCol
 pub fn fits_iter_set_by_num_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-    fptr: *mut fitsfile,   /* I - FITS file pointer                      */
-    colnum: c_int,         /* I - column number                          */
-    datatype: c_int,       /* I - column datatype                        */
-    iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
+    col: &mut iteratorCol,
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    datatype: c_int,
+    iotype: c_int,
 ) -> c_int {
     col.fptr = fptr;
     col.colnum = colnum;
@@ -2160,13 +2379,14 @@ pub fn fits_iter_set_by_num_safe(
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`  — (I) iterator column structure
+/// * `fptr` — (I) FITS file pointer
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_set_file(
-    col: *mut iteratorCol, /* I - iterator column structure   */
-    fptr: *mut fitsfile,   /* I - FITS file pointer                      */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_set_file(col: *mut iteratorCol, fptr: *mut fitsfile) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2176,22 +2396,27 @@ pub unsafe extern "C" fn fits_iter_set_file(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
-pub fn fits_iter_set_file_safe(
-    col: &mut iteratorCol, /* I - iterator column structure   */
-    fptr: &mut fitsfile,   /* I - FITS file pointer                      */
-) -> c_int {
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`  — (I) iterator column structure
+/// * `fptr` — (I) FITS file pointer
+pub fn fits_iter_set_file_safe(col: &mut iteratorCol, fptr: &mut fitsfile) -> c_int {
     col.fptr = fptr;
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`     — (I) iterator col structure
+/// * `colname` — (I) column name
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_iter_set_colname(
-    col: *mut iteratorCol,  /* I - iterator col structure  */
-    colname: *const c_char, /* I - column name                            */
+    col: *mut iteratorCol,
+    colname: *const c_char,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2201,25 +2426,27 @@ pub unsafe extern "C" fn fits_iter_set_colname(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
-pub fn fits_iter_set_colname_safe(
-    col: &mut iteratorCol, /* I - iterator col structure  */
-    colname: &[c_char],    /* I - column name                            */
-) -> c_int {
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`     — (I) iterator col structure
+/// * `colname` — (I) column name
+pub fn fits_iter_set_colname_safe(col: &mut iteratorCol, colname: &[c_char]) -> c_int {
     strncpy_safe(&mut col.colname, colname, 69);
     col.colname[69] = 0;
     col.colnum = 0; /* set column number undefined since name is given */
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`    — (I) iterator column structure
+/// * `colnum` — (I) column number
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_set_colnum(
-    col: *mut iteratorCol, /* I - iterator column structure */
-    colnum: c_int,         /* I - column number                          */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_set_colnum(col: *mut iteratorCol, colnum: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2227,23 +2454,25 @@ pub unsafe extern "C" fn fits_iter_set_colnum(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
-pub fn fits_iter_set_colnum_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-    colnum: c_int,         /* I - column number                          */
-) -> c_int {
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`    — (I) iterator column structure
+/// * `colnum` — (I) column number
+pub fn fits_iter_set_colnum_safe(col: &mut iteratorCol, colnum: c_int) -> c_int {
     col.colnum = colnum;
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `datatype` — (I) column datatype
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_set_datatype(
-    col: *mut iteratorCol, /* I - iterator col structure */
-    datatype: c_int,       /* I - column datatype                        */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_set_datatype(col: *mut iteratorCol, datatype: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2251,23 +2480,25 @@ pub unsafe extern "C" fn fits_iter_set_datatype(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
-pub fn fits_iter_set_datatype_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-    datatype: c_int,       /* I - column datatype                        */
-) -> c_int {
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`      — (I) iterator col structure
+/// * `datatype` — (I) column datatype
+pub fn fits_iter_set_datatype_safe(col: &mut iteratorCol, datatype: c_int) -> c_int {
     col.datatype = datatype;
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`    — (I) iterator column structure
+/// * `iotype` — (I) InputCol, InputOutputCol, or OutputCol
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_set_iotype(
-    col: *mut iteratorCol, /* I - iterator column structure */
-    iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_set_iotype(col: *mut iteratorCol, iotype: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2275,22 +2506,24 @@ pub unsafe extern "C" fn fits_iter_set_iotype(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// set iterator column parameter
-pub fn fits_iter_set_iotype_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-    iotype: c_int,         /* I - InputCol, InputOutputCol, or OutputCol */
-) -> c_int {
+/// Set iterator column parameter
+///
+/// # Parameters
+///
+/// * `col`    — (I) iterator column structure
+/// * `iotype` — (I) InputCol, InputOutputCol, or OutputCol
+pub fn fits_iter_set_iotype_safe(col: &mut iteratorCol, iotype: c_int) -> c_int {
     col.iotype = iotype;
     0
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_file(
-    col: *mut iteratorCol, /* I -iterator col structure */
-) -> *mut fitsfile {
+pub unsafe extern "C" fn fits_iter_get_file(col: *mut iteratorCol) -> *mut fitsfile {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2298,20 +2531,22 @@ pub unsafe extern "C" fn fits_iter_get_file(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_file_safe(
-    col: &mut iteratorCol, /* I -iterator col structure */
-) -> *mut fitsfile {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_file_safe(col: &mut iteratorCol) -> *mut fitsfile {
     col.fptr
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_colname(
-    col: *mut iteratorCol, /* I -iterator col structure */
-) -> *const c_char {
+pub unsafe extern "C" fn fits_iter_get_colname(col: *mut iteratorCol) -> *const c_char {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2319,20 +2554,22 @@ pub unsafe extern "C" fn fits_iter_get_colname(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_colname_safe(
-    col: &mut iteratorCol, /* I -iterator col structure */
-) -> &[c_char; 70] {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_colname_safe(col: &mut iteratorCol) -> &[c_char; 70] {
     &col.colname
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_colnum(
-    col: *mut iteratorCol, /* I - iterator column structure */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_get_colnum(col: *mut iteratorCol) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2340,20 +2577,22 @@ pub unsafe extern "C" fn fits_iter_get_colnum(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_colnum_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-) -> c_int {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
+pub fn fits_iter_get_colnum_safe(col: &mut iteratorCol) -> c_int {
     col.colnum
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_datatype(
-    col: *mut iteratorCol, /* I - iterator col structure */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_get_datatype(col: *mut iteratorCol) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2361,20 +2600,22 @@ pub unsafe extern "C" fn fits_iter_get_datatype(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_datatype_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-) -> c_int {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_datatype_safe(col: &mut iteratorCol) -> c_int {
     col.datatype
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_iotype(
-    col: *mut iteratorCol, /* I - iterator column structure */
-) -> c_int {
+pub unsafe extern "C" fn fits_iter_get_iotype(col: *mut iteratorCol) -> c_int {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2382,20 +2623,22 @@ pub unsafe extern "C" fn fits_iter_get_iotype(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_iotype_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-) -> c_int {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
+pub fn fits_iter_get_iotype_safe(col: &mut iteratorCol) -> c_int {
     col.iotype
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_array(
-    col: *mut iteratorCol, /* I - iterator col structure */
-) -> *const c_void {
+pub unsafe extern "C" fn fits_iter_get_array(col: *mut iteratorCol) -> *const c_void {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2403,20 +2646,22 @@ pub unsafe extern "C" fn fits_iter_get_array(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_array_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-) -> *const c_void {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_array_safe(col: &mut iteratorCol) -> *const c_void {
     col.array
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_tlmin(
-    col: *mut iteratorCol, /* I - iterator column structure */
-) -> c_long {
+pub unsafe extern "C" fn fits_iter_get_tlmin(col: *mut iteratorCol) -> c_long {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2424,20 +2669,22 @@ pub unsafe extern "C" fn fits_iter_get_tlmin(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_tlmin_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-) -> c_long {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
+pub fn fits_iter_get_tlmin_safe(col: &mut iteratorCol) -> c_long {
     col.tlmin
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_tlmax(
-    col: *mut iteratorCol, /* I - iterator column structure */
-) -> c_long {
+pub unsafe extern "C" fn fits_iter_get_tlmax(col: *mut iteratorCol) -> c_long {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2445,20 +2692,22 @@ pub unsafe extern "C" fn fits_iter_get_tlmax(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_tlmax_safe(
-    col: &mut iteratorCol, /* I - iterator column structure */
-) -> c_long {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator column structure
+pub fn fits_iter_get_tlmax_safe(col: &mut iteratorCol) -> c_long {
     col.tlmax
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_repeat(
-    col: *mut iteratorCol, /* I - iterator col structure */
-) -> c_long {
+pub unsafe extern "C" fn fits_iter_get_repeat(col: *mut iteratorCol) -> c_long {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2466,20 +2715,22 @@ pub unsafe extern "C" fn fits_iter_get_repeat(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_repeat_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-) -> c_long {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_repeat_safe(col: &mut iteratorCol) -> c_long {
     col.repeat
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_tunit(
-    col: *mut iteratorCol, /* I - iterator col structure */
-) -> *const c_char {
+pub unsafe extern "C" fn fits_iter_get_tunit(col: *mut iteratorCol) -> *const c_char {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2487,20 +2738,22 @@ pub unsafe extern "C" fn fits_iter_get_tunit(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_tunit_safe(
-    col: &mut iteratorCol, /* I - iterator col structure */
-) -> &[c_char; 70] {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_tunit_safe(col: &mut iteratorCol) -> &[c_char; 70] {
     &col.tunit
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_iter_get_tdisp(
-    col: *mut iteratorCol, /* I -iterator col structure   */
-) -> *const c_char {
+pub unsafe extern "C" fn fits_iter_get_tdisp(col: *mut iteratorCol) -> *const c_char {
     // FFI WRAPPER
     unsafe {
         let col = col.as_mut().expect(NULL_MSG);
@@ -2508,15 +2761,15 @@ pub unsafe extern "C" fn fits_iter_get_tdisp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// get iterator column parameter
-pub fn fits_iter_get_tdisp_safe(
-    col: &mut iteratorCol, /* I -iterator col structure   */
-) -> &[c_char; 70] {
+/// Get iterator column parameter
+///
+/// # Parameters
+///
+/// * `col` — (I) iterator col structure
+pub fn fits_iter_get_tdisp_safe(col: &mut iteratorCol) -> &[c_char; 70] {
     &col.tdisp
 }
 
-/*--------------------------------------------------------------------------*/
 /// The iterator function.  This function will pass the specified
 /// columns from a FITS table or pixels from a FITS image to the
 /// user-supplied function.  Depending on the size of the table
@@ -2558,7 +2811,6 @@ pub unsafe extern "C" fn ffiter(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Iterate through the specified columns or rows of data in a table
 /// or image, calling a user-supplied function for each group of rows.
 /// The columns are passed by reference as iteratorCol structs. This
@@ -2595,7 +2847,6 @@ pub fn ffiter_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// The body of [`ffiter_safe`], with the column array passed as a raw pointer
 /// instead of as a `&mut [iteratorCol]`.
 ///
@@ -2747,11 +2998,9 @@ pub(crate) fn ffiter_internal(
         return *status;
     }
 
-    /*------------------------------------------------------------*/
     /* Make sure column numbers and datatypes are in legal range  */
     /* and column numbers and datatypes are legal.                */
     /* Also fill in other parameters in the column structure.     */
-    /*------------------------------------------------------------*/
 
     /* Assumptions throughout regarding the existence of cols[jj].fptr:
      1) cols[0].fptr must not be NULL
@@ -3022,9 +3271,7 @@ pub(crate) fn ffiter_internal(
             jj += 1;
         } /* end of loop over all columns */
 
-        /*-----------------------------------------------------------------*/
         /* use the first file to set the total number of values to process */
-        /*-----------------------------------------------------------------*/
 
         offset = offset.max(0); /* make sure offset is legal */
 
@@ -3110,9 +3357,7 @@ pub(crate) fn ffiter_internal(
         totaln -= offset;
         totaln = totaln.max(0); /* don't allow negative number */
 
-        /*------------------------------------------------------------------*/
         /* Determine number of values to pass to work function on each loop */
-        /*------------------------------------------------------------------*/
 
         if n_per_loop == 0 {
             /* Determine optimum number of values for each iteration.    */
@@ -3161,10 +3406,8 @@ pub(crate) fn ffiter_internal(
             n_optimum = n_per_loop.min(totaln);
         }
 
-        /*--------------------------------------*/
         /* allocate work arrays for each column */
         /* and determine the null pixel value   */
-        /*--------------------------------------*/
 
         col = vec![ColNulls::default(); n_cols as usize]; /* memory for the null values */
 
@@ -3718,9 +3961,7 @@ pub(crate) fn ffiter_internal(
                 }
             }
 
-            /*--------------------------------------------------*/
             /* main loop while there are values left to process */
-            /*--------------------------------------------------*/
 
             nleft = totaln;
 
@@ -3854,8 +4095,15 @@ pub(crate) fn ffiter_internal(
                 /* call work function */
 
                 if hdutype == IMAGE_HDU {
-                    *status =
-                        workfn(totaln, offset, felement, ntodo, n_cols, cols_ptr, userPointer);
+                    *status = workfn(
+                        totaln,
+                        offset,
+                        felement,
+                        ntodo,
+                        n_cols,
+                        cols_ptr,
+                        userPointer,
+                    );
                 } else {
                     *status = workfn(totaln, offset, frow, ntodo, n_cols, cols_ptr, userPointer);
                 }
@@ -4046,9 +4294,7 @@ pub(crate) fn ffiter_internal(
 
         // cleanup:
 
-        /*----------------------------------*/
         /* free work arrays for the columns */
-        /*----------------------------------*/
 
         for jj in 0..n_cols as usize {
             /* The C guards these on `if (cols[jj].array)`, i.e. non-null.
