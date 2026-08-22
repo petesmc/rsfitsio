@@ -1,8 +1,22 @@
-/*  This file, cfileio.rs, contains the low-level file access routines.     */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! The low-level file access routines, and the extended filename syntax.
+//!
+//! Opening a file here is more than opening a path. CFITSIO accepts an extended
+//! filename syntax in which the name carries a driver prefix (`file://`,
+//! `mem://`, `ftp://`, `shmem://`, …), an HDU or extension to move to, an image
+//! section, a row filter, a column filter and a tile-compression specification.
+//! This module parses that syntax, dispatches to the right driver from the
+//! table below, and applies the filters -- which is why opening a file can
+//! create a temporary in-memory file and copy a filtered subset into it.
+//!
+//! Drivers register themselves into `DRIVER_TABLE` at first use, each supplying
+//! the open / close / seek / read / write hooks of [`fitsdriver`]. The
+//! individual drivers live in the `drvr*` modules.
+//!
+//! Ported from CFITSIO's `cfileio.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center. The filename syntax is documented in full in the
+//! "Extended File Name Syntax" chapter of the CFITSIO User's Reference Guide.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -92,8 +106,10 @@ use crate::{buffers::*, raw_to_slice};
 use crate::{fitsio::*, int_snprintf};
 use crate::{fitsio2::*, slice_to_str};
 
-pub const MAX_PREFIX_LEN: usize = 20; /* max length of file type prefix (e.g. 'http://') */
-pub const MAX_DRIVERS: usize = 31; /* max number of file I/O drivers */
+/// Maximum length of a file type prefix, e.g. `http://`.
+pub const MAX_PREFIX_LEN: usize = 20;
+/// Maximum number of file I/O drivers that can be registered.
+pub const MAX_DRIVERS: usize = 31;
 
 pub(crate) trait Driver {}
 
@@ -108,56 +124,90 @@ pub type CheckFileFn = fn(
 /// A driver's `open` hook.
 pub type DriverOpenFn = fn(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int;
 
+/// One registered I/O driver: the hooks that implement a filename prefix.
+///
+/// A driver is selected by matching the prefix of the file name. `close`,
+/// `size`, `seek`, `read` and `write` are required; the rest are optional and
+/// are skipped when absent.
 pub struct fitsdriver {
-    /* structure containing pointers to I/O driver functions */
+    /// File name prefix this driver handles, e.g. `mem://`.
     pub prefix: [c_char; MAX_PREFIX_LEN],
+    /// Called once when the driver is first registered.
     pub init: Option<fn() -> c_int>,
+    /// Called when the library shuts down.
     pub shutdown: Option<fn() -> c_int>,
+    /// Set a driver-specific option.
     pub setoptions: Option<fn(option: c_int) -> c_int>,
+    /// Read back the driver-specific options.
     pub getoptions: Option<fn(options: &mut c_int) -> c_int>,
+    /// Report the driver's version.
     pub getversion: Option<fn(version: &mut c_int) -> c_int>,
+    /// Inspect and possibly rewrite the file names before opening.
     pub checkfile: Option<CheckFileFn>,
+    /// Open an existing file.
     pub open: Option<DriverOpenFn>,
+    /// Create a new file.
     pub create:
         Option<fn(filename: &mut [c_char; FLEN_FILENAME], drivehandle: &mut c_int) -> c_int>,
+    /// Truncate the file to `size` bytes.
     pub truncate: Option<fn(drivehandle: c_int, size: usize) -> c_int>,
+    /// Close an open file.
     pub close: fn(drivehandle: c_int) -> c_int,
+    /// Delete a file by name.
     pub remove: Option<fn(filename: &[c_char]) -> c_int>,
+    /// Report the current size of the file in bytes.
     pub size: fn(drivehandle: c_int, size: &mut usize) -> c_int,
+    /// Flush any buffered writes to the underlying medium.
     pub flush: Option<fn(drivehandle: c_int) -> c_int>,
+    /// Seek to a byte offset.
     pub seek: fn(drivehandle: c_int, offset: LONGLONG) -> c_int,
+    /// Read `nbytes` bytes into `buffer`.
     pub read: fn(drivehandle: c_int, buffer: &mut [u8], nbytes: usize) -> c_int,
+    /// Write `nbyte` bytes from `buffer`.
     pub write: fn(drivehandle: c_int, buffer: &[u8], nbyte: usize) -> c_int,
 }
 
-pub static DRIVER_TABLE: OnceLock<Vec<fitsdriver>> = OnceLock::new(); /* allocate driver tables */
+/// The registered I/O drivers, populated on first use.
+pub static DRIVER_TABLE: OnceLock<Vec<fitsdriver>> = OnceLock::new();
 
-/* this table of Fptr pointers is used by fits_already_open */
+/// Every currently open file, used by `fits_already_open` to notice when a file
+/// is opened a second time so that both handles share one [`FITSfile`].
 pub static mut FPTR_TABLE: [*mut FITSfile; NMAXFILES] =
     [core::ptr::null_mut::<FITSfile>(); NMAXFILES];
 
-pub static NEED_TO_INITIALIZE: Mutex<bool> = Mutex::new(true); /* true if CFITSIO has not been initialized */
+/// True until the library has been initialized and the drivers registered.
+pub static NEED_TO_INITIALIZE: Mutex<bool> = Mutex::new(true);
 
-pub static STREAM_DRIVER: Mutex<c_int> = Mutex::new(0); /* number of currently defined I/O drivers */
+/// Index of the `stream://` driver in [`DRIVER_TABLE`].
+pub static STREAM_DRIVER: Mutex<c_int> = Mutex::new(0);
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fitsio_init_lock() -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file in core memory.  This is a specialized version
 /// of ffopen.
+///
+/// # Parameters
+///
+/// * `fptr`        — (O) FITS file pointer
+/// * `name`        — (I) name of file to open
+/// * `mode`        — (I) 0 = open readonly; 1 = read/write
+/// * `buffptr`     — (I) address of memory pointer
+/// * `buffsize`    — (I) size of buffer, in bytes
+/// * `deltasize`   — (I) increment for future realloc's
+/// * `mem_realloc` — function
+/// * `status`      — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffomem(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - name of file to open                */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    buffsize: *mut usize,             /* I - size of buffer, in bytes            */
-    deltasize: usize,                 /* I - increment for future realloc's      */
-    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
-    status: *mut c_int, /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    buffptr: *mut *mut c_void,
+    buffsize: *mut usize,
+    deltasize: usize,
+    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -180,15 +230,25 @@ pub unsafe extern "C" fn ffomem(
     }
 }
 
+/// # Parameters
+///
+/// * `fptr`        — (O) FITS file pointer
+/// * `name`        — (I) name of file to open
+/// * `mode`        — (I) 0 = open readonly; 1 = read/write
+/// * `buffptr`     — (I) address of memory pointer
+/// * `buffsize`    — (I) size of buffer, in bytes
+/// * `deltasize`   — (I) increment for future realloc's
+/// * `mem_realloc` — function
+/// * `status`      — (IO) error status
 pub fn ffomem_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - name of file to open                */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    buffsize: &mut usize,             /* I - size of buffer, in bytes            */
-    deltasize: usize,                 /* I - increment for future realloc's      */
-    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
-    status: &mut c_int, /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    buffptr: *mut *mut c_void,
+    buffsize: &mut usize,
+    deltasize: usize,
+    mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void,
+    status: &mut c_int,
 ) -> c_int {
     let mut driver: c_int = 0;
     let mut handle: c_int = 0;
@@ -444,17 +504,23 @@ pub fn ffomem_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file on magnetic disk with either readonly or
 /// read/write access.  The routine does not support CFITSIO's extended
 /// filename syntax and simply uses the entire input 'name' string as
 /// the name of the file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdkopn(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -467,11 +533,17 @@ pub unsafe extern "C" fn ffdkopn(
     }
 }
 
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn ffdkopn_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -484,16 +556,28 @@ pub fn ffdkopn_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// move to the first HDU that contains 'interesting' data, if the primary
 /// array contains a null image (i.e., NAXIS = 0).
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdopn(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -505,11 +589,17 @@ pub unsafe extern "C" fn ffdopn(
     }
 }
 
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn ffdopn_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -522,19 +612,33 @@ pub fn ffdopn_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// if the primary array contains a null image (i.e., NAXIS = 0) then attempt to
 /// move to the first extension named in the extlist of extension names. If
 /// none are found, then simply move to the 2nd extension.
+///
+/// # Parameters
+///
+/// * `fptr`    — (O) FITS file pointer
+/// * `name`    — (I) full name of file to open
+/// * `mode`    — (I) 0 = open readonly; 1 = read/write
+/// * `extlist` — (I) list of 'good' extensions to move to
+/// * `hdutype` — (O) type of extension that is moved to
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffeopn(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    extlist: *mut c_char,             /* I - list of 'good' extensions to move to */
-    hdutype: *mut c_int,              /* O - type of extension that is moved to  */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    extlist: *mut c_char,
+    hdutype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -555,18 +659,32 @@ pub unsafe extern "C" fn ffeopn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// if the primary array contains a null image (i.e., NAXIS = 0) then attempt to
 /// move to the first extension named in the extlist of extension names. If
 /// none are found, then simply move to the 2nd extension.
+///
+/// # Parameters
+///
+/// * `fptr`    — (O) FITS file pointer
+/// * `name`    — (I) full name of file to open
+/// * `mode`    — (I) 0 = open readonly; 1 = read/write
+/// * `extlist` — (I) list of 'good' extensions to move to
+/// * `hdutype` — (O) type of extension that is moved to
+/// * `status`  — (IO) error status
 pub fn ffeopn_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    extlist: Option<&[c_char]>,       /* I - list of 'good' extensions to move to */
-    hdutype: Option<&mut c_int>,      /* O - type of extension that is moved to  */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    extlist: Option<&[c_char]>,
+    hdutype: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdunum: c_int = 0;
     let mut naxis: c_int = 0;
@@ -629,15 +747,27 @@ pub fn ffeopn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// move to the first HDU that contains 'interesting' table (not an image).
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftopn(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -650,14 +780,26 @@ pub unsafe extern "C" fn fftopn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// move to the first HDU that contains 'interesting' table (not an image).
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn fftopn_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype: c_int = 0;
 
@@ -678,15 +820,27 @@ pub fn fftopn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// move to the first HDU that contains 'interesting' image (not an table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffiopn(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -699,14 +853,26 @@ pub unsafe extern "C" fn ffiopn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// Open an existing FITS file with either readonly or read/write access. and
+/// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation. and
 /// move to the first HDU that contains 'interesting' image (not an table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn ffiopn_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype: c_int = 0;
 
@@ -727,20 +893,33 @@ pub fn ffiopn_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation.
 ///
 /// First test that the SONAME of fitsio.h used to build the CFITSIO library
 /// is the same as was used in compiling the application program that
 /// links to the library.
+///
+/// # Parameters
+///
+/// * `soname` — (I) CFITSIO shared library version
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffopentest(
-    soname: c_int, /* I - CFITSIO shared library version     */
+    soname: c_int,
     /*     application program (fitsio.h file) */
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -753,18 +932,31 @@ pub unsafe extern "C" fn ffopentest(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation.
 ///
 /// First test that the SONAME of fitsio.h used to build the CFITSIO library
 /// is the same as was used in compiling the application program that
 /// links to the library.
+///
+/// # Parameters
+///
+/// * `soname` — (I) CFITSIO shared library version application program (fitsio.h file)
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn ffopentest_safe(
-    soname: c_int, /* I - CFITSIO shared library version  application program (fitsio.h file) */
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char], /* I - full name of file to open           */
-    mode: c_int,   /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int, /* IO - error status                       */
+    soname: c_int,
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     if soname != CFITSIO_SONAME as c_int {
         println!("\nERROR: Mismatch in the CFITSIO_SONAME value in the fitsio.h include file");
@@ -784,14 +976,26 @@ pub fn ffopentest_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation.
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffopen(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -803,13 +1007,25 @@ pub unsafe extern "C" fn ffopen(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Open an existing FITS file with either readonly or read/write access.
+///
+/// The name may use the extended filename syntax: a driver prefix, an HDU or
+/// extension to move to, an image section, a row or column filter, and a
+/// tile-compression specification. Applying a filter produces a temporary
+/// in-memory file holding the filtered subset, so the returned handle may not
+/// refer to the named file on disk. See the module documentation.
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) full name of file to open
+/// * `mode`   — (I) 0 = open readonly; 1 = read/write
+/// * `status` — (IO) error status
 pub fn ffopen_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - full name of file to open           */
-    mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut newptr: Option<Box<fitsfile>> = None;
     let mut driver = 0;
@@ -1043,9 +1259,7 @@ pub fn ffopen_safe(
         };
     }
 
-    /*-------------------------------------------------------------------*/
     /* special cases:                                                    */
-    /*-------------------------------------------------------------------*/
 
     histfilename[0] = 0;
     filtfilename[0] = 0;
@@ -1066,9 +1280,7 @@ pub fn ffopen_safe(
         outfile[0] = 0;
     }
 
-    /*-------------------------------------------------------------------*/
     /* check if this same file is already open, and if so, attach to it  */
-    /*-------------------------------------------------------------------*/
 
     let lock = FFLOCK();
 
@@ -1804,17 +2016,22 @@ pub fn ffopen_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Reopen an existing FITS file with either readonly or read/write access.
 ///
 /// The reopened file shares the same FITSfile structure but may point to a
 /// different HDU within the file.
 /// SAFETY: This is in no ways safe, multiple fptrs sharing the same underlying data
+///
+/// # Parameters
+///
+/// * `openfptr` — (I) FITS file pointer to open file
+/// * `newfptr`  — (O) pointer to new re opened file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffreopen(
-    openfptr: *mut fitsfile,     /* I - FITS file pointer to open file  */
-    newfptr: *mut *mut fitsfile, /* O - pointer to new re opened file   */
-    status: *mut c_int,          /* IO - error status                   */
+    openfptr: *mut fitsfile,
+    newfptr: *mut *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1833,10 +2050,15 @@ pub unsafe extern "C" fn ffreopen(
     }
 }
 
+/// # Parameters
+///
+/// * `openfptr` — (I) FITS file pointer to open file
+/// * `newfptr`  — (O) pointer to new re opened file
+/// * `status`   — (IO) error status
 pub fn ffreopen_safer(
-    openfptr: &mut fitsfile,     /* I - FITS file pointer to open file  */
-    newfptr: &mut *mut fitsfile, /* O - pointer to new re opened file   */
-    status: &mut c_int,          /* IO - error status                   */
+    openfptr: &mut fitsfile,
+    newfptr: &mut *mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -1862,15 +2084,16 @@ pub fn ffreopen_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// store the new Fptr address for future use by fits_already_open
 /// Takes the address rather than a `&mut FITSfile`: the table has to hold the
 /// same pointer the handles deref through, not a reference-derived child of it,
 /// or the entry is invalidated by the next write through any handle.
-pub(crate) fn fits_store_Fptr(
-    Fptr: *mut FITSfile, /* O - FITS file pointer               */
-    status: &mut c_int,  /* IO - error status                   */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `Fptr`   — (O) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn fits_store_Fptr(Fptr: *mut FITSfile, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -1889,13 +2112,14 @@ pub(crate) fn fits_store_Fptr(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  clear the Fptr address from the Fptr Table  
+///
+/// # Parameters
+///
+/// * `Fptr`   — (O) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fits_clear_Fptr(
-    Fptr: *mut FITSfile, /* O - FITS file pointer               */
-    status: *mut c_int,  /* IO - error status                   */
-) -> c_int {
+pub unsafe extern "C" fn fits_clear_Fptr(Fptr: *mut FITSfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let lock = FFLOCK();
@@ -1910,12 +2134,13 @@ pub unsafe extern "C" fn fits_clear_Fptr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  clear the Fptr address from the Fptr Table  
-fn fits_clear_Fptr_safer(
-    Fptr: *mut FITSfile, /* O - FITS file pointer               */
-    status: &mut c_int,  /* IO - error status                   */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `Fptr`   — (O) FITS file pointer
+/// * `status` — (IO) error status
+fn fits_clear_Fptr_safer(Fptr: *mut FITSfile, status: &mut c_int) -> c_int {
     let lock = FFLOCK();
     for ii in 0..NMAXFILES {
         unsafe {
@@ -1929,7 +2154,6 @@ fn fits_clear_Fptr_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Check if the file to be opened is already open.  If so, then attach to it.
 ///
 /// the input strings must not exceed the standard lengths
@@ -1945,8 +2169,16 @@ fn fits_clear_Fptr_safer(
 /// version of this function would not have reconized that the two files
 /// were the same. This version does recognize that the two files are
 /// the same.
+///
+/// # Parameters
+///
+/// * `fptr`     — I/O - FITS file pointer
+/// * `mode`     — (I) 0 = open readonly; 1 = read/write
+/// * `noextsyn` — (I) 0 = ext syntax may be used; 1 = ext syntax disabled
+/// * `isopen`   — (O) 1 = file is already open
+/// * `status`   — (IO) error status
 pub(crate) fn fits_already_open(
-    fptr: &mut Option<Box<fitsfile>>, /* I/O - FITS file pointer       */
+    fptr: &mut Option<Box<fitsfile>>,
     url: &[c_char],
     urltype: &mut [c_char],
     infile: &mut [c_char],
@@ -1954,10 +2186,10 @@ pub(crate) fn fits_already_open(
     rowfilter: &mut [c_char],
     binspec: &mut [c_char],
     colspec: &mut [c_char],
-    mode: c_int,        /* I - 0 = open readonly; 1 = read/write   */
-    noextsyn: bool,     /* I - 0 = ext syntax may be used; 1 = ext syntax disabled */
-    isopen: &mut c_int, /* O - 1 = file is already open            */
-    status: &mut c_int, /* IO - error status                       */
+    mode: c_int,
+    noextsyn: bool,
+    isopen: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut iMatch = None;
     let mut oldurltype: [c_char; MAX_PREFIX_LEN] = [0; MAX_PREFIX_LEN];
@@ -2156,7 +2388,6 @@ pub(crate) fn fits_already_open(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn check_is_file_fits(fp: &mut File) -> c_int {
     const NBYTES: usize = 1000;
     let mut buf: [c_char; NBYTES] = [0; NBYTES];
@@ -2180,7 +2411,6 @@ pub(crate) fn check_is_file_fits(fp: &mut File) -> c_int {
 
     check_is_mem_fits(&buf, nread)
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn check_is_mem_fits(inputmem: &[c_char], len: usize) -> c_int {
     let mut isFits = 0;
 
@@ -2220,7 +2450,6 @@ pub(crate) fn check_is_mem_fits(inputmem: &[c_char], len: usize) -> c_int {
     isFits
 }
 
-/*--------------------------------------------------------------------------*/
 /// Utility function for common operation in fits_already_open
 /// fullpath:  I/O string to be standardized. Assume len = FLEN_FILENAME
 fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
@@ -2248,7 +2477,6 @@ fn standardize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This differs from the standardize_path utility function in that this is
 /// intended to perform '/./' and '/../' conversion for both absolute and relative
 /// input paths. standardize_path only operates on relative input paths.
@@ -2279,7 +2507,6 @@ fn normalize_path(fullpath: &mut [c_char], status: &mut c_int) -> c_int {
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 fn exclude_path(testpath: &[c_char]) -> c_int {
     const NEXCLUDE: usize = 2;
     let excludeStrs: [&[c_char]; NEXCLUDE] = [cs!(c"/etc/"), cs!(c"/var/")];
@@ -2309,7 +2536,6 @@ fn exclude_path(testpath: &[c_char]) -> c_int {
     }
     exclude
 }
-/*--------------------------------------------------------------------------*/
 fn skip_host_string(testpath: &[c_char]) -> &[c_char] {
     if strlen_safe(testpath) < 2 || testpath[0] == bb(b'~') || testpath[0] == bb(b'/') {
         return testpath;
@@ -2347,7 +2573,6 @@ fn skip_host_string(testpath: &[c_char]) -> &[c_char] {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// specialized routine that returns 1 if the file is known to be a temporary
 /// copy of the originally opened file.  Otherwise it returns 0.
 pub(crate) fn fits_is_this_a_copy(urltype: [c_char; 20] /* I - type of file */) -> c_int {
@@ -2372,7 +2597,6 @@ pub(crate) fn fits_is_this_a_copy(urltype: [c_char; 20] /* I - type of file */) 
     iscopy
 }
 
-/*--------------------------------------------------------------------------*/
 /// Look for the closing single quote character in the input string
 fn find_quote(string: &[c_char]) -> Option<usize> {
     let mut i = 0;
@@ -2389,7 +2613,6 @@ fn find_quote(string: &[c_char]) -> Option<usize> {
     None /* opps, didn't find the closing character */
 }
 
-/*--------------------------------------------------------------------------*/
 /*
   Find matching delimiter, respecting quoting and (potentially nested) parentheses
 
@@ -2413,7 +2636,6 @@ pub(crate) fn fits_find_match_delim(string: &[c_char], delim: c_char) -> Option<
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Look for the closing double quote character in the input string
 fn find_doublequote(string: &[c_char]) -> Option<usize> {
     let mut i = 0;
@@ -2430,7 +2652,6 @@ fn find_doublequote(string: &[c_char]) -> Option<usize> {
     None /* opps, didn't find the closing character */
 }
 
-/*--------------------------------------------------------------------------*/
 /// look for the closing parenthesis character in the input string
 fn find_paren(string: &[c_char]) -> Option<usize> {
     let mut i = 0;
@@ -2468,7 +2689,6 @@ fn find_paren(string: &[c_char]) -> Option<usize> {
     None /* opps, didn't find the closing character */
 }
 
-/*--------------------------------------------------------------------------*/
 /// look for the closing bracket character in the input string
 fn find_bracket(string: &[c_char]) -> Option<usize> {
     let mut i = 0;
@@ -2506,7 +2726,6 @@ fn find_bracket(string: &[c_char]) -> Option<usize> {
     None /* opps, didn't find the closing character */
 }
 
-/*--------------------------------------------------------------------------*/
 /// look for the closing curly bracket character in the input string
 fn find_curlybracket(string: &[c_char]) -> Option<usize> {
     let mut i = 0;
@@ -2544,7 +2763,6 @@ fn find_curlybracket(string: &[c_char]) -> Option<usize> {
     None /* opps, didn't find the closing character */
 }
 
-/*--------------------------------------------------------------------------*/
 /// replace commas with semicolons, unless the comma is within a quoted or bracketed expression
 fn comma2semicolon(string: &mut [c_char]) -> c_int {
     let mut i = 0;
@@ -2600,13 +2818,18 @@ fn comma2semicolon(string: &mut [c_char]) -> c_int {
     0 /* reached end of string */
 }
 
-/*--------------------------------------------------------------------------*/
 /// modify columns in a table and/or header keywords in the HDU
+///
+/// # Parameters
+///
+/// * `infptr`  — (IO) pointer to input table; on output it
+/// * `outfile` — (I) name for output file
+/// * `expr`    — (I) column edit expression
 pub(crate) fn ffedit_columns(
-    infptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
+    infptr: &mut Option<Box<fitsfile>>,
     /*      points to the new selected rows table */
-    outfile: &[c_char],  /* I - name for output file */
-    expr: &mut [c_char], /* I - column edit expression    */
+    outfile: &[c_char],
+    expr: &mut [c_char],
     status: &mut c_int,
 ) -> c_int {
     let mut newptr: Option<Box<fitsfile>> = None;
@@ -3322,19 +3545,26 @@ pub(crate) fn ffedit_columns(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy a table cell of a given row and column into an image extension.
 /// The output file must already have been created.  A new image
 /// extension will be created in that file.
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) point to input table
+/// * `newptr`  — (O) existing output file; new image HDU will be appended to it
+/// * `colname` — (I) column name / number containing the image
+/// * `rownum`  — (I) number of the row containing the image
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_copy_cell2image(
-    fptr: *mut fitsfile,                  /* I - point to input table */
-    newptr: *mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
-    colname: *const [c_char; FLEN_VALUE], /* I - column name / number containing the image*/
-    rownum: c_long,        /* I - number of the row containing the image */
-    status: *mut c_int,    /* IO - error status */
+    fptr: *mut fitsfile,
+    newptr: *mut fitsfile,
+    colname: *const [c_char; FLEN_VALUE],
+    rownum: c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3348,18 +3578,25 @@ pub unsafe extern "C" fn fits_copy_cell2image(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy a table cell of a given row and column into an image extension.
 /// The output file must already have been created.  A new image
 /// extension will be created in that file.
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) point to input table
+/// * `newptr`  — (O) existing output file; new image HDU will be appended to it
+/// * `colname` — (I) column name / number containing the image
+/// * `rownum`  — (I) number of the row containing the image
+/// * `status`  — (IO) error status
 pub fn fits_copy_cell2image_safe(
-    fptr: &mut fitsfile,   /* I - point to input table */
-    newptr: &mut fitsfile, /* O - existing output file; new image HDU will be appended to it */
-    colname: &[c_char],    /* I - column name / number containing the image*/
-    rownum: c_long,        /* I - number of the row containing the image */
-    status: &mut c_int,    /* IO - error status */
+    fptr: &mut fitsfile,
+    newptr: &mut fitsfile,
+    colname: &[c_char],
+    rownum: c_long,
+    status: &mut c_int,
 ) -> c_int {
     let mut buffer: [u8; 30000] = [0; 30000];
     let mut hdutype: c_int = 0;
@@ -3476,9 +3713,7 @@ pub fn fits_copy_cell2image_safe(
         return *status;
     }
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if ffgcprll(
         fptr,
         colnum,
@@ -3620,7 +3855,6 @@ pub fn fits_copy_cell2image_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy an image extension into a table cell at a given row and
 /// column.  The table must have already been created.  If the "colname"
 /// column exists, it will be used, otherwise a new column will be created
@@ -3634,14 +3868,23 @@ pub fn fits_copy_cell2image_safe(
 /// copykeyflag = 2  -- copy only the WCS related keywords
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `fptr`        — (I) pointer to input image extension
+/// * `newptr`      — (I) pointer to output table
+/// * `colname`     — (I) name of column containing the image
+/// * `rownum`      — (I) number of the row containing the image
+/// * `copykeyflag` — (I) controls which keywords to copy
+/// * `status`      — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_copy_image2cell(
-    fptr: *mut fitsfile,    /* I - pointer to input image extension */
-    newptr: *mut fitsfile,  /* I - pointer to output table */
-    colname: *const c_char, /* I - name of column containing the image    */
-    rownum: c_long,         /* I - number of the row containing the image */
-    copykeyflag: c_int,     /* I - controls which keywords to copy */
-    status: *mut c_int,     /* IO - error status */
+    fptr: *mut fitsfile,
+    newptr: *mut fitsfile,
+    colname: *const c_char,
+    rownum: c_long,
+    copykeyflag: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3654,7 +3897,6 @@ pub unsafe extern "C" fn fits_copy_image2cell(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy an image extension into a table cell at a given row and
 /// column.  The table must have already been created.  If the "colname"
 /// column exists, it will be used, otherwise a new column will be created
@@ -3668,13 +3910,22 @@ pub unsafe extern "C" fn fits_copy_image2cell(
 /// copykeyflag = 2  -- copy only the WCS related keywords
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `fptr`        — (I) pointer to input image extension
+/// * `newptr`      — (I) pointer to output table
+/// * `colname`     — (I) name of column containing the image
+/// * `rownum`      — (I) number of the row containing the image
+/// * `copykeyflag` — (I) controls which keywords to copy
+/// * `status`      — (IO) error status
 pub fn fits_copy_image2cell_safe(
-    fptr: &mut fitsfile,   /* I - pointer to input image extension */
-    newptr: &mut fitsfile, /* I - pointer to output table */
-    colname: &[c_char],    /* I - name of column containing the image */
-    rownum: c_long,        /* I - number of the row containing the image */
-    copykeyflag: c_int,    /* I - controls which keywords to copy */
-    status: &mut c_int,    /* IO - error status */
+    fptr: &mut fitsfile,
+    newptr: &mut fitsfile,
+    colname: &[c_char],
+    rownum: c_long,
+    copykeyflag: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut buffer: [u8; 30000] = [0; 30000];
     let mut hdutype: c_int = 0;
@@ -3987,16 +4238,21 @@ pub fn fits_copy_image2cell_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output file.
 /// Any HDUs preceding or following the image are also copied to the
 /// output file.
+///
+/// # Parameters
+///
+/// * `fptr`    — (IO) pointer to input image; on output it
+/// * `outfile` — (I) name for output file
+/// * `expr`    — (I) Image section expression
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_select_image_section(
-    fptr: *mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: *mut Option<Box<fitsfile>>,
     /*      points to the new subimage */
-    outfile: *const c_char, /* I - name for output file        */
-    expr: *const c_char,    /* I - Image section expression    */
+    outfile: *const c_char,
+    expr: *const c_char,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -4011,15 +4267,20 @@ pub unsafe extern "C" fn fits_select_image_section(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output file.
 /// Any HDUs preceding or following the image are also copied to the
 /// output file.
+///
+/// # Parameters
+///
+/// * `fptr`    — (IO) pointer to input image; on output it
+/// * `outfile` — (I) name for output file
+/// * `expr`    — (I) Image section expression
 pub fn fits_select_image_section_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: &mut Option<Box<fitsfile>>,
     /*      points to the new subimage */
-    outfile: &[c_char], /* I - name for output file        */
-    expr: &[c_char],    /* I - Image section expression    */
+    outfile: &[c_char],
+    expr: &[c_char],
     status: &mut c_int,
 ) -> c_int {
     let mut newptr: Option<Box<fitsfile>> = None;
@@ -4119,13 +4380,18 @@ pub fn fits_select_image_section_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output HDU
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) pointer to input image
+/// * `newptr` — (I) pointer to output image
+/// * `expr`   — (I) Image section expression
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_copy_image_section(
-    fptr: *mut fitsfile,   /* I - pointer to input image */
-    newptr: *mut fitsfile, /* I - pointer to output image */
-    expr: *const c_char,   /* I - Image section expression    */
+    fptr: *mut fitsfile,
+    newptr: *mut fitsfile,
+    expr: *const c_char,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -4140,12 +4406,17 @@ pub unsafe extern "C" fn fits_copy_image_section(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copies an image section from the input file to a new output HDU
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) pointer to input image
+/// * `newptr` — (I) pointer to output image
+/// * `expr`   — (I) Image section expression
 pub fn fits_copy_image_section_safer(
-    fptr: &mut fitsfile,   /* I - pointer to input image */
-    newptr: &mut fitsfile, /* I - pointer to output image */
-    expr: &[c_char],       /* I - Image section expression    */
+    fptr: &mut fitsfile,
+    newptr: &mut fitsfile,
+    expr: &[c_char],
     status: &mut c_int,
 ) -> c_int {
     let mut bitpix: c_int = 0;
@@ -4618,7 +4889,6 @@ pub fn fits_copy_image_section_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input image section specification string, returning
 /// the  min, max and increment values.
 /// Typical string =   "1:512:2"  or "1:512"
@@ -4652,9 +4922,14 @@ pub unsafe extern "C" fn fits_get_section_range(
 /// Parse the input image section specification string, returning
 /// the  min, max and increment values.
 /// Typical string =   "1:512:2"  or "1:512"
+///
+/// # Parameters
+///
+/// * `ptr`       — (I) the image section specifier string
+/// * `ptr_index` — (IO) current parse offset into ptr; advanced
 pub fn fits_get_section_range_safe(
-    ptr: &[c_char],        /* I - the image section specifier string         */
-    ptr_index: &mut usize, /* IO - current parse offset into ptr; advanced   */
+    ptr: &[c_char],
+    ptr_index: &mut usize,
     secmin: &mut c_long,
     secmax: &mut c_long,
     incre: &mut c_long,
@@ -4784,12 +5059,16 @@ pub fn fits_get_section_range_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`    — (IO) pointer to input table; on output it
+/// * `outfile` — (I) name for output file
+/// * `expr`    — (I) Boolean expression
 pub(crate) fn ffselect_table(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input table; on output it  */
+    fptr: &mut Option<Box<fitsfile>>,
     /*      points to the new selected rows table */
-    outfile: &[c_char; FLEN_FILENAME], /* I - name for output file */
-    expr: &[c_char; FLEN_FILENAME],    /* I - Boolean expression    */
+    outfile: &[c_char; FLEN_FILENAME],
+    expr: &[c_char; FLEN_FILENAME],
     status: &mut c_int,
 ) -> c_int {
     let mut newptr: Option<Box<fitsfile>> = None;
@@ -4934,11 +5213,10 @@ pub(crate) fn ffselect_table(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the image compression specification that was give in square brackets
 /// following the output FITS file name, as in these examples:
 ///
-///   myfile.fits[compress]  - default Rice compression, row by row
+///   `myfile.fits[compress]`  - default Rice compression, row by row
 ///   myfile.fits[compress TYPE] -  the first letter of TYPE defines the
 ///                                 compression algorithm:
 ///                                  R = Rice
@@ -4961,10 +5239,16 @@ pub(crate) fn ffselect_table(
 ///
 /// The compression parameters are saved in the fptr->Fptr structure for use
 /// when writing FITS images.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `compspec` — (I) image compression specification
+/// * `status`   — (IO) error status
 pub(crate) fn ffparsecompspec(
-    fptr: &mut fitsfile, /* I - FITS file pointer               */
-    compspec: &[c_char], /* I - image compression specification */
-    status: &mut c_int,  /* IO - error status                       */
+    fptr: &mut fitsfile,
+    compspec: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     /* the C walks `compspec` with a `char *ptr1`; we use an index instead */
     let mut ptr1: usize;
@@ -5154,16 +5438,21 @@ pub(crate) fn ffparsecompspec(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file on disk.  This routine differs
 /// from ffinit in that the input 'name' is literally taken as the name
 /// of the disk file to be created, and it does not support CFITSIO's
 /// extended filename syntax.
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) name of file to create
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdkinit(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - name of file to create              */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5175,10 +5464,15 @@ pub unsafe extern "C" fn ffdkinit(
     }
 }
 
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) name of file to create
+/// * `status` — (IO) error status
 pub fn ffdkinit_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - name of file to create              */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    name: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     /* initialize null file pointer */
     let f_tmp = fptr.take();
@@ -5202,13 +5496,18 @@ pub fn ffdkinit_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) name of file to create
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffinit(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: *const c_char,              /* I - name of file to create              */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    name: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5220,13 +5519,14 @@ pub unsafe extern "C" fn ffinit(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file.
-pub fn ffinit_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    name: &[c_char],                  /* I - name of file to create              */
-    status: &mut c_int,               /* IO - error status                       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (O) FITS file pointer
+/// * `name`   — (I) name of file to create
+/// * `status` — (IO) error status
+pub fn ffinit_safe(fptr: &mut Option<Box<fitsfile>>, name: &[c_char], status: &mut c_int) -> c_int {
     let mut driver: c_int = 0;
     let mut clobber: c_int = 0;
 
@@ -5431,17 +5731,25 @@ pub fn ffinit_safe(
     *status /* successful return */
 }
 
-/*--------------------------------------------------------------------------*/
 /// ffimem == fits_create_memfile
 /// Create and initialize a new FITS file in memory
+///
+/// # Parameters
+///
+/// * `fptr`        — (O) FITS file pointer
+/// * `buffptr`     — (I) address of memory pointer
+/// * `buffsize`    — (I) size of buffer, in bytes
+/// * `deltasize`   — (I) increment for future realloc's
+/// * `mem_realloc` — function
+/// * `status`      — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffimem(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    buffsize: *mut usize,             /* I - size of buffer, in bytes            */
-    deltasize: usize,                 /* I - increment for future realloc's      */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
-    status: *mut c_int, /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    buffptr: *mut *mut c_void,
+    buffsize: *mut usize,
+    deltasize: usize,
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5454,15 +5762,23 @@ pub unsafe extern "C" fn ffimem(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file in memory
+///
+/// # Parameters
+///
+/// * `fptr`        — (O) FITS file pointer
+/// * `buffptr`     — (I) address of memory pointer
+/// * `buffsize`    — (I) size of buffer, in bytes
+/// * `deltasize`   — (I) increment for future realloc's
+/// * `mem_realloc` — function
+/// * `status`      — (IO) error status
 pub fn ffimem_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
-    buffsize: &mut usize,             /* I - size of buffer, in bytes            */
-    deltasize: usize,                 /* I - increment for future realloc's      */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function       */
-    status: &mut c_int, /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    buffptr: *mut *mut c_void,
+    buffsize: &mut usize,
+    deltasize: usize,
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    status: &mut c_int,
 ) -> c_int {
     let mut driver: c_int = 0;
     let mut handle: c_int = 0;
@@ -5501,13 +5817,7 @@ pub fn ffimem_safer(
 
     /* call driver routine to "open" the memory file */
     let lock = FFLOCK(); /* lock this while searching for vacant handle */
-    *status = mem_openmem(
-        buffptr,
-        buffsize,
-        deltasize,
-        mem_realloc,
-        &mut handle,
-    );
+    *status = mem_openmem(buffptr, buffsize, deltasize, mem_realloc, &mut handle);
     FFUNLOCK(lock);
 
     if *status > 0 {
@@ -5576,7 +5886,6 @@ pub fn ffimem_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Initialize anything that is required before using the CFITSIO routines
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_init_cfitsio() -> c_int {
@@ -5584,7 +5893,6 @@ pub unsafe extern "C" fn fits_init_cfitsio() -> c_int {
     fits_init_cfitsio_safer()
 }
 
-/*--------------------------------------------------------------------------*/
 /// Initialize anything that is required before using the CFITSIO routines
 pub fn fits_init_cfitsio_safer() -> c_int {
     pub union u_tag {
@@ -6044,7 +6352,6 @@ pub fn fits_init_cfitsio_safer() -> c_int {
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// register all the functions needed to support an I/O driver
 pub(crate) fn fits_register_driver(
     drivers: &mut Vec<fitsdriver>,
@@ -6117,20 +6424,30 @@ pub(crate) fn fits_register_driver(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// fits_parse_input_url
 /// parse the input URL into its basic components.
 /// This routine does not support the pixfilter or compspec components.
+///
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffiurl(
-    url: *const c_char,      /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
+    url: *const c_char,
+    urltype: *mut c_char,
+    infilex: *mut c_char,
+    outfile: *mut c_char,
+    extspec: *mut c_char,
+    rowfilterx: *mut c_char,
+    binspec: *mut c_char,
+    colspec: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -6167,19 +6484,29 @@ pub unsafe extern "C" fn ffiurl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// fits_parse_input_url
 /// parse the input URL into its basic components.
 /// This routine does not support the pixfilter or compspec components.
+///
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
 pub fn ffiurl_safe(
-    url: &[c_char],                    /* input filename */
-    urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
-    outfile: Option<&mut [c_char]>,    /* optional output file name            */
-    extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
-    binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
-    colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
+    url: &[c_char],
+    urltype: Option<&mut [c_char]>,
+    infilex: Option<&mut [c_char]>,
+    outfile: Option<&mut [c_char]>,
+    extspec: Option<&mut [c_char]>,
+    rowfilterx: Option<&mut [c_char]>,
+    binspec: Option<&mut [c_char]>,
+    colspec: Option<&mut [c_char]>,
     status: &mut c_int,
 ) -> c_int {
     ffifile2_safe(
@@ -6187,21 +6514,32 @@ pub fn ffiurl_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// fits_parse_input_filename
 /// parse the input URL into its basic components.
 /// This routine does not support the compspec component.
+///
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
+/// * `pixfilter`  — pixel filter expression
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffifile(
-    url: *const c_char,      /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
-    pixfilter: *mut c_char,  /* pixel filter expression */
+    url: *const c_char,
+    urltype: *mut c_char,
+    infilex: *mut c_char,
+    outfile: *mut c_char,
+    extspec: *mut c_char,
+    rowfilterx: *mut c_char,
+    binspec: *mut c_char,
+    colspec: *mut c_char,
+    pixfilter: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -6241,16 +6579,27 @@ pub unsafe extern "C" fn ffifile(
     }
 }
 
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
+/// * `pixfilter`  — pixel filter expression
 pub fn ffifile_safe(
-    url: &[c_char],                    /* input filename */
-    urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
-    outfile: Option<&mut [c_char]>,    /* optional output file name            */
-    extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
-    binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
-    colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
-    pixfilter: Option<&mut [c_char]>,  /* pixel filter expression */
+    url: &[c_char],
+    urltype: Option<&mut [c_char]>,
+    infilex: Option<&mut [c_char]>,
+    outfile: Option<&mut [c_char]>,
+    extspec: Option<&mut [c_char]>,
+    rowfilterx: Option<&mut [c_char]>,
+    binspec: Option<&mut [c_char]>,
+    colspec: Option<&mut [c_char]>,
+    pixfilter: Option<&mut [c_char]>,
     status: &mut c_int,
 ) -> c_int {
     ffifile2_safe(
@@ -6259,22 +6608,34 @@ pub fn ffifile_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// fits_parse_input_filename
 /// parse the input URL into its basic components.
 /// This routine is big and ugly and should be redesigned someday!
+///
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
+/// * `pixfilter`  — pixel filter expression
+/// * `compspec`   — image compression specification
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffifile2(
-    url: *const c_char,      /* input filename */
-    urltype: *mut c_char,    /* e.g., 'file://', 'http://', 'mem://' */
-    infilex: *mut c_char,    /* root filename (may be complete path) */
-    outfile: *mut c_char,    /* optional output file name            */
-    extspec: *mut c_char,    /* extension spec: +n or [extname, extver]  */
-    rowfilterx: *mut c_char, /* boolean row filter expression */
-    binspec: *mut c_char,    /* histogram binning specifier   */
-    colspec: *mut c_char,    /* column or keyword modifier expression */
-    pixfilter: *mut c_char,  /* pixel filter expression */
-    compspec: *mut c_char,   /* image compression specification */
+    url: *const c_char,
+    urltype: *mut c_char,
+    infilex: *mut c_char,
+    outfile: *mut c_char,
+    extspec: *mut c_char,
+    rowfilterx: *mut c_char,
+    binspec: *mut c_char,
+    colspec: *mut c_char,
+    pixfilter: *mut c_char,
+    compspec: *mut c_char,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -6317,7 +6678,6 @@ pub unsafe extern "C" fn ffifile2(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// fits_parse_input_filename
 /// Parse the input filename or URL into its component parts, namely:
 /// the file type (file://, ftp://, http://, etc),
@@ -6329,17 +6689,30 @@ pub unsafe extern "C" fn ffifile2(
 /// the column specifier,
 /// and the image pixel filtering specifier.
 /// A null pointer (0) may be be specified for any of the output string arguments that are not needed. Null strings will be returned for any components that are not present in the input file name. The calling routine must allocate sufficient memory to hold the returned character strings. Allocating the string lengths equal to FLEN_FILENAME is guaranteed to be safe. These routines are mainly for internal use by other CFITSIO routines.
+///
+/// # Parameters
+///
+/// * `url`        — input filename
+/// * `urltype`    — e.g., 'file://', 'http://', 'mem://'
+/// * `infilex`    — root filename (may be complete path)
+/// * `outfile`    — optional output file name
+/// * `extspec`    — extension spec: +n or [extname, extver]
+/// * `rowfilterx` — boolean row filter expression
+/// * `binspec`    — histogram binning specifier
+/// * `colspec`    — column or keyword modifier expression
+/// * `pixfilter`  — pixel filter expression
+/// * `compspec`   — image compression specification
 pub fn ffifile2_safe(
-    url: &[c_char],                        /* input filename */
-    mut urltype: Option<&mut [c_char]>,    /* e.g., 'file://', 'http://', 'mem://' */
-    mut infilex: Option<&mut [c_char]>,    /* root filename (may be complete path) */
-    mut outfile: Option<&mut [c_char]>,    /* optional output file name            */
-    mut extspec: Option<&mut [c_char]>,    /* extension spec: +n or [extname, extver]  */
-    mut rowfilterx: Option<&mut [c_char]>, /* boolean row filter expression */
-    mut binspec: Option<&mut [c_char]>,    /* histogram binning specifier   */
-    mut colspec: Option<&mut [c_char]>,    /* column or keyword modifier expression */
-    mut pixfilter: Option<&mut [c_char]>,  /* pixel filter expression */
-    mut compspec: Option<&mut [c_char]>,   /* image compression specification */
+    url: &[c_char],
+    mut urltype: Option<&mut [c_char]>,
+    mut infilex: Option<&mut [c_char]>,
+    mut outfile: Option<&mut [c_char]>,
+    mut extspec: Option<&mut [c_char]>,
+    mut rowfilterx: Option<&mut [c_char]>,
+    mut binspec: Option<&mut [c_char]>,
+    mut colspec: Option<&mut [c_char]>,
+    mut pixfilter: Option<&mut [c_char]>,
+    mut compspec: Option<&mut [c_char]>,
     status: &mut c_int,
 ) -> c_int {
     let mut infilelen = 0;
@@ -7500,19 +7873,24 @@ pub fn ffifile2_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// test if the input file specifier is an existing file on disk
 /// If the specified file can't be found, it then searches for a
 /// compressed version of the file.
+///
+/// # Parameters
+///
+/// * `infile` — (I) input filename or URL
+/// * `exists` — (O) 2 = a compressed version of file exists
+/// * `status` — I/O status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffexist(
-    infile: *const c_char, /* I - input filename or URL */
-    exists: *mut c_int,    /* O -  2 = a compressed version of file exists */
+    infile: *const c_char,
+    exists: *mut c_int,
     /*      1 = yes, disk file exists               */
     /*      0 = no, disk file could not be found    */
     /*     -1 = infile is not a disk file (could    */
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
-    status: *mut c_int, /* I/O  status  */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -7524,18 +7902,23 @@ pub unsafe extern "C" fn ffexist(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// test if the input file specifier is an existing file on disk
 /// If the specified file can't be found, it then searches for a
 /// compressed version of the file.
+///
+/// # Parameters
+///
+/// * `infile` — (I) input filename or URL
+/// * `exists` — (O) 2 = a compressed version of file exists
+/// * `status` — I/O - error status
 pub fn ffexist_safer(
-    infile: &[c_char],  /* I - input filename or URL */
-    exists: &mut c_int, /* O -  2 = a compressed version of file exists */
+    infile: &[c_char],
+    exists: &mut c_int,
     /*      1 = yes, disk file exists               */
     /*      0 = no, disk file could not be found    */
     /*     -1 = infile is not a disk file (could    */
     /*   be a http, ftp, gsiftp, smem, or stdin file) */
-    status: &mut c_int, /* I/O - error status */
+    status: &mut c_int,
 ) -> c_int {
     let mut rootname: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
 
@@ -7585,7 +7968,6 @@ pub fn ffexist_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the input URL, returning the root name (filetype://basename).
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrtnm(
@@ -7604,7 +7986,6 @@ pub unsafe extern "C" fn ffrtnm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the input URL, returning the root name (filetype://basename).
 pub fn ffrtnm_safe(url: &[c_char], rootname: &mut [c_char], status: &mut c_int) -> c_int {
     let mut ii: isize;
@@ -7817,14 +8198,21 @@ pub fn ffrtnm_safe(url: &[c_char], rootname: &mut [c_char], status: &mut c_int) 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the output URL into its basic components.
+///
+/// # Parameters
+///
+/// * `url`      — (I) full input URL
+/// * `urltype`  — (O) url type
+/// * `outfile`  — (O) base file name
+/// * `tpltfile` — (O) template file name, if any
+/// * `compspec` — (O) compression specification, if any
 pub(crate) fn ffourl(
-    url: &[c_char],          /* I - full input URL   */
-    urltype: &mut [c_char],  /* O - url type         */
-    outfile: &mut [c_char],  /* O - base file name   */
-    tpltfile: &mut [c_char], /* O - template file name, if any */
-    compspec: &mut [c_char], /* O - compression specification, if any */
+    url: &[c_char],
+    urltype: &mut [c_char],
+    outfile: &mut [c_char],
+    tpltfile: &mut [c_char],
+    compspec: &mut [c_char],
     status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
@@ -7974,7 +8362,6 @@ pub(crate) fn ffourl(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input extension specification string, returning either the
 /// extension number or the values of the EXTNAME, EXTVERS, and XTENSION
 /// keywords in desired extension. Also return the name of the column containing
@@ -8024,7 +8411,6 @@ pub unsafe extern "C" fn ffexts(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input extension specification string, returning either the
 /// extension number or the values of the EXTNAME, EXTVERS, and XTENSION
 /// keywords in desired extension. Also return the name of the column containing
@@ -8261,7 +8647,6 @@ pub fn ffexts_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input url string and return the number of the extension that
 /// CFITSIO would automatically move to if CFITSIO were to open this input URL.
 /// The extension numbers are one's based, so 1 = the primary array, 2 = the
@@ -8277,11 +8662,11 @@ pub fn ffexts_safe(
 ///    within a single cell of a binary table is opened.
 ///
 /// 2.  Else if the input URL specifies an extension number (e.g.,
-///     'myfile.fits[3]' or 'myfile.fits+3') then the specified extension
+///     `myfile.fits[3]` or `myfile.fits+3`) then the specified extension
 ///     number (+ 1) is returned.  
 ///
 /// 3.  Else if the extension name is specified in brackets
-///     (e.g., this 'myfile.fits[EVENTS]') then the file will be opened and searched
+///     (e.g., this `myfile.fits[EVENTS]`) then the file will be opened and searched
 ///     for the extension number.  If the input URL is '-'  (reading from the stdin
 ///     file stream) this is not possible and an error will be returned.
 ///
@@ -8290,10 +8675,15 @@ pub fn ffexts_safe(
 ///     extension was specified.  This feature is mainly for compatibility with
 ///     existing FTOOLS software.  CFITSIO would open the primary array by default
 ///     (extension_num = 1) in this case.
+///
+/// # Parameters
+///
+/// * `url`           — (I) input filename/URL
+/// * `extension_num` — (O) returned extension number
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffextn(
-    url: *const c_char,        /* I - input filename/URL  */
-    extension_num: *mut c_int, /* O - returned extension number */
+    url: *const c_char,
+    extension_num: *mut c_int,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -8307,7 +8697,6 @@ pub unsafe extern "C" fn ffextn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input url string and return the number of the extension that
 /// CFITSIO would automatically move to if CFITSIO were to open this input URL.
 /// The extension numbers are one's based, so 1 = the primary array, 2 = the
@@ -8323,11 +8712,11 @@ pub unsafe extern "C" fn ffextn(
 ///    within a single cell of a binary table is opened.
 ///
 /// 2.  Else if the input URL specifies an extension number (e.g.,
-///     'myfile.fits[3]' or 'myfile.fits+3') then the specified extension
+///     `myfile.fits[3]` or `myfile.fits+3`) then the specified extension
 ///     number (+ 1) is returned.  
 ///
 /// 3.  Else if the extension name is specified in brackets
-///     (e.g., this 'myfile.fits[EVENTS]') then the file will be opened and searched
+///     (e.g., this `myfile.fits[EVENTS]`) then the file will be opened and searched
 ///     for the extension number.  If the input URL is '-'  (reading from the stdin
 ///     file stream) this is not possible and an error will be returned.
 ///
@@ -8336,11 +8725,12 @@ pub unsafe extern "C" fn ffextn(
 ///     extension was specified.  This feature is mainly for compatibility with
 ///     existing FTOOLS software.  CFITSIO would open the primary array by default
 ///     (extension_num = 1) in this case.
-pub fn ffextn_safer(
-    url: &[c_char],            /* I - input filename/URL  */
-    extension_num: &mut c_int, /* O - returned extension number */
-    status: &mut c_int,
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `url`           — (I) input filename/URL
+/// * `extension_num` — (O) returned extension number
+pub fn ffextn_safer(url: &[c_char], extension_num: &mut c_int, status: &mut c_int) -> c_int {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut urltype: [c_char; 20] = [0; 20];
     let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
@@ -8461,7 +8851,6 @@ pub fn ffextn_safer(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the prefix string associated with the driver in use by the
 /// fitsfile pointer fptr
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -8480,7 +8869,6 @@ pub unsafe extern "C" fn ffurlt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the prefix string associated with the driver in use by the
 /// fitsfile pointer fptr
 pub fn ffurlt_safe(fptr: &fitsfile, urlType: &mut [c_char], status: &mut c_int) -> c_int {
@@ -8491,17 +8879,22 @@ pub fn ffurlt_safe(fptr: &fitsfile, urlType: &mut [c_char], status: &mut c_int) 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read and concatenate all the lines from the given text file.  User
 /// must free the pointer returned in contents.  Pointer is guaranteed
 /// to hold 2 characters more than the length of the text... allows the
 /// calling routine to append (or prepend) a newline (or quotes?) without
 /// reallocating memory.
+///
+/// # Parameters
+///
+/// * `filename` — Text file to read
+/// * `contents` — Pointer to pointer to hold file
+/// * `status`   — CFITSIO error code
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffimport_file(
-    filename: *const c_char,    /* Text file to read                   */
-    contents: *mut *mut c_char, /* Pointer to pointer to hold file     */
-    status: *mut c_int,         /* CFITSIO error code                  */
+    filename: *const c_char,
+    contents: *mut *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8523,16 +8916,21 @@ pub unsafe extern "C" fn ffimport_file(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read and concatenate all the lines from the given text file.  User
 /// must free the pointer returned in contents.  Pointer is guaranteed
 /// to hold 2 characters more than the length of the text... allows the
 /// calling routine to append (or prepend) a newline (or quotes?) without
 /// reallocating memory.
+///
+/// # Parameters
+///
+/// * `filename` — Text file to read
+/// * `contents` — Pointer to pointer to hold file
+/// * `status`   — CFITSIO error code
 pub fn ffimport_file_safe(
-    filename: &[c_char],                /* Text file to read                   */
-    contents: &mut Option<Vec<c_char>>, /* Pointer to pointer to hold file     */
-    status: &mut c_int,                 /* CFITSIO error code                  */
+    filename: &[c_char],
+    contents: &mut Option<Vec<c_char>>,
+    status: &mut c_int,
 ) -> c_int {
     let mut eoline = true;
     let mut line: [c_char; 256] = [0; 256];
@@ -8622,16 +9020,19 @@ pub fn ffimport_file_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse off the next token, delimited by a character in 'delimiter',
 /// from the input ptr string;  increment *ptr to the end of the token.
 /// Returns the length of the token, not including the delimiter char;
+///
+/// # Parameters
+///
+/// * `isanumber` — (O) is this token a number?
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_token(
     ptr: *mut *mut c_char,
     delimiter: *const c_char,
     token: *mut c_char,
-    isanumber: *mut c_int, /* O - is this token a number? */
+    isanumber: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8650,17 +9051,20 @@ pub unsafe extern "C" fn fits_get_token(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse off the next token, delimited by a character in 'delimiter',
 /// from the input ptr string;  increment *ptr to the end of the token.
 /// Returns the length of the token, not including the delimiter char;
 ///
 /// Safe wrapper for fits_get_token - copies token to provided String buffer
+///
+/// # Parameters
+///
+/// * `isanumber` — (O) is this token a number?
 pub fn fits_get_token_safe(
     ptr: &mut *mut c_char,
     delimiter: &[c_char],
     token: &mut [c_char],
-    isanumber: Option<&mut c_int>, /* O - is this token a number? */
+    isanumber: Option<&mut c_int>,
 ) -> c_int {
     let mut loc: c_char = 0;
     let mut tval: [c_char; 73] = [0; 73];
@@ -8726,18 +9130,21 @@ pub fn fits_get_token_safe(
     slen as c_int
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse off the next token, delimited by a character in 'delimiter',
 /// from the input ptr string;  increment *ptr to the end of the token.
 /// Returns the length of the token, not including the delimiter char;
 ///
 /// This routine allocates the *token string;  the calling routine must free it
+///
+/// # Parameters
+///
+/// * `isanumber` — (O) is this token a number?
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_token2(
     ptr: *mut *mut c_char,
     delimiter: *const c_char,
     token: *mut *mut c_char,
-    isanumber: *mut c_int, /* O - is this token a number? */
+    isanumber: *mut c_int,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -8774,7 +9181,6 @@ pub unsafe extern "C" fn fits_get_token2(
     }
 }
 
-/*---------------------------------------------------------------------------*/
 /// A sequence of calls to fits_split_names will split the input string
 /// into name tokens.  The string typically contains a list of file or
 /// column names.  The names must be delimited by a comma and/or spaces.
@@ -8801,10 +9207,14 @@ pub unsafe extern "C" fn fits_get_token2(
 /// NOTE:  This routine is not thread-safe.  
 /// This routine is simply provided as a utility routine for other external
 /// software. It is not used by any CFITSIO routine.
+///
+/// # Parameters
+///
+/// * `list` — (IO) list of names; the name returned is terminated
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_split_names(
-    list: *mut c_char, /* IO  - list of names; the name returned is terminated */
-                       /*       in place by overwriting its delimiter with a NUL */
+    list: *mut c_char,
+    /*       in place by overwriting its delimiter with a NUL */
 ) -> *mut c_char {
     // FFI WRAPPER
     unsafe { fits_split_names_safer(list) }
@@ -8911,7 +9321,6 @@ pub unsafe fn fits_split_names_safer(list: *mut c_char) -> *mut c_char {
     buf[start..].as_mut_ptr()
 }
 
-/*--------------------------------------------------------------------------*/
 /// compare input URL with list of known drivers, returning the
 /// matching driver numberL.
 pub(crate) fn urltype2driver(urltype: &[c_char], driver: &mut c_int) -> c_int {
@@ -8930,14 +9339,15 @@ pub(crate) fn urltype2driver(urltype: &[c_char], driver: &mut c_int) -> c_int {
     NO_MATCHING_DRIVER
 }
 
-/*--------------------------------------------------------------------------*/
 /// close the FITS file by completing the current HDU, flushing it to disk,
 /// then calling the system dependent routine to physically close the FITS file
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffclos(
-    fptr: Option<Box<fitsfile>>, /* I - FITS file pointer */
-    status: *mut c_int,          /* IO - error status     */
-) -> c_int {
+pub unsafe extern "C" fn ffclos(fptr: Option<Box<fitsfile>>, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -8952,7 +9362,6 @@ pub unsafe extern "C" fn ffclos(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// close the FITS file by completing the current HDU, flushing it to disk,
 /// then calling the system dependent routine to physically close the FITS file
 pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
@@ -9019,13 +9428,14 @@ pub fn ffclos_safe(mut fptr: Box<fitsfile>, status: &mut c_int) -> c_int {
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// close and DELETE the FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffdelt(
-    mut fptr: *mut fitsfile, /* I - FITS file pointer */
-    status: *mut c_int,      /* IO - error status     */
-) -> c_int {
+pub unsafe extern "C" fn ffdelt(mut fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -9047,12 +9457,13 @@ pub unsafe extern "C" fn ffdelt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// close and DELETE the FITS file.
-pub fn ffdelt_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* I - FITS file pointer */
-    status: &mut c_int,               /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffdelt_safe(fptr: &mut Option<Box<fitsfile>>, status: &mut c_int) -> c_int {
     let mut basename: Vec<c_char> = Vec::new();
     let mut slen: c_int = 0;
     let mut tstatus = NO_CLOSE_ERROR;
@@ -9138,13 +9549,14 @@ pub fn ffdelt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to truncate a file to a new smaller size.
-pub(crate) fn fftrun(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    filesize: LONGLONG,  /* I - size to truncate the file   */
-    status: &mut c_int,  /* O - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filesize` — (I) size to truncate the file
+/// * `status`   — (O) error status
+pub(crate) fn fftrun(fptr: &mut fitsfile, filesize: LONGLONG, status: &mut c_int) -> c_int {
     //let d = driverTable.lock().unwrap();
     let d = DRIVER_TABLE.get().unwrap();
     let truncate = d[fptr.Fptr.driver as usize].truncate;
@@ -9163,7 +9575,6 @@ pub(crate) fn fftrun(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to flush internal file buffers to the file.
 pub(crate) fn ffflushx(fptr: &mut FITSfile, /* I - FITS file pointer                  */) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
@@ -9174,23 +9585,30 @@ pub(crate) fn ffflushx(fptr: &mut FITSfile, /* I - FITS file pointer            
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to seek to a position in a file.
-pub(crate) fn ffseek(
-    fptr: &mut FITSfile, /* I - FITS file pointer              */
-    position: LONGLONG,  /* I - byte position to seek to       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `position` — (I) byte position to seek to
+pub(crate) fn ffseek(fptr: &mut FITSfile, position: LONGLONG) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
     (d[fptr.driver as usize].seek)(fptr.filehandle, position)
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to write bytes to a file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to write
+/// * `buffer` — (I) buffer to write
+/// * `status` — (O) error status
 pub(crate) fn ffwrite(
-    fptr: &mut FITSfile, /* I - FITS file pointer              */
-    nbytes: c_long,      /* I - number of bytes to write       */
-    buffer: &[u8],       /* I - buffer to write                */
-    status: &mut c_int,  /* O - error status                   */
+    fptr: &mut FITSfile,
+    nbytes: c_long,
+    buffer: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     {
         let d = DRIVER_TABLE.get().unwrap();
@@ -9204,13 +9622,19 @@ pub(crate) fn ffwrite(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to write bytes to a file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to write
+/// * `nbuff`  — (I) buffer offset to write to
+/// * `status` — (O) error status
 pub(crate) fn ffwrite_int(
-    fptr: &mut FITSfile, /* I - FITS file pointer              */
-    nbytes: usize,       /* I - number of bytes to write       */
-    nbuff: usize,        /* I - buffer offset to write to      */
-    status: &mut c_int,  /* O - error status                   */
+    fptr: &mut FITSfile,
+    nbytes: usize,
+    nbuff: usize,
+    status: &mut c_int,
 ) -> c_int {
     {
         let d = DRIVER_TABLE.get().unwrap();
@@ -9225,13 +9649,19 @@ pub(crate) fn ffwrite_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to read bytes from a file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to read
+/// * `buffer` — (O) buffer to read into
+/// * `status` — (O) error status
 pub(crate) fn ffread(
-    fptr: &FITSfile,    /* I - FITS file pointer              */
-    nbytes: c_long,     /* I - number of bytes to read        */
-    buffer: &mut [u8],  /* O - buffer to read into            */
-    status: &mut c_int, /* O - error status                   */
+    fptr: &FITSfile,
+    nbytes: c_long,
+    buffer: &mut [u8],
+    status: &mut c_int,
 ) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
     let readstatus = (d[fptr.driver as usize].read)(fptr.filehandle, buffer, nbytes as usize);
@@ -9248,13 +9678,19 @@ pub(crate) fn ffread(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// low level routine to read bytes from a file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to read
+/// * `nbuff`  — (I) buffer offset to read into
+/// * `status` — (O) error status
 pub(crate) fn ffread_int(
-    fptr: &mut FITSfile, /* I - FITS file pointer              */
-    nbytes: usize,       /* I - number of bytes to read        */
-    nbuff: usize,        /* I - buffer offset to read into            */
-    status: &mut c_int,  /* O - error status                   */
+    fptr: &mut FITSfile,
+    nbytes: usize,
+    nbuff: usize,
+    status: &mut c_int,
 ) -> c_int {
     let d = DRIVER_TABLE.get().unwrap();
     let buffer = cast_slice_mut(&mut fptr.iobuffer[(nbuff * IOBUFLEN as usize)..]);
@@ -9272,15 +9708,21 @@ pub(crate) fn ffread_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file  based on a template file.
 /// Uses C fopen and fgets functions.
+///
+/// # Parameters
+///
+/// * `fptr`     — (O) FITS file pointer
+/// * `filename` — (I) name of file to create
+/// * `tempname` — (I) name of template file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftplt(
-    fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    filename: *const c_char,          /* I - name of file to create              */
-    tempname: *const c_char,          /* I - name of template file               */
-    status: *mut c_int,               /* IO - error status                       */
+    fptr: *mut Option<Box<fitsfile>>,
+    filename: *const c_char,
+    tempname: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9293,14 +9735,20 @@ pub unsafe extern "C" fn fftplt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create and initialize a new FITS file  based on a template file.
 /// Uses C fopen and fgets functions.
+///
+/// # Parameters
+///
+/// * `fptr`     — (O) FITS file pointer
+/// * `filename` — (I) name of file to create
+/// * `tempname` — (I) name of template file
+/// * `status`   — (IO) error status
 pub fn fftplt_safer(
-    fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
-    filename: &[c_char],              /* I - name of file to create              */
-    tempname: &[c_char],              /* I - name of template file               */
-    status: &mut c_int,               /* IO - error status                       */
+    fptr: &mut Option<Box<fitsfile>>,
+    filename: &[c_char],
+    tempname: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     /* initialize null file pointer */
     let f_tmp = fptr.take();
@@ -9329,13 +9777,14 @@ pub fn fftplt_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// open template file and use it to create new file
-pub(crate) fn ffoptplt(
-    fptr: &mut fitsfile, /* O - FITS file pointer                   */
-    tempname: &[c_char], /* I - name of template file               */
-    status: &mut c_int,  /* IO - error status                       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (O) FITS file pointer
+/// * `tempname` — (I) name of template file
+/// * `status`   — (IO) error status
+pub(crate) fn ffoptplt(fptr: &mut fitsfile, tempname: &[c_char], status: &mut c_int) -> c_int {
     let mut tptr = None;
     let mut tstatus: c_int = 0;
     let mut nkeys: c_int = 0;
@@ -9401,7 +9850,6 @@ pub(crate) fn ffoptplt(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Print out report of cfitsio error status and messages on the error stack.
 /// Uses C FILE stream.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9410,7 +9858,6 @@ pub unsafe extern "C" fn ffrprt(stream: *mut FILE, status: c_int) {
     ffrprt_safe(stream, status)
 }
 
-/*--------------------------------------------------------------------------*/
 /// Print out report of cfitsio error status and messages on the error stack.
 /// Uses C FILE stream.
 pub fn ffrprt_safe(stream: *mut FILE, status: c_int) {
@@ -9448,12 +9895,16 @@ pub fn ffrprt_safe(stream: *mut FILE, status: c_int) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to input image; on output it
+/// * `outfile`   — (I) name for output file
+/// * `pixfilter` — (I) Image filter expression
 pub fn pixel_filter_helper(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to input image; on output it  */
+    fptr: &mut Option<Box<fitsfile>>,
     /*      points to the new image */
-    outfile: [c_char; FLEN_FILENAME], /* I - name for output file        */
-    pixfilter: [c_char; FLEN_FILENAME], /* I - Image filter expression    */
+    outfile: [c_char; FLEN_FILENAME],
+    pixfilter: [c_char; FLEN_FILENAME],
     status: &mut c_int,
 ) -> c_int {
     let mut hdunum: c_int = 0;
@@ -9599,7 +10050,6 @@ pub fn pixel_filter_helper(
     *status
 }
 
-/*-------------------------------------------------------------------*/
 /// Wrapper function for global initialization of curl library.
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9608,14 +10058,12 @@ pub unsafe extern "C" fn ffihtps() {
     ffihtps_safe()
 }
 
-/*-------------------------------------------------------------------*/
 /// Wrapper function for global initialization of curl library.
 /// This is NOT THREAD-SAFE
 pub fn ffihtps_safe() {
     todo!();
 }
 
-/*-------------------------------------------------------------------*/
 /// Wrapper function for global cleanup of curl library.
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9624,14 +10072,12 @@ pub unsafe extern "C" fn ffchtps() {
     ffchtps_safe()
 }
 
-/*-------------------------------------------------------------------*/
 /// Wrapper function for global cleanup of curl library.
 /// This is NOT THREAD-SAFE
 pub fn ffchtps_safe() {
     todo!();
 }
 
-/*-------------------------------------------------------------------*/
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9640,7 +10086,6 @@ pub unsafe extern "C" fn ffvhtps(flag: c_int) {
     ffvhtps_safe(flag)
 }
 
-/*-------------------------------------------------------------------*/
 /// Turn libcurl's verbose output on (1) or off (0).
 /// This is NOT THREAD-SAFE
 pub fn ffvhtps_safe(flag: c_int) {
@@ -9649,7 +10094,6 @@ pub fn ffvhtps_safe(flag: c_int) {
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// Display download status bar (to stderr), where applicable.
 /// This is NOT THREAD-SAFE
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -9658,7 +10102,6 @@ pub unsafe extern "C" fn ffshdwn(flag: c_int) {
     ffshdwn_safe(flag)
 }
 
-/*-------------------------------------------------------------------*/
 /// Display download status bar (to stderr), where applicable.
 /// This is NOT THREAD-SAFE
 pub fn ffshdwn_safe(flag: c_int) {
@@ -9667,7 +10110,6 @@ pub fn ffshdwn_safe(flag: c_int) {
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// Get the current network timeout value in seconds
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtmo() -> c_int {
@@ -9675,7 +10117,6 @@ pub unsafe extern "C" fn ffgtmo() -> c_int {
     ffgtmo_safer()
 }
 
-/*-------------------------------------------------------------------*/
 /// Get the current network timeout value in seconds (safe wrapper)
 pub fn ffgtmo_safer() -> c_int {
     let mut timeout = 0;
@@ -9687,7 +10128,6 @@ pub fn ffgtmo_safer() -> c_int {
     timeout
 }
 
-/*-------------------------------------------------------------------*/
 /// Set the network timeout value in seconds
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffstmo(sec: c_int, status: *mut c_int) -> c_int {
@@ -9698,7 +10138,6 @@ pub unsafe extern "C" fn ffstmo(sec: c_int, status: *mut c_int) -> c_int {
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// Set the network timeout value in seconds (safe wrapper)
 pub fn ffstmo_safe(sec: c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
@@ -9719,18 +10158,21 @@ pub fn ffstmo_safe(sec: c_int, status: &mut c_int) -> c_int {
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse off the next token, delimited by a character in 'delimiter',
 /// from the input ptr string;  increment *ptr to the end of the token.
 /// Returns the length of the token, not including the delimiter char;
 ///
 /// This routine allocates the *token string;  the calling routine must free it
+///
+/// # Parameters
+///
+/// * `isanumber` — (O) is this token a number?
 pub fn fits_get_token2_safe(
     ptr: &[c_char],
     ptr_index: &mut usize,
     delimiter: &[c_char],
     token: &mut Option<Vec<c_char>>,
-    isanumber: Option<&mut c_int>, /* O - is this token a number? */
+    isanumber: Option<&mut c_int>,
     status: &mut c_int,
 ) -> c_int {
     let mut tval: [c_char; 73] = [0; 73];
