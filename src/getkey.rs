@@ -1,9 +1,20 @@
-/*  This file, getkey.rs, contains routines that read keywords from         */
-/*  a FITS header.                                                         */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that read keywords from a FITS header.
+//!
+//! A keyword can be reached in three ways: by name (`ffgkey` and the typed
+//! `ffgky*` family), by position in the header (`ffgrec`, `ffgcrd`), or by
+//! walking an indexed set such as `NAXISn` (the `ffgkn*` family). The typed
+//! routines convert the card's value string to the requested datatype, so a
+//! keyword written as an integer can be read back as a double.
+//!
+//! Also here are the routines that read a whole header as one string
+//! (`ffhdr2str`), the required-keyword readers for each HDU type, and the
+//! support for the long-string convention, in which a value too long for one
+//! card is continued over `CONTINUE` keywords.
+//!
+//! Ported from CFITSIO's `getkey.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -29,16 +40,22 @@ use crate::{KeywordDatatypeMut, bb, cs};
 use crate::{fitsio::*, int_snprintf};
 use crate::{fitsio2::*, slice_to_str};
 
-/*--------------------------------------------------------------------------*/
-/// returns the number of existing keywords (not counting the END keyword)
-/// and the number of more keyword that will fit in the current header
-/// without having to insert more FITS blocks.
+/// Return the number of existing keywords, not counting the END keyword, and
+/// the number of further keywords that will fit in the current header without
+/// having to insert more FITS blocks.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nexist` — (O) number of existing keywords in header
+/// * `nmore`  — (O) how many more keywords will fit
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghsp(
-    fptr: *mut fitsfile, /* I - FITS file pointer                     */
-    nexist: *mut c_int,  /* O - number of existing keywords in header */
-    nmore: *mut c_int,   /* O - how many more keywords will fit       */
-    status: *mut c_int,  /* IO - error status                         */
+    fptr: *mut fitsfile,
+    nexist: *mut c_int,
+    nmore: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -52,15 +69,21 @@ pub unsafe extern "C" fn ffghsp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// returns the number of existing keywords (not counting the END keyword)
-/// and the number of more keyword that will fit in the current header
-/// without having to insert more FITS blocks.
+/// Return the number of existing keywords, not counting the END keyword, and
+/// the number of further keywords that will fit in the current header without
+/// having to insert more FITS blocks.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nexist` — (O) number of existing keywords in header
+/// * `nmore`  — (O) how many more keywords will fit
+/// * `status` — (IO) error status
 pub fn ffghsp_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                     */
-    nexist: Option<&mut c_int>, /* O - number of existing keywords in header */
-    nmore: Option<&mut c_int>,  /* O - how many more keywords will fit       */
-    status: &mut c_int,         /* IO - error status                         */
+    fptr: &mut fitsfile,
+    nexist: Option<&mut c_int>,
+    nmore: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -90,15 +113,21 @@ pub fn ffghsp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the number of existing keywords and the position of the next
 /// keyword that will be read.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nexist`   — (O) number of existing keywords in header
+/// * `position` — (O) position of next keyword to be read
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghps(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                     */
-    nexist: *mut c_int,   /* O - number of existing keywords in header */
-    position: *mut c_int, /* O - position of next keyword to be read   */
-    status: *mut c_int,   /* IO - error status                         */
+    fptr: *mut fitsfile,
+    nexist: *mut c_int,
+    position: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -111,14 +140,20 @@ pub unsafe extern "C" fn ffghps(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the number of existing keywords and the position of the next
 /// keyword that will be read.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nexist`   — (O) number of existing keywords in header
+/// * `position` — (O) position of next keyword to be read
+/// * `status`   — (IO) error status
 pub fn ffghps_safe(
-    fptr: &mut fitsfile,          /* I - FITS file pointer                     */
-    nexist: Option<&mut c_int>,   /* O - number of existing keywords in header */
-    position: Option<&mut c_int>, /* O - position of next keyword to be read   */
-    status: &mut c_int,           /* IO - error status                         */
+    fptr: &mut fitsfile,
+    nexist: Option<&mut c_int>,
+    position: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -141,16 +176,17 @@ pub fn ffghps_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Function returns the position of the first null character (ASCII 0), if
 /// any, in the current header.  Null characters are illegal, but the other
 /// CFITSIO routines that read the header will not detect this error, because
 /// the null gets interpreted as a normal end of string character.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffnchk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                     */
-    status: *mut c_int,  /* IO - error status                         */
-) -> c_int {
+pub unsafe extern "C" fn ffnchk(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -160,15 +196,16 @@ pub unsafe extern "C" fn ffnchk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Function returns the position of the first null character (ASCII 0), if
 /// any, in the current header.  Null characters are illegal, but the other
 /// CFITSIO routines that read the header will not detect this error, because
 /// the null gets interpreted as a normal end of string character.
-pub fn ffnchk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                     */
-    status: &mut c_int,  /* IO - error status                         */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffnchk_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut bytepos: LONGLONG = 0;
     let mut length = 0;
     let mut nullpos: c_int = 0;
@@ -212,15 +249,16 @@ pub fn ffnchk_safe(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move pointer to the specified absolute keyword position.  E.g. this keyword
 /// will then be read by the next call to ffgnky.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) one-based keyword number to move to
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffmaky(
-    fptr: *mut fitsfile, /* I - FITS file pointer                    */
-    nrec: c_int,         /* I - one-based keyword number to move to  */
-    status: *mut c_int,  /* IO - error status                        */
-) -> c_int {
+pub unsafe extern "C" fn ffmaky(fptr: *mut fitsfile, nrec: c_int, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -230,14 +268,15 @@ pub unsafe extern "C" fn ffmaky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move pointer to the specified absolute keyword position.  E.g. this keyword
 /// will then be read by the next call to ffgnky.
-pub fn ffmaky_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    nrec: c_int,         /* I - one-based keyword number to move to  */
-    status: &mut c_int,  /* IO - error status                        */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) one-based keyword number to move to
+/// * `status` — (IO) error status
+pub fn ffmaky_safe(fptr: &mut fitsfile, nrec: c_int, status: &mut c_int) -> c_int {
     if fptr.HDUposition != fptr.Fptr.curhdu {
         ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
     }
@@ -247,15 +286,16 @@ pub fn ffmaky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// move pointer to the specified keyword position relative to the current
-/// position.  E.g. this keyword  will then be read by the next call to ffgnky.
+/// Move the pointer to the specified keyword position, relative to the current
+/// position; that keyword will then be read by the next call to `ffgnky`.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nmove`  — (I) relative number of keywords to move
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffmrky(
-    fptr: *mut fitsfile, /* I - FITS file pointer                   */
-    nmove: c_int,        /* I - relative number of keywords to move */
-    status: *mut c_int,  /* IO - error status                       */
-) -> c_int {
+pub unsafe extern "C" fn ffmrky(fptr: *mut fitsfile, nmove: c_int, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -265,14 +305,15 @@ pub unsafe extern "C" fn ffmrky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// move pointer to the specified keyword position relative to the current
-/// position.  E.g. this keyword  will then be read by the next call to ffgnky.
-pub fn ffmrky_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                   */
-    nmove: c_int,        /* I - relative number of keywords to move */
-    status: &mut c_int,  /* IO - error status                       */
-) -> c_int {
+/// Move the pointer to the specified keyword position, relative to the current
+/// position; that keyword will then be read by the next call to `ffgnky`.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nmove`  — (I) relative number of keywords to move
+/// * `status` — (IO) error status
+pub fn ffmrky_safe(fptr: &mut fitsfile, nmove: c_int, status: &mut c_int) -> c_int {
     if fptr.HDUposition != fptr.Fptr.curhdu {
         ffmahd_safe(fptr, (fptr.HDUposition) + 1, None, status);
     }
@@ -282,13 +323,14 @@ pub fn ffmrky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read the next keyword from the header - used internally by cfitsio
-pub(crate) fn ffgnky(
-    fptr: &mut fitsfile, /* I - FITS file pointer     */
-    card: &mut [c_char], /* O - card string           */
-    status: &mut c_int,  /* IO - error status         */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `card`   — (O) card string
+/// * `status` — (IO) error status
+pub(crate) fn ffgnky(fptr: &mut fitsfile, card: &mut [c_char], status: &mut c_int) -> c_int {
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if *status > 0 {
@@ -345,20 +387,29 @@ pub(crate) fn ffgnky(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the next keyword that matches one of the names in inclist
 /// but does not match any of the names in exclist.  The search
 /// goes from the current position to the end of the header, only.
 /// Wild card characters may be used in the name lists ('*', '?' and '#').
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `inclist` — (I) list of included keyword names
+/// * `ninc`    — (I) number of names in inclist
+/// * `exclist` — (I) list of excluded keyword names
+/// * `nexc`    — (I) number of names in exclist
+/// * `card`    — (O) first matching keyword
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgnxk(
-    fptr: *mut fitsfile,           /* I - FITS file pointer              */
-    inclist: *const *const c_char, /* I - list of included keyword names */
-    ninc: c_int,                   /* I - number of names in inclist     */
-    exclist: *const *const c_char, /* I - list of excluded keyword names */
-    nexc: c_int,                   /* I - number of names in exclist     */
-    card: *mut c_char,             /* O - first matching keyword         */
-    status: *mut c_int,            /* IO - error status                  */
+    fptr: *mut fitsfile,
+    inclist: *const *const c_char,
+    ninc: c_int,
+    exclist: *const *const c_char,
+    nexc: c_int,
+    card: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -383,19 +434,28 @@ pub unsafe extern "C" fn ffgnxk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the next keyword that matches one of the names in inclist
 /// but does not match any of the names in exclist.  The search
 /// goes from the current position to the end of the header, only.
 /// Wild card characters may be used in the name lists ('*', '?' and '#').
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `inclist` — (I) list of included keyword names
+/// * `ninc`    — (I) number of names in inclist
+/// * `exclist` — (I) list of excluded keyword names
+/// * `nexc`    — (I) number of names in exclist
+/// * `card`    — (O) first matching keyword
+/// * `status`  — (IO) error status
 pub fn ffgnxk_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer              */
-    inclist: &[&[c_char]], /* I - list of included keyword names */
-    ninc: c_int,           /* I - number of names in inclist     */
-    exclist: &[&[c_char]], /* I - list of excluded keyword names */
-    nexc: c_int,           /* I - number of names in exclist     */
-    card: &mut [c_char],   /* O - first matching keyword         */
-    status: &mut c_int,    /* IO - error status                  */
+    fptr: &mut fitsfile,
+    inclist: &[&[c_char]],
+    ninc: c_int,
+    exclist: &[&[c_char]],
+    nexc: c_int,
+    card: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut casesn: c_int = 0;
     let mut is_match: c_int = 0;
@@ -446,17 +506,25 @@ pub fn ffgnxk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the keyword value and comment from the FITS header.
 /// Reads a keyword value with the datatype specified by the 2nd argument.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `keyname`  — (I) name of keyword to read
+/// * `value`    — (O) keyword value
+/// * `comm`     — (O) keyword comment
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgky(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    datatype: c_int,        /* I - datatype of the value    */
-    keyname: *const c_char, /* I - name of keyword to read  */
-    value: *mut c_void,     /* O - keyword value            */
-    comm: *mut c_char,      /* O - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    keyname: *const c_char,
+    value: *mut c_void,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -479,17 +547,24 @@ pub unsafe extern "C" fn ffgky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the keyword value and comment from the FITS header.
 /// Reads a keyword value with the datatype specified by the 2nd argument.
 ///
 /// This has been modified heavily from the original for safety.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `keyname`  — (I) name of keyword to read
+/// * `comm`     — (O) keyword comment
+/// * `status`   — (IO) error status
 pub fn ffgky_safe(
-    fptr: &mut fitsfile,                           /* I - FITS file pointer        */
-    datatype: KeywordDatatypeMut,                  /* I - datatype of the value    */
-    keyname: &[c_char],                            /* I - name of keyword to read  */
-    mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment          */
-    status: &mut c_int,                            /* IO - error status            */
+    fptr: &mut fitsfile,
+    datatype: KeywordDatatypeMut,
+    keyname: &[c_char],
+    mut comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut longval: LONGLONG = 0;
     let mut ulongval: ULONGLONG = 0;
@@ -605,7 +680,6 @@ pub fn ffgky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the keyword value and comment.
 ///
 /// The value is just the literal string of characters in the value field
@@ -614,13 +688,21 @@ pub fn ffgky_safe(
 /// up to 70 characters long, and the comment may be up to 72 characters long.
 /// If the keyword has no value (no equal sign in column 9) then a null value
 /// is returned.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `keyval`  — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkey(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to read  */
-    keyval: *mut c_char,    /* O - keyword value            */
-    comm: *mut c_char,      /* O - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    keyval: *mut c_char,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -643,7 +725,6 @@ pub unsafe extern "C" fn ffgkey(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the keyword value and comment.
 ///
 /// The value is just the literal string of characters in the value field
@@ -652,12 +733,20 @@ pub unsafe extern "C" fn ffgkey(
 /// up to 70 characters long, and the comment may be up to 72 characters long.
 /// If the keyword has no value (no equal sign in column 9) then a null value
 /// is returned.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `keyval`  — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkey_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer        */
-    keyname: &[c_char],                        /* I - name of keyword to read  */
-    keyval: &mut [c_char],                     /* O - keyword value            */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment          */
-    status: &mut c_int,                        /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    keyval: &mut [c_char],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
@@ -682,18 +771,24 @@ pub fn ffgkey_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the nrec-th keyword, returning the entire keyword card up to
 /// 80 characters long.  The first keyword in the header has nrec = 1, not 0.
 /// The returned card value is null terminated with any trailing blank
 /// characters removed.  If nrec = 0, then this routine simply moves the
 /// current header pointer to the top of the header.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) number of keyword to read
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgrec(
-    fptr: *mut fitsfile, /* I - FITS file pointer          */
-    nrec: c_int,         /* I - number of keyword to read  */
-    card: *mut c_char,   /* O - keyword card               */
-    status: *mut c_int,  /* IO - error status              */
+    fptr: *mut fitsfile,
+    nrec: c_int,
+    card: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -714,17 +809,23 @@ pub unsafe extern "C" fn ffgrec(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the nrec-th keyword, returning the entire keyword card up to
 /// 80 characters long.  The first keyword in the header has nrec = 1, not 0.
 /// The returned card value is null terminated with any trailing blank
 /// characters removed.  If nrec = 0, then this routine simply moves the
 /// current header pointer to the top of the header.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrec`   — (I) number of keyword to read
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 pub fn ffgrec_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer          */
-    nrec: c_int,                 /* I - number of keyword to read  */
-    card: Option<&mut [c_char]>, /* O - keyword card               */
-    status: &mut c_int,          /* IO - error status              */
+    fptr: &mut fitsfile,
+    nrec: c_int,
+    card: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -743,7 +844,6 @@ pub fn ffgrec_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the entire keyword card up to
 /// 80 characters long.  
 /// The returned card value is null terminated with any trailing blank
@@ -753,12 +853,19 @@ pub fn ffgrec_safe(
 /// and '*' matches any sequence of chars, # matches any string of decimal
 /// digits) then the search ends once the end of header is reached and does
 /// not automatically resume from the top of the header.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `name`   — (I) name of keyword to read
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcrd(
-    fptr: *mut fitsfile, /* I - FITS file pointer        */
-    name: *const c_char, /* I - name of keyword to read  */
-    card: *mut c_char,   /* O - keyword card             */
-    status: *mut c_int,  /* IO - error status            */
+    fptr: *mut fitsfile,
+    name: *const c_char,
+    card: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -773,7 +880,6 @@ pub unsafe extern "C" fn ffgcrd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the entire keyword card up to
 /// 80 characters long.  
 /// The returned card value is null terminated with any trailing blank
@@ -783,11 +889,18 @@ pub unsafe extern "C" fn ffgcrd(
 /// and '*' matches any sequence of chars, # matches any string of decimal
 /// digits) then the search ends once the end of header is reached and does
 /// not automatically resume from the top of the header.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `name`   — (I) name of keyword to read
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 pub fn ffgcrd_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer        */
-    name: &[c_char],                /* I - name of keyword to read  */
-    card: &mut [c_char; FLEN_CARD], /* O - keyword card             */
-    status: &mut c_int,             /* IO - error status            */
+    fptr: &mut fitsfile,
+    name: &[c_char],
+    card: &mut [c_char; FLEN_CARD],
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys: isize = 0;
     let mut nextkey: isize = 0;
@@ -962,17 +1075,23 @@ pub fn ffgcrd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the next keyword record that contains the input character string,
 /// returning the entire keyword card up to 80 characters long.
 /// The returned card value is null terminated with any trailing blank
 /// characters removed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `string` — (I) string to match
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgstr(
-    fptr: *mut fitsfile,   /* I - FITS file pointer        */
-    string: *const c_char, /* I - string to match  */
-    card: *mut c_char,     /* O - keyword card             */
-    status: *mut c_int,    /* IO - error status            */
+    fptr: *mut fitsfile,
+    string: *const c_char,
+    card: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -986,16 +1105,22 @@ pub unsafe extern "C" fn ffgstr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the next keyword record that contains the input character string,
 /// returning the entire keyword card up to 80 characters long.
 /// The returned card value is null terminated with any trailing blank
 /// characters removed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `string` — (I) string to match
+/// * `card`   — (O) keyword card
+/// * `status` — (IO) error status
 pub fn ffgstr_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer        */
-    string: &[c_char],   /* I - string to match  */
-    card: &mut [c_char], /* O - keyword card             */
-    status: &mut c_int,  /* IO - error status            */
+    fptr: &mut fitsfile,
+    string: &[c_char],
+    card: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nextkey: c_int = 0;
@@ -1030,15 +1155,21 @@ pub fn ffgstr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the name of the keyword, and the name length.  This supports the
 /// ESO HIERARCH convention where keyword names may be > 8 characters long.
+///
+/// # Parameters
+///
+/// * `card`   — (I) keyword card
+/// * `name`   — (O) name of the keyword
+/// * `length` — (O) length of the keyword name
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgknm(
-    card: *const c_char, /* I - keyword card                   */
-    name: *mut c_char,   /* O - name of the keyword            */
-    length: *mut c_int,  /* O - length of the keyword name     */
-    status: *mut c_int,  /* IO - error status                  */
+    card: *const c_char,
+    name: *mut c_char,
+    length: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1054,14 +1185,20 @@ pub unsafe extern "C" fn ffgknm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the name of the keyword, and the name length.  This supports the
 /// ESO HIERARCH convention where keyword names may be > 8 characters long.
+///
+/// # Parameters
+///
+/// * `card`   — (I) keyword card
+/// * `name`   — (O) name of the keyword
+/// * `length` — (O) length of the keyword name
+/// * `status` — (IO) error status
 pub fn ffgknm_safe(
-    card: &[c_char; FLEN_CARD],        /* I - keyword card                   */
-    name: &mut [c_char; FLEN_KEYWORD], /* O - name of the keyword            */
-    length: &mut c_int,                /* O - length of the keyword name     */
-    status: &mut c_int,                /* IO - error status                  */
+    card: &[c_char; FLEN_CARD],
+    name: &mut [c_char; FLEN_KEYWORD],
+    length: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut ptr1: usize = 0;
 
@@ -1120,20 +1257,29 @@ pub fn ffgknm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the units string from the comment field of the existing
 /// keyword. This routine uses a local FITS convention (not defined in the
 /// official FITS standard) in which the units are enclosed in
 /// square brackets following the '/' comment field delimiter, e.g.:
 ///
+/// ```text
 /// KEYWORD =                   12 / [kpc] comment string goes here
+/// ```
+///
 /// WARNING: No definition in spec of length of units
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `unit`    — (O) keyword units
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgunt(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    unit: *mut c_char,      /* O - keyword units             */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    unit: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1149,11 +1295,18 @@ pub unsafe extern "C" fn ffgunt(
 }
 
 /// Safe wrapper for ffgunt that handles null pointer checks
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `unit`    — (O) keyword units
+/// * `status`  — (IO) error status
 pub fn ffgunt_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer         */
-    keyname: &[c_char],  /* I - name of keyword to read   */
-    unit: &mut [c_char], /* O - keyword units             */
-    status: &mut c_int,  /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    unit: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -1178,20 +1331,27 @@ pub fn ffgunt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get KeYword with a String value:
 /// Read (get) a simple string valued keyword.  The returned value may be up to
 /// 68 chars long ( + 1 null terminator char).  The routine does not support the
 /// HEASARC convention for continuing long string values over multiple keywords.
 /// The ffgkls routine may be used to read long continued strings. The returned
 /// comment string may be up to 69 characters long (including null terminator).
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkys(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut c_char,     /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut c_char,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1216,19 +1376,26 @@ pub unsafe extern "C" fn ffgkys(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get KeYword with a String value:
 /// Read (get) a simple string valued keyword.  The returned value may be up to
 /// 68 chars long ( + 1 null terminator char).  The routine does not support the
 /// HEASARC convention for continuing long string values over multiple keywords.
 /// The ffgkls routine may be used to read long continued strings. The returned
 /// comment string may be up to 69 characters long (including null terminator).
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkys_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut [c_char],                      /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut [c_char],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -1243,15 +1410,21 @@ pub fn ffgkys_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the length of the keyword value string.
 /// This routine explicitly supports the CONTINUE convention for long string values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `length`  — (O) length of the string value
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgksl(
-    fptr: *mut fitsfile,    /* I - FITS file pointer             */
-    keyname: *const c_char, /* I - name of keyword to read       */
-    length: *mut c_int,     /* O - length of the string value    */
-    status: *mut c_int,     /* IO - error status                 */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    length: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1269,14 +1442,20 @@ pub unsafe extern "C" fn ffgksl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the length of the keyword value string.
 /// This routine explicitly supports the CONTINUE convention for long string values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `length`  — (O) length of the string value
+/// * `status`  — (IO) error status
 pub fn ffgksl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    keyname: &[c_char],  /* I - name of keyword to read       */
-    length: &mut c_int,  /* O - length of the string value    */
-    status: &mut c_int,  /* IO - error status                 */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    length: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -1288,16 +1467,23 @@ pub fn ffgksl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the length of the keyword value string and comment string.
 /// This routine explicitly supports the CONTINUE convention for long string values.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `keyname`   — (I) name of keyword to read
+/// * `length`    — (O) length of the string value
+/// * `comlength` — (O) length of comment string
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkcsl(
-    fptr: *mut fitsfile,    /* I - FITS file pointer             */
-    keyname: *const c_char, /* I - name of keyword to read       */
-    length: *mut c_int,     /* O - length of the string value    */
-    comlength: *mut c_int,  /* O - length of comment string      */
-    status: *mut c_int,     /* IO - error status                 */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    length: *mut c_int,
+    comlength: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1320,15 +1506,22 @@ pub unsafe extern "C" fn ffgkcsl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the length of the keyword value string and comment string.
 /// This routine explicitly supports the CONTINUE convention for long string values.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `keyname`   — (I) name of keyword to read
+/// * `length`    — (O) length of the string value
+/// * `comlength` — (O) length of comment string
+/// * `status`    — (IO) error status
 pub fn ffgkcsl_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer             */
-    keyname: &[c_char],    /* I - name of keyword to read       */
-    length: &mut c_int,    /* O - length of the string value    */
-    comlength: &mut c_int, /* O - length of comment string      */
-    status: &mut c_int,    /* IO - error status                 */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    length: &mut c_int,
+    comlength: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -1341,7 +1534,6 @@ pub fn ffgkcsl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This is the original routine for reading long string keywords that use
 /// the CONTINUE keyword convention.  In 2016 a new routine called
 /// ffgsky / fits_read_string_key was added, which may provide a more
@@ -1357,12 +1549,19 @@ pub fn ffgkcsl_safe(
 /// characters long.
 // #[deprecated]
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) pointer to keyword value
+/// * `comm`    — (O) keyword comment (may be NULL)
+/// * `status`  — (IO) error status
 pub unsafe extern "C" fn ffgkls(
-    fptr: *mut fitsfile,     /* I - FITS file pointer         */
-    keyname: *const c_char,  /* I - name of keyword to read       */
-    value: *mut *mut c_char, /* O - pointer to keyword value      */
-    comm: *mut c_char,       /* O - keyword comment (may be NULL) */
-    status: *mut c_int,      /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut *mut c_char,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1386,13 +1585,25 @@ pub unsafe extern "C" fn ffgkls(
     }
 }
 
-/// Safe wrapper for ffgkls that handles null pointer checks
+/// Read a keyword value that uses the long-string convention, in which a value
+/// too long for one card is continued over `CONTINUE` keywords.
+///
+/// Unlike [`ffgsky_safe`], this allocates the returned string on the heap, so
+/// the caller must free it with `fffree` once it is no longer needed.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) pointer to keyword value
+/// * `comm`    — (O) keyword comment (may be NULL)
+/// * `status`  — (IO) error status
 pub fn ffgkls_safe(
-    fptr: &mut fitsfile,                           /* I - FITS file pointer         */
-    keyname: &[c_char],                            /* I - name of keyword to read       */
-    value: &mut *mut c_char,                       /* O - pointer to keyword value      */
-    mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
-    status: &mut c_int,                            /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut *mut c_char,
+    mut comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -1512,7 +1723,6 @@ pub fn ffgkls_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read and return the value of the specified string-valued keyword.
 ///
 /// This new routine was added in 2016 to provide a more convenient user
@@ -1530,20 +1740,31 @@ pub fn ffgkls_safe(
 /// This routine differs from the ffkls routine in that it does not
 /// internally allocate memory for the returned value string, and consequently
 /// the calling routine does not need to call fffree to free the memory.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `keyname`   — (I) name of keyword to read
+/// * `firstchar` — (I) first character of string to return
+/// * `maxchar`   — (I) maximum length of string to return
+/// * `value`     — (O) pointer to keyword value
+/// * `valuelen`  — (O) total length of the keyword value string
+/// * `comm`      — (O) keyword comment (may be NULL)
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgsky(
-    fptr: *mut fitsfile,    /* I - FITS file pointer             */
-    keyname: *const c_char, /* I - name of keyword to read       */
-    firstchar: c_int,       /* I - first character of string to return */
-    maxchar: c_int,         /* I - maximum length of string to return */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    firstchar: c_int,
+    maxchar: c_int,
     /*    (string will be null terminated)  */
-    value: *mut c_char,   /* O - pointer to keyword value      */
-    valuelen: *mut c_int, /* O - total length of the keyword value string */
+    value: *mut c_char,
+    valuelen: *mut c_int,
     /*     The returned 'value' string may only */
     /*     contain a piece of the total string, depending */
     /*     on the value of firstchar and maxchar */
-    comm: *mut c_char,  /* O - keyword comment (may be NULL) */
-    status: *mut c_int, /* IO - error status                 */
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1573,7 +1794,6 @@ pub unsafe extern "C" fn ffgsky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read and return the value of the specified string-valued keyword.
 ///
 /// This new routine was added in 2016 to provide a more convenient user
@@ -1591,15 +1811,26 @@ pub unsafe extern "C" fn ffgsky(
 /// This routine differs from the ffkls routine in that it does not
 /// internally allocate memory for the returned value string, and consequently
 /// the calling routine does not need to call fffree to free the memory.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `keyname`   — (I) name of keyword to read
+/// * `firstchar` — (I) first character of string to return
+/// * `maxchar`   — (I) maximum length of string to return
+/// * `value`     — (O) pointer to keyword value
+/// * `valuelen`  — (O) total length of the keyword value string
+/// * `comm`      — (O) keyword comment (may be NULL)
+/// * `status`    — (IO) error status
 pub fn ffgsky_safe(
-    fptr: &mut fitsfile,              /* I - FITS file pointer             */
-    keyname: &[c_char],               /* I - name of keyword to read       */
-    firstchar: c_int,                 /* I - first character of string to return */
-    maxchar: c_int,                   /* I - maximum length of string to return */
-    value: &mut [c_char],             /* O - pointer to keyword value      */
-    mut valuelen: Option<&mut c_int>, /* O - total length of the keyword value string */
-    mut comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment (may be NULL) */
-    status: &mut c_int,               /* IO - error status                 */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    firstchar: c_int,
+    maxchar: c_int,
+    value: &mut [c_char],
+    mut valuelen: Option<&mut c_int>,
+    mut comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut nextcomm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -1722,23 +1953,34 @@ pub fn ffgsky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `keyname`    — (I) name of keyword to read
+/// * `firstchar`  — (I) first character of string to return
+/// * `maxchar`    — (I) maximum length of string to return
+/// * `maxcomchar` — (I) maximum length of comment to return
+/// * `value`      — (O) pointer to keyword value
+/// * `valuelen`   — (O) total length of the keyword value string
+/// * `comm`       — (O) keyword comment (may be NULL)
+/// * `comlen`     — (O) total length of the comment string
+/// * `status`     — (IO) error status
 pub unsafe extern "C" fn ffgskyc(
-    fptr: *mut fitsfile,    /* I - FITS file pointer             */
-    keyname: *const c_char, /* I - name of keyword to read       */
-    firstchar: c_int,       /* I - first character of string to return */
-    maxchar: c_int,         /* I - maximum length of string to return */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    firstchar: c_int,
+    maxchar: c_int,
     /*    (string will be null terminated)  */
-    maxcomchar: c_int,    /* I - maximum length of comment to return */
-    value: *mut c_char,   /* O - pointer to keyword value      */
-    valuelen: *mut c_int, /* O - total length of the keyword value string */
+    maxcomchar: c_int,
+    value: *mut c_char,
+    valuelen: *mut c_int,
     /*     The returned 'value' string may only */
     /*     contain a piece of the total string, depending */
     /*     on the value of firstchar and maxchar */
-    comm: *mut c_char,  /* O - keyword comment (may be NULL) */
-    comlen: *mut c_int, /* O - total length of the comment string */
-    status: *mut c_int, /* IO - error status                 */
+    comm: *mut c_char,
+    comlen: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1765,22 +2007,33 @@ pub unsafe extern "C" fn ffgskyc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `keyname`    — (I) name of keyword to read
+/// * `firstchar`  — (I) first character of string to return
+/// * `maxchar`    — (I) maximum length of string to return
+/// * `maxcomchar` — (I) maximum length of comment to return
+/// * `value`      — (O) pointer to keyword value
+/// * `valuelen`   — (O) total length of the keyword value string
+/// * `comm`       — (O) keyword comment (may be NULL)
+/// * `comlen`     — (O) total length of the comment string
+/// * `status`     — (IO) error status
 pub fn ffgskyc_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    keyname: &[c_char],  /* I - name of keyword to read       */
-    firstchar: c_int,    /* I - first character of string to return */
-    maxchar: c_int,      /* I - maximum length of string to return */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    firstchar: c_int,
+    maxchar: c_int,
     /*    (string will be null terminated)  */
-    maxcomchar: c_int,            /* I - maximum length of comment to return */
-    value: Option<&mut [c_char]>, /* O - pointer to keyword value      */
-    valuelen: &mut c_int,         /* O - total length of the keyword value string */
+    maxcomchar: c_int,
+    value: Option<&mut [c_char]>,
+    valuelen: &mut c_int,
     /*     The returned 'value' string may only */
     /*     contain a piece of the total string, depending */
     /*     on the value of firstchar and maxchar */
-    comm: Option<&mut [c_char]>, /* O - keyword comment (may be NULL) */
-    comlen: &mut c_int,          /* O - total length of the comment string */
-    status: &mut c_int,          /* IO - error status                 */
+    comm: Option<&mut [c_char]>,
+    comlen: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -1793,22 +2046,33 @@ pub fn ffgskyc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `keyname`    — (I) name of keyword to read
+/// * `firstchar`  — (I) first character of string to return
+/// * `maxvalchar` — (I) maximum length of string to return
+/// * `maxcomchar` — (I) maximum length of comment to return
+/// * `value`      — (O) pointer to keyword value (may be NULL)
+/// * `valuelen`   — (O) total length of the keyword value string
+/// * `comm`       — (O) keyword comment (may be NULL)
+/// * `comlen`     — (O) total length of comment string
+/// * `status`     — (IO) error status
 pub(crate) fn ffglkut(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    keyname: &[c_char],  /* I - name of keyword to read       */
-    firstchar: c_int,    /* I - first character of string to return */
-    maxvalchar: c_int,   /* I - maximum length of string to return */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    firstchar: c_int,
+    maxvalchar: c_int,
     /*    (string will be null terminated)  */
-    maxcomchar: c_int,                /* I - maximum length of comment to return */
-    mut value: Option<&mut [c_char]>, /* O - pointer to keyword value (may be NULL) */
-    valuelen: &mut c_int,             /* O - total length of the keyword value string */
+    maxcomchar: c_int,
+    mut value: Option<&mut [c_char]>,
+    valuelen: &mut c_int,
     /*     The returned 'value' string may only */
     /*     contain a piece of the total string, depending */
     /*     on the value of firstchar and maxvalchar */
-    mut comm: Option<&mut [c_char]>, /* O - keyword comment (may be NULL) */
-    comlen: &mut c_int,              /* O - total length of comment string */
-    status: &mut c_int,              /* IO - error status                 */
+    mut comm: Option<&mut [c_char]>,
+    comlen: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut comstring: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -1959,14 +2223,15 @@ pub(crate) fn ffglkut(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Free the memory that was previously allocated by CFITSIO,
 /// such as by ffgkls or fits_hdr2str
+///
+/// # Parameters
+///
+/// * `value`  — (I) pointer to keyword value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fffree(
-    value: *mut c_void, /* I - pointer to keyword value  */
-    status: *mut c_int, /* IO - error status             */
-) -> c_int {
+pub unsafe extern "C" fn fffree(value: *mut c_void, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -1974,7 +2239,6 @@ pub unsafe extern "C" fn fffree(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Free memory allocated by FITS library functions.
 /// This function deallocates memory that was previously allocated by other
 /// FITS library functions and tracked in the global allocations map.
@@ -1984,10 +2248,12 @@ pub unsafe extern "C" fn fffree(
 /// `value` must either be null or a pointer previously handed out by a CFITSIO
 /// allocating function (ffgkls, fits_hdr2str, ...) and not yet freed. Passing
 /// any other pointer, or freeing the same one twice, is undefined behaviour.
-pub unsafe fn fffree_safe(
-    value: *mut c_void, /* I - pointer to keyword value  */
-    status: &mut c_int, /* IO - error status             */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `value`  — (I) pointer to keyword value
+/// * `status` — (IO) error status
+pub unsafe fn fffree_safe(value: *mut c_void, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -2006,7 +2272,6 @@ pub unsafe fn fffree_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Attempt to read the next keyword, returning the string value
 /// if it is a continuation of the previous string keyword value.
 /// This uses the HEASARC convention for continuing long string values
@@ -2015,11 +2280,18 @@ pub unsafe fn fffree_safe(
 /// which must have the name CONTINUE without an equal sign in column 9
 /// of the card.  If the next card is not a continuation, then the returned
 /// value string will be null.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `value`  — (O) continued string value
+/// * `comm`   — (O) continued comment string
+/// * `status` — (IO) error status
 pub(crate) fn ffgcnt(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    value: &mut [c_char],                      /* O - continued string value    */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - continued comment string  */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    value: &mut [c_char],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus = 0;
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2056,17 +2328,24 @@ pub(crate) fn ffgcnt(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The returned value = 1 if the keyword is true, else = 0 if false.
 /// The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyl(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut c_int,      /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut c_int,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2091,16 +2370,23 @@ pub unsafe extern "C" fn ffgkyl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The returned value = 1 if the keyword is true, else = 0 if false.
 /// The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyl_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut c_int,                         /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut c_int,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2114,18 +2400,25 @@ pub fn ffgkyl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///Read (get) the named keyword, returning the value and comment.
 ///
 ///The value will be implicitly converted to a (long) integer if it not
 ///already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut c_long,     /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut c_long,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2150,17 +2443,24 @@ pub unsafe extern "C" fn ffgkyj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///Read (get) the named keyword, returning the value and comment.
 ///
 ///The value will be implicitly converted to a (long) integer if it not
 ///already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyj_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut c_long,                        /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut c_long,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2174,18 +2474,25 @@ pub fn ffgkyj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 ///
 /// The value will be implicitly converted to a (LONGLONG) integer if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyjj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut LONGLONG,   /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut LONGLONG,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2210,17 +2517,24 @@ pub unsafe extern "C" fn ffgkyjj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 ///
 /// The value will be implicitly converted to a (LONGLONG) integer if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyjj_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut LONGLONG,                      /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut LONGLONG,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2234,7 +2548,6 @@ pub fn ffgkyjj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 ///
 /// The value will be implicitly converted to a (ULONGLONG) integer if it not
@@ -2270,7 +2583,6 @@ pub unsafe extern "C" fn ffgkyujj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 ///
 /// The value will be implicitly converted to a (ULONGLONG) integer if it not
@@ -2294,17 +2606,24 @@ pub fn ffgkyujj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The value will be implicitly converted to a float if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkye(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut f32,        /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut f32,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2329,16 +2648,23 @@ pub unsafe extern "C" fn ffgkye(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The value will be implicitly converted to a float if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkye_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut f32,                           /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut f32,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2352,17 +2678,24 @@ pub fn ffgkye_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The value will be implicitly converted to a double if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyd(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut f64,        /* O - keyword value             */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut f64,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2387,16 +2720,23 @@ pub unsafe extern "C" fn ffgkyd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The value will be implicitly converted to a double if it not
 /// already of this datatype.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyd_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut f64,                           /* O - keyword value             */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut f64,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2410,17 +2750,24 @@ pub fn ffgkyd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The keyword must have a complex value. No implicit data conversion
 /// will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value (real,imag)
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyc(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut [f32; 2],   /* O - keyword value (real,imag) */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut [f32; 2],
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2445,16 +2792,23 @@ pub unsafe extern "C" fn ffgkyc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The keyword must have a complex value. No implicit data conversion
 /// will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value (real,imag)
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyc_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut [f32; 2],                      /* O - keyword value (real,imag) */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut [f32; 2],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -2493,17 +2847,24 @@ pub fn ffgkyc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The keyword must have a complex value. No implicit data conversion
 /// will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value (real,imag)
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkym(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    value: *mut [f64; 2],   /* O - keyword value (real,imag) */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *mut [f64; 2],
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2528,16 +2889,23 @@ pub unsafe extern "C" fn ffgkym(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 /// The keyword must have a complex value. No implicit data conversion
 /// will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to read
+/// * `value`   — (O) keyword value (real,imag)
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkym_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    value: &mut [f64; 2],                      /* O - keyword value (real,imag) */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &mut [f64; 2],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -2577,21 +2945,29 @@ pub fn ffgkym_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the named keyword, returning the value and comment.
 ///
 /// The integer and fractional parts of the value are returned in separate
 /// variables, to allow more numerical precision to be passed.  This
 /// effectively passes a 'triple' precision value, with a 4-byte integer
 /// and an 8-byte fraction.  The comment may be up to 69 characters long.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `keyname`  — (I) name of keyword to read
+/// * `ivalue`   — (O) integer part of keyword value
+/// * `fraction` — (O) fractional part of keyword value
+/// * `comm`     — (O) keyword comment
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyt(
-    fptr: *mut fitsfile,    /* I - FITS file pointer         */
-    keyname: *const c_char, /* I - name of keyword to read   */
-    ivalue: *mut c_long,    /* O - integer part of keyword value     */
-    fraction: *mut f64,     /* O - fractional part of keyword value  */
-    comm: *mut c_char,      /* O - keyword comment           */
-    status: *mut c_int,     /* IO - error status             */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    ivalue: *mut c_long,
+    fraction: *mut f64,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2618,13 +2994,22 @@ pub unsafe extern "C" fn ffgkyt(
 }
 
 /// Safe wrapper for ffgkyt that handles null pointer checks
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `keyname`  — (I) name of keyword to read
+/// * `ivalue`   — (O) integer part of keyword value
+/// * `fraction` — (O) fractional part of keyword value
+/// * `comm`     — (O) keyword comment
+/// * `status`   — (IO) error status
 pub fn ffgkyt_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer         */
-    keyname: &[c_char],                        /* I - name of keyword to read   */
-    ivalue: &mut c_long,                       /* O - integer part of keyword value     */
-    fraction: &mut f64,                        /* O - fractional part of keyword value  */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment           */
-    status: &mut c_int,                        /* IO - error status             */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    ivalue: &mut c_long,
+    fraction: &mut f64,
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
 
@@ -2655,7 +3040,6 @@ pub fn ffgkyt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the nkey-th keyword returning the keyword name, value and comment.
 ///
 /// The value is just the literal string of characters in the value field
@@ -2664,14 +3048,23 @@ pub fn ffgkyt_safe(
 /// up to 70 characters long, and the comment may be up to 72 characters long.
 /// If the keyword has no value (no equal sign in column 9) then a null value
 /// is returned.  If comm = NULL, then do not return the comment string.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `nkey`    — (I) number of the keyword to read
+/// * `keyname` — (O) name of the keyword
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkyn(
-    fptr: *mut fitsfile,  /* I - FITS file pointer             */
-    nkey: c_int,          /* I - number of the keyword to read */
-    keyname: *mut c_char, /* O - name of the keyword           */
-    value: *mut c_char,   /* O - keyword value                 */
-    comm: *mut c_char,    /* O - keyword comment               */
-    status: *mut c_int,   /* IO - error status                 */
+    fptr: *mut fitsfile,
+    nkey: c_int,
+    keyname: *mut c_char,
+    value: *mut c_char,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2698,7 +3091,6 @@ pub unsafe extern "C" fn ffgkyn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) the nkey-th keyword returning the keyword name, value and comment.
 ///
 /// The value is just the literal string of characters in the value field
@@ -2707,13 +3099,22 @@ pub unsafe extern "C" fn ffgkyn(
 /// up to 70 characters long, and the comment may be up to 72 characters long.
 /// If the keyword has no value (no equal sign in column 9) then a null value
 /// is returned.  If comm = NULL, then do not return the comment string.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `nkey`    — (I) number of the keyword to read
+/// * `keyname` — (O) name of the keyword
+/// * `value`   — (O) keyword value
+/// * `comm`    — (O) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffgkyn_safe(
-    fptr: &mut fitsfile,                       /* I - FITS file pointer             */
-    nkey: c_int,                               /* I - number of the keyword to read */
-    keyname: &mut [c_char; FLEN_KEYWORD],      /* O - name of the keyword           */
-    value: &mut [c_char; FLEN_VALUE],          /* O - keyword value                 */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - keyword comment               */
-    status: &mut c_int,                        /* IO - error status                 */
+    fptr: &mut fitsfile,
+    nkey: c_int,
+    keyname: &mut [c_char; FLEN_KEYWORD],
+    value: &mut [c_char; FLEN_VALUE],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut sbuff: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2759,19 +3160,28 @@ pub fn ffgkyn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
 /// This routine does NOT support the HEASARC long string convention.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of pointers to keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkns(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                    */
-    keyname: *const c_char,  /* I - root name of keywords to read        */
-    nstart: c_int,           /* I - starting index number                */
-    nmax: c_int,             /* I - maximum number of keywords to return */
-    value: *mut *mut c_char, /* O - array of pointers to keyword values  */
-    nfound: *mut c_int,      /* O - number of values that were returned  */
-    status: *mut c_int,      /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut *mut c_char,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2792,18 +3202,27 @@ pub unsafe extern "C" fn ffgkns(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
 /// This routine does NOT support the HEASARC long string convention.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of pointers to keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgkns_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                    */
-    keyname: &[c_char],          /* I - root name of keywords to read        */
-    nstart: c_int,               /* I - starting index number                */
-    nmax: c_int,                 /* I - maximum number of keywords to return */
-    value: &mut [&mut [c_char]], /* O - array of pointers to keyword values  */
-    nfound: &mut c_int,          /* O - number of values that were returned  */
-    status: &mut c_int,          /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [&mut [c_char]],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nend: c_int = 0;
     let mut lenroot: usize = 0;
@@ -2893,19 +3312,28 @@ pub fn ffgkns_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
 /// The returned value = 1 if the keyword is true, else = 0 if false.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgknl(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: *const c_char, /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: *mut c_int,      /* O - array of keyword values              */
-    nfound: *mut c_int,     /* O - number of values that were returned  */
-    status: *mut c_int,     /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut c_int,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2921,18 +3349,27 @@ pub unsafe extern "C" fn ffgknl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
 /// The returned value = 1 if the keyword is true, else = 0 if false.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgknl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    keyname: &[c_char],  /* I - root name of keywords to read        */
-    nstart: c_int,       /* I - starting index number                */
-    nmax: c_int,         /* I - maximum number of keywords to return */
-    value: &mut [c_int], /* O - array of keyword values              */
-    nfound: &mut c_int,  /* O - number of values that were returned  */
-    status: &mut c_int,  /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [c_int],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys = 0;
     let mut mkeys = 0;
@@ -3022,18 +3459,27 @@ pub fn ffgknl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgknj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: *const c_char, /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: *mut c_long,     /* O - array of keyword values              */
-    nfound: *mut c_int,     /* O - number of values that were returned  */
-    status: *mut c_int,     /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut c_long,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3049,17 +3495,26 @@ pub unsafe extern "C" fn ffgknj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgknj_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                    */
-    keyname: &[c_char],   /* I - root name of keywords to read        */
-    nstart: c_int,        /* I - starting index number                */
-    nmax: c_int,          /* I - maximum number of keywords to return */
-    value: &mut [c_long], /* O - array of keyword values              */
-    nfound: &mut c_int,   /* O - number of values that were returned  */
-    status: &mut c_int,   /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [c_long],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys = 0;
     let mut mkeys = 0;
@@ -3151,18 +3606,27 @@ pub fn ffgknj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgknjj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: *const c_char, /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: *mut LONGLONG,   /* O - array of keyword values              */
-    nfound: *mut c_int,     /* O - number of values that were returned  */
-    status: *mut c_int,     /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut LONGLONG,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3178,17 +3642,26 @@ pub unsafe extern "C" fn ffgknjj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgknjj_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: &[c_char],     /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: &mut [LONGLONG], /* O - array of keyword values              */
-    nfound: &mut c_int,     /* O - number of values that were returned  */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [LONGLONG],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys = 0;
     let mut mkeys = 0;
@@ -3279,18 +3752,27 @@ pub fn ffgknjj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgkne(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: *const c_char, /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: *mut f32,        /* O - array of keyword values              */
-    nfound: *mut c_int,     /* O - number of values that were returned  */
-    status: *mut c_int,     /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut f32,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3305,17 +3787,26 @@ pub unsafe extern "C" fn ffgkne(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgkne_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    keyname: &[c_char],  /* I - root name of keywords to read        */
-    nstart: c_int,       /* I - starting index number                */
-    nmax: c_int,         /* I - maximum number of keywords to return */
-    value: &mut [f32],   /* O - array of keyword values              */
-    nfound: &mut c_int,  /* O - number of values that were returned  */
-    status: &mut c_int,  /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [f32],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys = 0;
     let mut mkeys = 0;
@@ -3405,18 +3896,27 @@ pub fn ffgkne_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgknd(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                    */
-    keyname: *const c_char, /* I - root name of keywords to read        */
-    nstart: c_int,          /* I - starting index number                */
-    nmax: c_int,            /* I - maximum number of keywords to return */
-    value: *mut f64,        /* O - array of keyword values              */
-    nfound: *mut c_int,     /* O - number of values that were returned  */
-    status: *mut c_int,     /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    nstart: c_int,
+    nmax: c_int,
+    value: *mut f64,
+    nfound: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3431,17 +3931,26 @@ pub unsafe extern "C" fn ffgknd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read (get) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NMAX -1) inclusive.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) root name of keywords to read
+/// * `nstart`  — (I) starting index number
+/// * `nmax`    — (I) maximum number of keywords to return
+/// * `value`   — (O) array of keyword values
+/// * `nfound`  — (O) number of values that were returned
+/// * `status`  — (IO) error status
 pub fn ffgknd_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    keyname: &[c_char],  /* I - root name of keywords to read        */
-    nstart: c_int,       /* I - starting index number                */
-    nmax: c_int,         /* I - maximum number of keywords to return */
-    value: &mut [f64],   /* O - array of keyword values              */
-    nfound: &mut c_int,  /* O - number of values that were returned  */
-    status: &mut c_int,  /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    nstart: c_int,
+    nmax: c_int,
+    value: &mut [f64],
+    nfound: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys = 0;
     let mut mkeys = 0;
@@ -3533,16 +4042,24 @@ pub fn ffgknd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read and parse the TDIMnnn keyword to get the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtdm(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - number of the column to read             */
-    maxdim: c_int,       /* I - maximum no. of dimensions to read;       */
-    naxis: *mut c_int,   /* O - number of axes in the data array         */
-    naxes: *mut c_long,  /* O - length of each data axis                 */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: *mut c_int,
+    naxes: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3556,15 +4073,23 @@ pub unsafe extern "C" fn ffgtdm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// read and parse the TDIMnnn keyword to get the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffgtdm_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                        */
-    colnum: c_int,        /* I - number of the column to read             */
-    maxdim: c_int,        /* I - maximum no. of dimensions to read;       */
-    naxis: &mut c_int,    /* O - number of axes in the data array         */
-    naxes: &mut [c_long], /* O - length of each data axis                 */
-    status: &mut c_int,   /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: &mut c_int,
+    naxes: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus = 0;
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -3583,16 +4108,24 @@ pub fn ffgtdm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read and parse the TDIMnnn keyword to get the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtdmll(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    colnum: c_int,        /* I - number of the column to read             */
-    maxdim: c_int,        /* I - maximum no. of dimensions to read;       */
-    naxis: *mut c_int,    /* O - number of axes in the data array         */
-    naxes: *mut LONGLONG, /* O - length of each data axis                 */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: *mut c_int,
+    naxes: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3606,15 +4139,23 @@ pub unsafe extern "C" fn ffgtdmll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the dimensionality of a column by reading the TDIMnnn keyword.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffgtdmll_safer(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
-    colnum: c_int,          /* I - number of the column to read             */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    naxis: &mut c_int,      /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG], /* O - length of each data axis               */
-    status: &mut c_int,     /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: &mut c_int,
+    naxes: &mut [LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus = 0;
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -3633,19 +4174,28 @@ pub fn ffgtdmll_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Decode the TDIMnnn keyword to get the dimensionality of a column.
 /// Check that the value is legal and consistent with the TFORM value.
 /// If colnum = 0, then the validity checking is disabled.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tdimstr` — (I) TDIMn keyword value string. e.g. (10,10)
+/// * `colnum`  — (I) number of the column
+/// * `maxdim`  — (I) maximum no. of dimensions to read;
+/// * `naxis`   — (O) number of axes in the data array
+/// * `naxes`   — (O) length of each data axis
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdtdm(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                        */
-    tdimstr: *const c_char, /* I - TDIMn keyword value string. e.g. (10,10) */
-    colnum: c_int,          /* I - number of the column             */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    naxis: *mut c_int,      /* O - number of axes in the data array         */
-    naxes: *mut c_long,     /* O - length of each data axis                 */
-    status: *mut c_int,     /* IO - error status                            */
+    fptr: *mut fitsfile,
+    tdimstr: *const c_char,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: *mut c_int,
+    naxes: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3661,18 +4211,27 @@ pub unsafe extern "C" fn ffdtdm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Decode the TDIMnnn keyword to get the dimensionality of a column.
 /// Check that the value is legal and consistent with the TFORM value.
 /// If colnum = 0, then the validity checking is disabled.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tdimstr` — (I) TDIMn keyword value string. e.g. (10,10)
+/// * `colnum`  — (I) number of the column
+/// * `maxdim`  — (I) maximum no. of dimensions to read;
+/// * `naxis`   — (O) number of axes in the data array
+/// * `naxes`   — (O) length of each data axis
+/// * `status`  — (IO) error status
 pub fn ffdtdm_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                        */
-    tdimstr: &[c_char],   /* I - TDIMn keyword value string. e.g. (10,10) */
-    colnum: c_int,        /* I - number of the column             */
-    maxdim: c_int,        /* I - maximum no. of dimensions to read;       */
-    naxis: &mut c_int,    /* O - number of axes in the data array         */
-    naxes: &mut [c_long], /* O - length of each data axis                 */
-    status: &mut c_int,   /* IO - error status                            */
+    fptr: &mut fitsfile,
+    tdimstr: &[c_char],
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: &mut c_int,
+    naxes: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut lastloc = 0;
     let mut dimsize = 0;
@@ -3789,18 +4348,27 @@ pub fn ffdtdm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Decode the TDIMnnn keyword to get the dimensionality of a column.
 /// Check that the value is legal and consistent with the TFORM value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tdimstr` — (I) TDIMn keyword value string. e.g. (10,10)
+/// * `colnum`  — (I) number of the column
+/// * `maxdim`  — (I) maximum no. of dimensions to read;
+/// * `naxis`   — (O) number of axes in the data array
+/// * `naxes`   — (O) length of each data axis
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdtdmll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                        */
-    tdimstr: *const c_char, /* I - TDIMn keyword value string. e.g. (10,10) */
-    colnum: c_int,          /* I - number of the column             */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    naxis: *mut c_int,      /* O - number of axes in the data array         */
-    naxes: *mut LONGLONG,   /* O - length of each data axis                 */
-    status: *mut c_int,     /* IO - error status                            */
+    fptr: *mut fitsfile,
+    tdimstr: *const c_char,
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: *mut c_int,
+    naxes: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3816,17 +4384,26 @@ pub unsafe extern "C" fn ffdtdmll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Decode the TDIMnnn keyword to get the dimensionality of a column.
 /// Check that the value is legal and consistent with the TFORM value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tdimstr` — (I) TDIMn keyword value string. e.g. (10,10)
+/// * `colnum`  — (I) number of the column
+/// * `maxdim`  — (I) maximum no. of dimensions to read;
+/// * `naxis`   — (O) number of axes in the data array
+/// * `naxes`   — (O) length of each data axis
+/// * `status`  — (IO) error status
 pub fn ffdtdmll_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
-    tdimstr: &[c_char],     /* I - TDIMn keyword value string. e.g. (10,10) */
-    colnum: c_int,          /* I - number of the column             */
-    maxdim: c_int,          /* I - maximum no. of dimensions to read;       */
-    naxis: &mut c_int,      /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG], /* O - length of each data axis                 */
-    status: &mut c_int,     /* IO - error status                            */
+    fptr: &mut fitsfile,
+    tdimstr: &[c_char],
+    colnum: c_int,
+    maxdim: c_int,
+    naxis: &mut c_int,
+    naxes: &mut [LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut lastloc = 0;
     let mut dimsize = 0;
@@ -3932,23 +4509,35 @@ pub fn ffdtdmll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the Primary array:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `simple` — (O) does file conform to FITS standard? 1/0
+/// * `bitpix` — (O) number of bits per data value pixel
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `pcount` — (O) number of group parameters (usually 0)
+/// * `gcount` — (O) number of random groups (usually 1 or 0)
+/// * `extend` — (O) may FITS file haave extensions?
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghpr(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    maxdim: c_int,       /* I - maximum no. of dimensions to read;       */
-    simple: *mut c_int,  /* O - does file conform to FITS standard? 1/0  */
-    bitpix: *mut c_int,  /* O - number of bits per data value pixel      */
-    naxis: *mut c_int,   /* O - number of axes in the data array         */
-    naxes: *mut c_long,  /* O - length of each data axis                 */
-    pcount: *mut c_long, /* O - number of group parameters (usually 0)   */
-    gcount: *mut c_long, /* O - number of random groups (usually 1 or 0) */
-    extend: *mut c_int,  /* O - may FITS file haave extensions?          */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxdim: c_int,
+    simple: *mut c_int,
+    bitpix: *mut c_int,
+    naxis: *mut c_int,
+    naxes: *mut c_long,
+    pcount: *mut c_long,
+    gcount: *mut c_long,
+    extend: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3971,22 +4560,34 @@ pub unsafe extern "C" fn ffghpr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the Primary array:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `simple` — (O) does file conform to FITS standard? 1/0
+/// * `bitpix` — (O) number of bits per data value pixel
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `pcount` — (O) number of group parameters (usually 0)
+/// * `gcount` — (O) number of random groups (usually 1 or 0)
+/// * `extend` — (O) may FITS file haave extensions?
+/// * `status` — (IO) error status
 pub fn ffghpr_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
-    maxdim: c_int,                 /* I - maximum no. of dimensions to read;       */
-    simple: &mut c_int,            /* O - does file conform to FITS standard? 1/0  */
-    bitpix: &mut c_int,            /* O - number of bits per data value pixel      */
-    mut naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
-    naxes: Option<&mut [c_long]>,  /* O - length of each data axis                 */
-    pcount: &mut c_long,           /* O - number of group parameters (usually 0)   */
-    gcount: &mut c_long,           /* O - number of random groups (usually 1 or 0) */
-    extend: &mut c_int,            /* O - may FITS file haave extensions?          */
-    status: &mut c_int,            /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxdim: c_int,
+    simple: &mut c_int,
+    bitpix: &mut c_int,
+    mut naxis: Option<&mut c_int>,
+    naxes: Option<&mut [c_long]>,
+    pcount: &mut c_long,
+    gcount: &mut c_long,
+    extend: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut idummy: c_int = 0;
     let mut lldummy: LONGLONG = 0;
@@ -4028,23 +4629,35 @@ pub fn ffghpr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the PRimary array:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `simple` — (O) does file conform to FITS standard? 1/0
+/// * `bitpix` — (O) number of bits per data value pixel
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `pcount` — (O) number of group parameters (usually 0)
+/// * `gcount` — (O) number of random groups (usually 1 or 0)
+/// * `extend` — (O) may FITS file haave extensions?
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghprll(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    maxdim: c_int,        /* I - maximum no. of dimensions to read;       */
-    simple: *mut c_int,   /* O - does file conform to FITS standard? 1/0  */
-    bitpix: *mut c_int,   /* O - number of bits per data value pixel      */
-    naxis: *mut c_int,    /* O - number of axes in the data array         */
-    naxes: *mut LONGLONG, /* O - length of each data axis                 */
-    pcount: *mut c_long,  /* O - number of group parameters (usually 0)   */
-    gcount: *mut c_long,  /* O - number of random groups (usually 1 or 0) */
-    extend: *mut c_int,   /* O - may FITS file haave extensions?          */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxdim: c_int,
+    simple: *mut c_int,
+    bitpix: *mut c_int,
+    naxis: *mut c_int,
+    naxes: *mut LONGLONG,
+    pcount: *mut c_long,
+    gcount: *mut c_long,
+    extend: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4065,22 +4678,34 @@ pub unsafe extern "C" fn ffghprll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the PRimary array:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which determine the size and structure of the primary array
 /// or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `simple` — (O) does file conform to FITS standard? 1/0
+/// * `bitpix` — (O) number of bits per data value pixel
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `pcount` — (O) number of group parameters (usually 0)
+/// * `gcount` — (O) number of random groups (usually 1 or 0)
+/// * `extend` — (O) may FITS file haave extensions?
+/// * `status` — (IO) error status
 pub fn ffghprll_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                        */
-    maxdim: c_int,             /* I - maximum no. of dimensions to read;       */
-    simple: &mut c_int,        /* O - does file conform to FITS standard? 1/0  */
-    bitpix: &mut c_int,        /* O - number of bits per data value pixel      */
-    naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG],    /* O - length of each data axis                 */
-    pcount: &mut c_long,       /* O - number of group parameters (usually 0)   */
-    gcount: &mut c_long,       /* O - number of random groups (usually 1 or 0) */
-    extend: &mut c_int,        /* O - may FITS file haave extensions?          */
-    status: &mut c_int,        /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxdim: c_int,
+    simple: &mut c_int,
+    bitpix: &mut c_int,
+    naxis: Option<&mut c_int>,
+    naxes: &mut [LONGLONG],
+    pcount: &mut c_long,
+    gcount: &mut c_long,
+    extend: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut idummy: c_int = 0;
     let mut lldummy: LONGLONG = 0;
@@ -4107,7 +4732,6 @@ pub fn ffghprll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Number of entries of the `char *arr[]` output arrays of ffghtb/ffghbn that
 /// the safe implementation may touch.
 ///
@@ -4155,23 +4779,36 @@ unsafe fn ffgh_str_array<'a>(arr: *mut *mut c_char, nelem: usize) -> Option<Vec<
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis1`   — (O) length of table row in bytes
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tbcol`    — (O) byte offset in row to each column
+/// * `tform`    — (O) value of TFORMn keyword for each column
+/// * `tunit`    — (O) value of TUNITn keyword for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghtb(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis1: *mut c_long,     /* O - length of table row in bytes             */
-    naxis2: *mut c_long,     /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tbcol: *mut c_long,      /* O - byte offset in row to each column        */
-    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
-    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    status: *mut c_int,      /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxfield: c_int,
+    naxis1: *mut c_long,
+    naxis2: *mut c_long,
+    tfields: *mut c_int,
+    ttype: *mut *mut c_char,
+    tbcol: *mut c_long,
+    tform: *mut *mut c_char,
+    tunit: *mut *mut c_char,
+    extnm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4202,7 +4839,6 @@ pub unsafe extern "C" fn ffghtb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
@@ -4210,18 +4846,32 @@ pub unsafe extern "C" fn ffghtb(
 /// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
 /// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
 /// when `maxfield` is negative), and so must `tbcol`.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis1`   — (O) length of table row in bytes
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tbcol`    — (O) byte offset in row to each column
+/// * `tform`    — (O) value of TFORMn keyword for each column
+/// * `tunit`    — (O) value of TUNITn keyword for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `status`   — (IO) error status
 pub fn ffghtb_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    maxfield: c_int,             /* I - maximum no. of columns to read;          */
-    naxis1: Option<&mut c_long>, /* O - length of table row in bytes             */
-    naxis2: Option<&mut c_long>, /* O - number of rows in the table              */
-    tfields: Option<&mut c_int>, /* O - number of columns in the table           */
-    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
-    tbcol: Option<&mut [c_long]>, /* O - byte offset in row to each column        */
-    tform: Option<&mut [&mut [c_char]]>, /* O - value of TFORMn keyword for each column  */
-    mut tunit: Option<&mut [&mut [c_char]]>, /* O - value of TUNITn keyword for each column */
-    extnm: Option<&mut [c_char]>, /* O - value of EXTNAME keyword, if any         */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxfield: c_int,
+    naxis1: Option<&mut c_long>,
+    naxis2: Option<&mut c_long>,
+    tfields: Option<&mut c_int>,
+    mut ttype: Option<&mut [&mut [c_char]]>,
+    tbcol: Option<&mut [c_long]>,
+    tform: Option<&mut [&mut [c_char]]>,
+    mut tunit: Option<&mut [&mut [c_char]]>,
+    extnm: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -4414,23 +5064,36 @@ pub fn ffghtb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis1`   — (O) length of table row in bytes
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tbcol`    — (O) byte offset in row to each column
+/// * `tform`    — (O) value of TFORMn keyword for each column
+/// * `tunit`    — (O) value of TUNITn keyword for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghtbll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis1: *mut LONGLONG,   /* O - length of table row in bytes             */
-    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tbcol: *mut LONGLONG,    /* O - byte offset in row to each column        */
-    tform: *mut *mut c_char, /* O - value of TFORMn keyword for each column  */
-    tunit: *mut *mut c_char, /* O - value of TUNITn keyword for each column  */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    status: *mut c_int,      /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxfield: c_int,
+    naxis1: *mut LONGLONG,
+    naxis2: *mut LONGLONG,
+    tfields: *mut c_int,
+    ttype: *mut *mut c_char,
+    tbcol: *mut LONGLONG,
+    tform: *mut *mut c_char,
+    tunit: *mut *mut c_char,
+    extnm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4461,7 +5124,6 @@ pub unsafe extern "C" fn ffghtbll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the ASCII TaBle:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
@@ -4469,18 +5131,32 @@ pub unsafe extern "C" fn ffghtbll(
 /// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
 /// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
 /// when `maxfield` is negative), and so must `tbcol`.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis1`   — (O) length of table row in bytes
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tbcol`    — (O) byte offset in row to each column
+/// * `tform`    — (O) value of TFORMn keyword for each column
+/// * `tunit`    — (O) value of TUNITn keyword for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `status`   — (IO) error status
 pub fn ffghtbll_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
-    maxfield: c_int,               /* I - maximum no. of columns to read;          */
-    naxis1: Option<&mut LONGLONG>, /* O - length of table row in bytes             */
-    naxis2: Option<&mut LONGLONG>, /* O - number of rows in the table              */
-    tfields: Option<&mut c_int>,   /* O - number of columns in the table           */
-    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
-    tbcol: Option<&mut [LONGLONG]>, /* O - byte offset in row to each column        */
-    tform: Option<&mut [&mut [c_char]]>, /* O - value of TFORMn keyword for each column  */
-    mut tunit: Option<&mut [&mut [c_char]]>, /* O - value of TUNITn keyword for each column */
-    extnm: Option<&mut [c_char]>,  /* O - value of EXTNAME keyword, if any         */
-    status: &mut c_int,            /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxfield: c_int,
+    naxis1: Option<&mut LONGLONG>,
+    naxis2: Option<&mut LONGLONG>,
+    tfields: Option<&mut c_int>,
+    mut ttype: Option<&mut [&mut [c_char]]>,
+    tbcol: Option<&mut [LONGLONG]>,
+    tform: Option<&mut [&mut [c_char]]>,
+    mut tunit: Option<&mut [&mut [c_char]]>,
+    extnm: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -4673,22 +5349,34 @@ pub fn ffghtbll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the BiNary table:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tform`    — (O) TFORMn value for each column
+/// * `tunit`    — (O) TUNITn value for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `pcount`   — (O) value of PCOUNT keyword
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghbn(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis2: *mut c_long,     /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
-    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    pcount: *mut c_long,     /* O - value of PCOUNT keyword                  */
-    status: *mut c_int,      /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxfield: c_int,
+    naxis2: *mut c_long,
+    tfields: *mut c_int,
+    ttype: *mut *mut c_char,
+    tform: *mut *mut c_char,
+    tunit: *mut *mut c_char,
+    extnm: *mut c_char,
+    pcount: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4717,7 +5405,6 @@ pub unsafe extern "C" fn ffghbn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the BiNary table:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
@@ -4725,17 +5412,30 @@ pub unsafe extern "C" fn ffghbn(
 /// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
 /// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
 /// when `maxfield` is negative).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tform`    — (O) TFORMn value for each column
+/// * `tunit`    — (O) TUNITn value for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `pcount`   — (O) value of PCOUNT keyword
+/// * `status`   — (IO) error status
 pub fn ffghbn_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    maxfield: c_int,             /* I - maximum no. of columns to read;          */
-    naxis2: Option<&mut c_long>, /* O - number of rows in the table              */
-    tfields: Option<&mut c_int>, /* O - number of columns in the table           */
-    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
-    tform: Option<&mut [&mut [c_char]]>, /* O - TFORMn value for each column             */
-    mut tunit: Option<&mut [&mut [c_char]]>, /* O - TUNITn value for each column          */
-    extnm: Option<&mut [c_char]>, /* O - value of EXTNAME keyword, if any         */
-    pcount: Option<&mut c_long>, /* O - value of PCOUNT keyword                  */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxfield: c_int,
+    naxis2: Option<&mut c_long>,
+    tfields: Option<&mut c_int>,
+    mut ttype: Option<&mut [&mut [c_char]]>,
+    tform: Option<&mut [&mut [c_char]]>,
+    mut tunit: Option<&mut [&mut [c_char]]>,
+    extnm: Option<&mut [c_char]>,
+    pcount: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -4902,22 +5602,34 @@ pub fn ffghbn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the BiNary table:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tform`    — (O) TFORMn value for each column
+/// * `tunit`    — (O) TUNITn value for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `pcount`   — (O) value of PCOUNT keyword
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghbnll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                        */
-    maxfield: c_int,         /* I - maximum no. of columns to read;          */
-    naxis2: *mut LONGLONG,   /* O - number of rows in the table              */
-    tfields: *mut c_int,     /* O - number of columns in the table           */
-    ttype: *mut *mut c_char, /* O - name of each column                      */
-    tform: *mut *mut c_char, /* O - TFORMn value for each column             */
-    tunit: *mut *mut c_char, /* O - TUNITn value for each column             */
-    extnm: *mut c_char,      /* O - value of EXTNAME keyword, if any         */
-    pcount: *mut LONGLONG,   /* O - value of PCOUNT keyword                  */
-    status: *mut c_int,      /* IO - error status                            */
+    fptr: *mut fitsfile,
+    maxfield: c_int,
+    naxis2: *mut LONGLONG,
+    tfields: *mut c_int,
+    ttype: *mut *mut c_char,
+    tform: *mut *mut c_char,
+    tunit: *mut *mut c_char,
+    extnm: *mut c_char,
+    pcount: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4946,7 +5658,6 @@ pub unsafe extern "C" fn ffghbnll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get keywords from the Header of the BiNary table:
 /// Check that the keywords conform to the FITS standard and return the
 /// parameters which describe the table.
@@ -4954,17 +5665,30 @@ pub unsafe extern "C" fn ffghbnll(
 /// `ttype`, `tform` and `tunit` are arrays of per-column string buffers; each
 /// must hold at least `min(maxfield, TFIELDS)` entries (all TFIELDS of them
 /// when `maxfield` is negative).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `maxfield` — (I) maximum no. of columns to read;
+/// * `naxis2`   — (O) number of rows in the table
+/// * `tfields`  — (O) number of columns in the table
+/// * `ttype`    — (O) name of each column
+/// * `tform`    — (O) TFORMn value for each column
+/// * `tunit`    — (O) TUNITn value for each column
+/// * `extnm`    — (O) value of EXTNAME keyword, if any
+/// * `pcount`   — (O) value of PCOUNT keyword
+/// * `status`   — (IO) error status
 pub fn ffghbnll_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
-    maxfield: c_int,               /* I - maximum no. of columns to read;          */
-    naxis2: Option<&mut LONGLONG>, /* O - number of rows in the table              */
-    tfields: Option<&mut c_int>,   /* O - number of columns in the table           */
-    mut ttype: Option<&mut [&mut [c_char]]>, /* O - name of each column                   */
-    tform: Option<&mut [&mut [c_char]]>, /* O - TFORMn value for each column             */
-    mut tunit: Option<&mut [&mut [c_char]]>, /* O - TUNITn value for each column          */
-    extnm: Option<&mut [c_char]>,  /* O - value of EXTNAME keyword, if any         */
-    pcount: Option<&mut LONGLONG>, /* O - value of PCOUNT keyword                  */
-    status: &mut c_int,            /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxfield: c_int,
+    naxis2: Option<&mut LONGLONG>,
+    tfields: Option<&mut c_int>,
+    mut ttype: Option<&mut [&mut [c_char]]>,
+    tform: Option<&mut [&mut [c_char]]>,
+    mut tunit: Option<&mut [&mut [c_char]]>,
+    extnm: Option<&mut [c_char]>,
+    pcount: Option<&mut LONGLONG>,
+    status: &mut c_int,
 ) -> c_int {
     let mut maxf: c_int = 0;
     let mut nfound: c_int = 0;
@@ -5132,25 +5856,41 @@ pub fn ffghbnll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the Primary HeaDer parameters.  Check that the keywords conform to
 /// the FITS standard and return the parameters which determine the size and
 /// structure of the primary array or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `maxdim` — (I) maximum no. of dimensions to read;
+/// * `simple` — (O) does file conform to FITS standard? 1/0
+/// * `bitpix` — (O) number of bits per data value pixel
+/// * `naxis`  — (O) number of axes in the data array
+/// * `naxes`  — (O) length of each data axis
+/// * `pcount` — (O) number of group parameters (usually 0)
+/// * `gcount` — (O) number of random groups (usually 1 or 0)
+/// * `extend` — (O) may FITS file have extensions?
+/// * `bscale` — (O) array pixel linear scaling factor
+/// * `bzero`  — (O) array pixel linear scaling zero point
+/// * `blank`  — (O) value used to represent undefined pixels
+/// * `nspace` — (O) number of blank keywords prior to END
+/// * `status` — (IO) error status
 pub(crate) fn ffgphd(
-    fptr: &mut fitsfile,       /* I - FITS file pointer                        */
-    maxdim: c_int,             /* I - maximum no. of dimensions to read;       */
-    simple: &mut c_int,        /* O - does file conform to FITS standard? 1/0  */
-    bitpix: &mut c_int,        /* O - number of bits per data value pixel      */
-    naxis: Option<&mut c_int>, /* O - number of axes in the data array         */
-    naxes: &mut [LONGLONG],    /* O - length of each data axis                 */
-    pcount: &mut c_long,       /* O - number of group parameters (usually 0)   */
-    gcount: &mut c_long,       /* O - number of random groups (usually 1 or 0) */
-    extend: &mut c_int,        /* O - may FITS file have extensions?          */
-    bscale: &mut f64,          /* O - array pixel linear scaling factor        */
-    bzero: &mut f64,           /* O - array pixel linear scaling zero point    */
-    blank: &mut LONGLONG,      /* O - value used to represent undefined pixels */
-    nspace: &mut c_int,        /* O - number of blank keywords prior to END    */
-    status: &mut c_int,        /* IO - error status                            */
+    fptr: &mut fitsfile,
+    maxdim: c_int,
+    simple: &mut c_int,
+    bitpix: &mut c_int,
+    naxis: Option<&mut c_int>,
+    naxes: &mut [LONGLONG],
+    pcount: &mut c_long,
+    gcount: &mut c_long,
+    extend: &mut c_int,
+    bscale: &mut f64,
+    bzero: &mut f64,
+    blank: &mut LONGLONG,
+    nspace: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii = 0;
     let mut nextkey = 0;
@@ -5179,9 +5919,7 @@ pub(crate) fn ffgphd(
 
     let mut unknown = 0;
 
-    /*--------------------------------------------------------------------*/
     /*  Get 1st keyword of HDU and test whether it is SIMPLE or XTENSION  */
-    /*--------------------------------------------------------------------*/
 
     ffgkyn_safe(fptr, 1, &mut name, &mut value, Some(&mut comm), status);
 
@@ -5282,9 +6020,7 @@ pub(crate) fn ffgphd(
         //}
         nextkey = 9; /* skip required table keywords in the following search */
     } else {
-        /*----------------------------------------------------------------*/
         /*  Get 2nd keyword;  test whether it is BITPIX with legal value  */
-        /*----------------------------------------------------------------*/
 
         /* BITPIX = 2nd keyword */
         ffgkyn_safe(fptr, 2, &mut name, &mut value, Some(&mut comm), status);
@@ -5333,9 +6069,7 @@ pub(crate) fn ffgphd(
         *bitpix = longbitpix as c_int; /* do explicit type conversion */
         //}
 
-        /*---------------------------------------------------------------*/
         /*  Get 3rd keyword;  test whether it is NAXIS with legal value  */
-        /*---------------------------------------------------------------*/
         ffgtkn(fptr, 3, cs!(c"NAXIS"), &mut longnaxis, status);
         if *status == BAD_ORDER {
             *status = NO_NAXIS;
@@ -5355,9 +6089,7 @@ pub(crate) fn ffgphd(
             *naxis = longnaxis as c_int; /* do explicit type conversion */
         }
 
-        /*---------------------------------------------------------*/
         /*  Get the next NAXISn keywords and test for legal values */
-        /*---------------------------------------------------------*/
 
         ii = 0;
         nextkey = 4;
@@ -5382,10 +6114,8 @@ pub(crate) fn ffgphd(
         }
     }
 
-    /*---------------------------------------------------------*/
     /*  now look for other keywords of interest:               */
     /*  BSCALE, BZERO, BLANK, PCOUNT, GCOUNT, EXTEND, and END  */
-    /*---------------------------------------------------------*/
 
     /*  initialize default values in case keyword is not present */
 
@@ -5596,18 +6326,26 @@ pub(crate) fn ffgphd(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get and Test TaBle;
 /// Test that this is a legal ASCII or binary table and get some keyword values.
 /// We assume that the calling routine has already tested the 1st keyword
 /// of the extension to ensure that this is really a table extension.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `rowlen`  — (O) length of a table row, in bytes
+/// * `nrows`   — (O) number of rows in the table
+/// * `pcount`  — (O) value of PCOUNT keyword
+/// * `tfields` — (O) number of fields in the table
+/// * `status`  — (IO) error status
 pub(crate) fn ffgttb(
-    fptr: &mut fitsfile,   /* I - FITS file pointer*/
-    rowlen: &mut LONGLONG, /* O - length of a table row, in bytes */
-    nrows: &mut LONGLONG,  /* O - number of rows in the table */
-    pcount: &mut LONGLONG, /* O - value of PCOUNT keyword */
-    tfields: &mut c_long,  /* O - number of fields in the table */
-    status: &mut c_int,    /* IO - error status    */
+    fptr: &mut fitsfile,
+    rowlen: &mut LONGLONG,
+    nrows: &mut LONGLONG,
+    pcount: &mut LONGLONG,
+    tfields: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -5682,17 +6420,24 @@ pub(crate) fn ffgttb(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that keyword number NUMKEY has the expected name and get the
 /// integer value of the keyword.  Return an error if the keyword
 /// name does not match the input name, or if the value of the
 /// keyword is not a positive integer.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `numkey` — (I) number of the keyword to read
+/// * `name`   — (I) expected name of the keyword
+/// * `value`  — (O) integer value of the keyword
+/// * `status` — (IO) error status
 pub(crate) fn ffgtkn(
-    fptr: &mut fitsfile, /* I - FITS file pointer              */
-    numkey: c_int,       /* I - number of the keyword to read  */
-    name: &[c_char],     /* I - expected name of the keyword   */
-    value: &mut c_long,  /* O - integer value of the keyword   */
-    status: &mut c_int,  /* IO - error status                  */
+    fptr: &mut fitsfile,
+    numkey: c_int,
+    name: &[c_char],
+    value: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD]; /* incorrect keyword name */
     let mut valuestring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE]; /* convert to integer */
@@ -5753,17 +6498,24 @@ pub(crate) fn ffgtkn(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that keyword number NUMKEY has the expected name and get the
 /// integer value of the keyword.  Return an error if the keyword
 /// name does not match the input name, or if the value of the
 /// keyword is not a positive integer.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `numkey` — (I) number of the keyword to read
+/// * `name`   — (I) expected name of the keyword
+/// * `value`  — (O) integer value of the keyword
+/// * `status` — (IO) error status
 pub(crate) fn ffgtknjj(
-    fptr: &mut fitsfile,  /* I - FITS file pointer              */
-    numkey: c_int,        /* I - number of the keyword to read  */
-    name: &[c_char],      /* I - expected name of the keyword   */
-    value: &mut LONGLONG, /* O - integer value of the keyword   */
-    status: &mut c_int,   /* IO - error status                  */
+    fptr: &mut fitsfile,
+    numkey: c_int,
+    name: &[c_char],
+    value: &mut LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut valuestring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -5826,15 +6578,22 @@ pub(crate) fn ffgtknjj(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that keyword number NUMKEY has the expected name and the
 /// expected value string.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `numkey` — (I) number of the keyword to read
+/// * `name`   — (I) expected name of the keyword
+/// * `value`  — (I) expected value of the keyword
+/// * `status` — (IO) error status
 pub(crate) fn fftkyn(
-    fptr: &mut fitsfile, /* I - FITS file pointer              */
-    numkey: c_int,       /* I - number of the keyword to read  */
-    name: &[c_char],     /* I - expected name of the keyword   */
-    value: &[c_char],    /* I - expected value of the keyword  */
-    status: &mut c_int,  /* IO - error status                  */
+    fptr: &mut fitsfile,
+    numkey: c_int,
+    name: &[c_char],
+    value: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut valuestring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -5895,15 +6654,20 @@ pub(crate) fn fftkyn(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read header keywords into a long string of chars.  This routine allocates
 /// memory for the string, so the calling routine must eventually free the
 /// memory when it is not needed any more.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `header` — (O) returned header string
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffh2st(
-    fptr: *mut fitsfile,      /* I - FITS file pointer           */
-    header: *mut *mut c_char, /* O - returned header string      */
-    status: *mut c_int,       /* IO - error status               */
+    fptr: *mut fitsfile,
+    header: *mut *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5915,15 +6679,16 @@ pub unsafe extern "C" fn ffh2st(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read header keywords into a long string of chars.  This routine allocates
 /// memory for the string, so the calling routine must eventually free the
 /// memory when it is not needed any more.
-pub fn ffh2st_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer           */
-    header: &mut *mut c_char, /* O - returned header string      */
-    status: &mut c_int,       /* IO - error status               */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `header` — (O) returned header string
+/// * `status` — (IO) error status
+pub fn ffh2st_safe(fptr: &mut fitsfile, header: &mut *mut c_char, status: &mut c_int) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nrec: c_long = 0;
     let mut headstart: LONGLONG = 0;
@@ -5974,22 +6739,31 @@ pub fn ffh2st_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read header keywords into a long string of chars.  This routine allocates
 /// memory for the string, so the calling routine must eventually free the
 /// memory when it is not needed any more.  If exclude_comm is TRUE, then all
-/// the COMMENT, HISTORY, and <blank> keywords will be excluded from the output
+/// the COMMENT, HISTORY, and `<blank>` keywords will be excluded from the output
 /// string of keywords.  Any other list of keywords to be excluded may be
 /// specified with the exclist parameter.
+///
+/// # Parameters
+///
+/// * `fptr`         — (I) FITS file pointer
+/// * `exclude_comm` — (I) if TRUE, exclude commentary keywords
+/// * `exclist`      — (I) list of excluded keyword names
+/// * `nexc`         — (I) number of names in exclist
+/// * `header`       — (O) returned header string
+/// * `nkeys`        — (O) returned number of 80-char keywords
+/// * `status`       — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffhdr2str(
-    fptr: *mut fitsfile,           /* I - FITS file pointer                    */
-    exclude_comm: c_int,           /* I - if TRUE, exclude commentary keywords */
-    exclist: *const *const c_char, /* I - list of excluded keyword names       */
-    nexc: c_int,                   /* I - number of names in exclist           */
-    header: *mut *mut c_char,      /* O - returned header string               */
-    nkeys: *mut c_int,             /* O - returned number of 80-char keywords  */
-    status: *mut c_int,            /* IO - error status                        */
+    fptr: *mut fitsfile,
+    exclude_comm: c_int,
+    exclist: *const *const c_char,
+    nexc: c_int,
+    header: *mut *mut c_char,
+    nkeys: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -6010,21 +6784,30 @@ pub unsafe extern "C" fn ffhdr2str(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read header keywords into a long string of chars.  This routine allocates
 /// memory for the string, so the calling routine must eventually free the
 /// memory when it is not needed any more.  If exclude_comm is TRUE, then all
-/// the COMMENT, HISTORY, and <blank> keywords will be excluded from the output
+/// the COMMENT, HISTORY, and `<blank>` keywords will be excluded from the output
 /// string of keywords.  Any other list of keywords to be excluded may be
 /// specified with the exclist parameter.
+///
+/// # Parameters
+///
+/// * `fptr`         — (I) FITS file pointer
+/// * `exclude_comm` — (I) if TRUE, exclude commentary keywords
+/// * `exclist`      — (I) list of excluded keyword names
+/// * `nexc`         — (I) number of names in exclist
+/// * `header`       — (O) returned header string
+/// * `nkeys`        — (O) returned number of 80-char keywords
+/// * `status`       — (IO) error status
 pub fn ffhdr2str_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer                    */
-    exclude_comm: c_int,      /* I - if TRUE, exclude commentary keywords */
-    exclist: &[&[c_char]],    /* I - list of excluded keyword names       */
-    nexc: c_int,              /* I - number of names in exclist           */
-    header: &mut *mut c_char, /* O - returned header string               */
-    nkeys: &mut c_int,        /* O - returned number of 80-char keywords  */
-    status: &mut c_int,       /* IO - error status                        */
+    fptr: &mut fitsfile,
+    exclude_comm: c_int,
+    exclist: &[&[c_char]],
+    nexc: c_int,
+    header: &mut *mut c_char,
+    nkeys: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut casesn: c_int = 0;
     let mut matched: c_int = 0;
@@ -6131,20 +6914,29 @@ pub fn ffhdr2str_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Same as ffhdr2str, except that if the input HDU is a tile compressed image
 /// (stored in a binary table) then it will first convert that header back
 /// to that of a normal uncompressed FITS image before concatenating the header
 /// keyword records.
+///
+/// # Parameters
+///
+/// * `fptr`         — (I) FITS file pointer
+/// * `exclude_comm` — (I) if TRUE, exclude commentary keywords
+/// * `exclist`      — (I) list of excluded keyword names
+/// * `nexc`         — (I) number of names in exclist
+/// * `header`       — (O) returned header string
+/// * `nkeys`        — (O) returned number of 80-char keywords
+/// * `status`       — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcnvthdr2str(
-    fptr: *mut fitsfile,           /* I - FITS file pointer                    */
-    exclude_comm: c_int,           /* I - if TRUE, exclude commentary keywords */
-    exclist: *const *const c_char, /* I - list of excluded keyword names       */
-    nexc: c_int,                   /* I - number of names in exclist           */
-    header: *mut *mut c_char,      /* O - returned header string               */
-    nkeys: *mut c_int,             /* O - returned number of 80-char keywords  */
-    status: *mut c_int,            /* IO - error status                        */
+    fptr: *mut fitsfile,
+    exclude_comm: c_int,
+    exclist: *const *const c_char,
+    nexc: c_int,
+    header: *mut *mut c_char,
+    nkeys: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -6165,19 +6957,28 @@ pub unsafe extern "C" fn ffcnvthdr2str(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Same as ffhdr2str, except that if the input HDU is a tile compressed image
 /// (stored in a binary table) then it will first convert that header back
 /// to that of a normal uncompressed FITS image before concatenating the header
 /// keyword records. (safe version)
+///
+/// # Parameters
+///
+/// * `fptr`         — (I) FITS file pointer
+/// * `exclude_comm` — (I) if TRUE, exclude commentary keywords
+/// * `exclist`      — (I) list of excluded keyword names
+/// * `nexc`         — (I) number of names in exclist
+/// * `header`       — (O) returned header string
+/// * `nkeys`        — (O) returned number of 80-char keywords
+/// * `status`       — (IO) error status
 pub fn ffcnvthdr2str_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer                    */
-    exclude_comm: c_int,      /* I - if TRUE, exclude commentary keywords */
-    exclist: &[&[c_char]],    /* I - list of excluded keyword names       */
-    nexc: c_int,              /* I - number of names in exclist           */
-    header: &mut *mut c_char, /* O - returned header string               */
-    nkeys: &mut c_int,        /* O - returned number of 80-char keywords  */
-    status: &mut c_int,       /* IO - error status                        */
+    fptr: &mut fitsfile,
+    exclude_comm: c_int,
+    exclist: &[&[c_char]],
+    nexc: c_int,
+    header: &mut *mut c_char,
+    nkeys: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
