@@ -434,4 +434,37 @@ mod tests {
             panic!("{diffs} corpus line(s) diverge from the golden file:\n{msg}");
         }
     }
+
+    /// A failed dereference must still release the result node's row buffers.
+    ///
+    /// `Allocate_Ptrs` gives a Bits or String node two allocations -- the
+    /// row-pointer array, and the single block every row points into at
+    /// `data[0]`.  `Do_Deref`'s error paths used to release only the array,
+    /// which also left the value Empty so that `ffcprs` skipped the node and
+    /// the block leaked.  `BITS[9]` is the smallest case: an out-of-range
+    /// index into the 8X column, which the golden file records as EVALERR 431.
+    ///
+    /// The leak is only observable under miri; this runs in seconds, where
+    /// reaching the same expression through the corpus above takes hours.
+    #[test]
+    fn failed_deref_releases_the_row_buffer() {
+        let mut f = create_corpus_table();
+        let mut st = 0;
+        let mut anynul = 0;
+        let mut results = vec![0.0f64; NROWS as usize];
+        fits_calc_rows(
+            &mut f,
+            TDOUBLE,
+            &cc("BITS[9]"),
+            1,
+            NROWS,
+            core::ptr::null(),
+            as_bytes_mut(&mut results),
+            &mut anynul,
+            &mut st,
+        );
+        assert_eq!(st, 431, "expected the recorded out-of-range error");
+        fits_clear_errmsg();
+        fits_close_file(f, &mut st);
+    }
 }
