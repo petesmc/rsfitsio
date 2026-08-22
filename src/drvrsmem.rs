@@ -1,4 +1,14 @@
 #![allow(static_mut_refs)]
+//! The driver for System V shared memory segments, behind the `shmem://`
+//! prefix.
+//!
+//! A FITS file living in a shared memory segment can be read and written by
+//! several processes at once, so this driver carries the locking the others do
+//! not: each segment has a semaphore, and readers and writers take it for
+//! shared or exclusive access.
+//!
+//! Ported from CFITSIO's `drvrsmem.c`.
+#![warn(missing_docs)]
 
 /* configuration parameters */
 
@@ -87,56 +97,90 @@ shared and regular) to allow automatic recognition of segments type */
 
 #[repr(C, align(8))]
 #[derive(Debug, Copy, Clone)]
+/// The header written at the start of every segment, shared or regular, so
+/// that a segment's type can be recognized from its contents.
 struct BLKHEAD {
-    ID: [c_char; 2], /* ID = 'JB', just as a checkpoint */
-    tflag: c_char,   /* is it shared memory or regular one ? */
-    handle: c_int,   /* this is not necessary, used only for non-resizeable objects via ptr */
+    /// `'JB'`, just as a checkpoint.
+    ID: [c_char; 2],
+    /// Whether this is shared memory or a regular allocation.
+    tflag: c_char,
+    /// Not strictly necessary; used only for non-resizeable objects reached
+    /// through a pointer.
+    handle: c_int,
 }
 
-type SHARED_P = *const c_void; /* generic type of shared memory pointer */
+/// Generic shared memory pointer.
+type SHARED_P = *const c_void;
 
 #[repr(C)]
-struct SHARED_GTAB /* data type used in global table */ {
-    sem: c_int,        /* access semaphore (1 field): process count */
-    semkey: c_int,     /* key value used to generate semaphore handle */
-    key: c_int,        /* key value used to generate shared memory handle (realloc changes it) */
-    handle: c_int,     /* handle of shared memory segment */
-    size: c_int,       /* size of shared memory segment */
-    nprocdebug: c_int, /* attached proc counter, helps remove zombie segments */
-    attr: c_char,      /* attributes of shared memory object */
+/// One entry of the global table, which lives in shared memory and is seen by
+/// every process using the driver.
+struct SHARED_GTAB {
+    /// Access semaphore, one field: the process count.
+    sem: c_int,
+    /// Key value used to generate the semaphore handle.
+    semkey: c_int,
+    /// Key value used to generate the shared memory handle; `realloc` changes
+    /// it.
+    key: c_int,
+    /// Handle of the shared memory segment.
+    handle: c_int,
+    /// Size of the shared memory segment.
+    size: c_int,
+    /// Attached-process counter, which helps remove zombie segments.
+    nprocdebug: c_int,
+    /// Attributes of the shared memory object.
+    attr: c_char,
 }
 
 #[derive(Default, Clone)]
 #[repr(C)]
-struct SHARED_LTAB /* data type used in local table */ {
-    p: Option<*const BLKHEAD>, /* pointer to segment (may be null) */
-    tcnt: c_int,               /* number of threads in this process attached to segment */
-    lkcnt: c_int,              /* >=0 <- number of read locks, -1 - write lock */
-    seekpos: c_long,           /* current pointer position, read/write/seek operations change it */
+/// One entry of the local table, which is private to this process and tracks
+/// how it is using a segment.
+struct SHARED_LTAB {
+    /// Pointer to the segment, or `None` if it is not attached.
+    p: Option<*const BLKHEAD>,
+    /// Number of threads in this process attached to the segment.
+    tcnt: c_int,
+    /// Lock state: `>= 0` is that many read locks, `-1` is a write lock.
+    lkcnt: c_int,
+    /// Current pointer position; read, write and seek all change it.
+    seekpos: c_long,
 }
 
 unsafe impl Send for SHARED_LTAB {}
 
 /* system dependent definitions */
 
+/// The `fcntl` record lock structure.
 type flock_t = flock;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
+/// The argument to `semctl`, which the System V API passes as a union.
 union semun {
+    /// Value, for `SETVAL`.
     val: c_int,
+    /// Buffer, for `IPC_STAT` and `IPC_SET`.
     buf: *mut semid_ds,
+    /// Array, for `GETALL` and `SETALL`.
     array: *mut c_ushort,
 }
 
+/// Alias matching the C's `typedef` spelling.
 type DAL_SHM_SEGHEAD = DAL_SHM_SEGHEAD_STRUCT;
 
 #[repr(C)]
+/// The header of a DAL shared memory segment.
 struct DAL_SHM_SEGHEAD_STRUCT {
-    ID: c_int,      /* ID for debugging */
-    h: c_int,       /* handle of sh. mem */
-    size: c_int,    /* size of data area */
-    nodeidx: c_int, /* offset of root object (node struct typically) */
+    /// Identifier, for debugging.
+    ID: c_int,
+    /// Handle of the shared memory segment.
+    h: c_int,
+    /// Size of the data area.
+    size: c_int,
+    /// Offset of the root object, typically a node struct.
+    nodeidx: c_int,
 }
 
 /*              S H A R E D   M E M O R Y   D R I V E R
@@ -995,6 +1039,11 @@ pub unsafe extern "C" fn shared_malloc(size: c_long, mode: c_int, newhandle: c_i
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
+/// Attach the calling process to the shared memory segment at `idx`.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has open.
 pub unsafe extern "C" fn shared_attach(idx: usize) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1165,8 +1214,16 @@ unsafe fn shared_validate(idx: usize, mode: c_int) -> c_int /* use intrnally ins
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P /* realloc shared memory segment */
-{
+/// Reallocate the shared memory segment at `idx` to `newsize` bytes.
+///
+/// # Returns
+///
+/// The new address of the segment, which may differ from the old one.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has locked for writing.
+pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P {
     // FFI WRAPPER
     unsafe {
         let mut h: c_int = 0;
@@ -1270,8 +1327,13 @@ pub unsafe extern "C" fn shared_realloc(idx: usize, newsize: c_int) -> SHARED_P 
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if last process & !PERSIST, destroy segment */
-{
+/// Detach from the segment at `idx`; if this is the last process using it and
+/// it is not `SHARED_PERSIST`, destroy the segment.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has open.
+pub unsafe extern "C" fn shared_free(idx: usize) -> c_int {
     // FFI WRAPPER
     unsafe {
         let mut cnt: c_int = 0;
@@ -1329,8 +1391,23 @@ pub unsafe extern "C" fn shared_free(idx: usize) -> c_int /* detach segment, if 
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* lock given segment for exclusive access */
-{
+/// Lock the segment at `idx` for access, blocking or failing according to
+/// `mode`.
+///
+/// # Parameters
+///
+/// * `idx`  — (I) index of the segment to lock
+/// * `mode` — (I) `SHARED_RDONLY` or `SHARED_RDWRITE`, optionally with
+///   `SHARED_NOWAIT`
+///
+/// # Returns
+///
+/// The address of the locked segment.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has open.
+pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P {
     // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
@@ -1384,8 +1461,13 @@ pub unsafe extern "C" fn shared_lock(idx: usize, mode: c_int) -> SHARED_P /* loc
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segment, assumes seg is locked !! */
-{
+/// Unlock the segment at `idx`.
+///
+/// # Safety
+///
+/// The segment must currently be locked by this process; the routine does not
+/// check.
+pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int {
     // FFI WRAPPER
     unsafe {
         let mut r: c_int = 0;
@@ -1426,8 +1508,12 @@ pub unsafe extern "C" fn shared_unlock(idx: usize) -> c_int /* unlock given segm
 /* API routines - support and info routines */
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes of the shared memory segment */
-{
+/// Get the attributes of the shared memory segment at `idx`.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has open.
+pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int {
     // FFI WRAPPER
     unsafe {
         if shared_check_locked_index(idx) != 0 {
@@ -1441,8 +1527,12 @@ pub unsafe extern "C" fn shared_attr(idx: usize) -> c_int /* get the attributes 
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /* get the attributes of the shared memory segment */
-{
+/// Set the attributes of the shared memory segment at `idx`.
+///
+/// # Safety
+///
+/// `idx` must index a segment this process has open.
+pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         if shared_check_locked_index(idx) != 0 {
@@ -1467,7 +1557,12 @@ pub unsafe extern "C" fn shared_set_attr(idx: usize, newattr: c_int) -> c_int /*
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset debug mode */ {
+/// Set or reset the driver's debug mode.
+///
+/// # Safety
+///
+/// Writes a process-wide static; not safe to call concurrently.
+pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let r: c_int = SHARED_DEBUG as c_int;
@@ -1478,7 +1573,12 @@ pub unsafe extern "C" fn shared_set_debug(mode: c_int) -> c_int /* set/reset deb
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/reset debug mode */ {
+/// Set the permissions new segments are created with.
+///
+/// # Safety
+///
+/// Writes a process-wide static; not safe to call concurrently.
+pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let r: c_int = SHARED_CREATE_MODE;
@@ -1489,6 +1589,12 @@ pub unsafe extern "C" fn shared_set_createmode(mode: c_int) -> c_int /* set/rese
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
+/// Print a listing of the shared memory segments, or of the one with the given
+/// `id`.
+///
+/// # Safety
+///
+/// Reads the driver's process-wide tables.
 pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1565,6 +1671,16 @@ pub unsafe extern "C" fn shared_list(id: c_int) -> c_int {
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
+/// Get the address at which the segment with the given `id` is mapped.
+///
+/// # Parameters
+///
+/// * `id`      — (I) identifier of the segment
+/// * `address` — (O) where the segment is mapped
+///
+/// # Safety
+///
+/// Reads the driver's process-wide tables.
 pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1603,6 +1719,13 @@ pub unsafe extern "C" fn shared_getaddr(id: c_int, address: &mut *mut c_char) ->
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
+/// Destroy the segment with the given `id` regardless of how many processes
+/// are attached to it.
+///
+/// # Safety
+///
+/// Other processes may still be using the segment; their mappings become
+/// invalid.
 pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1658,8 +1781,6 @@ pub unsafe extern "C" fn shared_uncond_delete(id: c_int) -> c_int {
         r /* table full */
     }
 }
-
-/************************* CFITSIO DRIVER FUNCTIONS ***************************/
 
 pub(crate) fn smem_init() -> c_int {
     0
