@@ -1,9 +1,14 @@
-/*  This file, putcoll.rs, contains routines that write data elements to    */
-/*  a FITS image or table, with logical datatype.                          */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that write data elements to a FITS image or table, with logical
+//! datatype.
+//!
+//! The [`TLOGICAL`] arm of the typed column I/O family. [`crate::putcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::getcoll`].
+//!
+//! Ported from CFITSIO's `putcoll.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::slice;
 
@@ -20,17 +25,26 @@ use crate::fitsio2::*;
 use crate::putcolu::ffpclu_safe;
 use crate::{buffers::*, int_snprintf};
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of logical values to a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcll(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    colnum: c_int,        /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,   /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,  /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,      /* I - number of values to write               */
-    array: *const c_char, /* I - array of values to write                */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -51,16 +65,25 @@ pub unsafe extern "C" fn ffpcll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of logical values to a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `status`    — (IO) error status
 pub fn ffpcll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_char],    /* I - array of values to write                */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int = 0;
     let mut maxelem: c_int = 0;
@@ -89,9 +112,7 @@ pub fn ffpcll_safe(
         return *status;
     }
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if ffgcprll(
         fptr,
         colnum,
@@ -124,9 +145,7 @@ pub fn ffpcll_safe(
         return *status;
     }
 
-    /*---------------------------------------------------------------------*/
     /*  Now write the logical values one at a time to the FITS column.     */
-    /*---------------------------------------------------------------------*/
     remain = nelem; /* remaining number of values to write  */
     next = 0; /* next element in array to be written  */
     rownum = 0; /* row number, relative to firstrow     */
@@ -155,9 +174,7 @@ pub fn ffpcll_safe(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= 1;
         if remain != 0 {
             next += 1;
@@ -174,20 +191,30 @@ pub fn ffpcll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of elements to the specified column of a table.  Any input
 /// pixels flagged as null will be replaced by the appropriate
 /// null value in the output FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) array flagging undefined pixels if true
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcnl(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    colnum: c_int,        /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,   /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,  /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,      /* I - number of values to write               */
-    array: *const c_char, /* I - array of values to write                */
-    nulvalue: c_char,     /* I - array flagging undefined pixels if true */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_char,
+    nulvalue: c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -209,19 +236,29 @@ pub unsafe extern "C" fn ffpcnl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of elements to the specified column of a table.  Any input
 /// pixels flagged as null will be replaced by the appropriate
 /// null value in the output FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) array flagging undefined pixels if true
+/// * `status`    — (IO) error status
 pub fn ffpcnl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_char],    /* I - array of values to write                */
-    nulvalue: c_char,    /* I - array flagging undefined pixels if true */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_char],
+    nulvalue: c_char,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: LONGLONG = 0;
     let mut nbad: LONGLONG = 0;
@@ -339,20 +376,29 @@ pub fn ffpcnl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// write an array of logical values to a specified bit or byte
 /// column of the binary table.   If larray is TRUE, then the corresponding
 /// bit is set to 1, otherwise it is set to 0.
 /// The binary table column being written to must have datatype 'B' or 'X'.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column to write (1 = 1st col)
+/// * `frow`   — (I) first row to write (1 = 1st row)
+/// * `fbit`   — (I) first bit to write (1 = 1st)
+/// * `nbit`   — (I) number of bits to write
+/// * `larray` — (I) array of logicals corresponding to bits
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpclx(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to write (1 = 1st col) */
-    frow: LONGLONG,        /* I - first row to write (1 = 1st row)        */
-    fbit: c_long,          /* I - first bit to write (1 = 1st)            */
-    nbit: c_long,          /* I - number of bits to write                 */
-    larray: *const c_char, /* I - array of logicals corresponding to bits */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    frow: LONGLONG,
+    fbit: c_long,
+    nbit: c_long,
+    larray: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -365,19 +411,28 @@ pub unsafe extern "C" fn ffpclx(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// write an array of logical values to a specified bit or byte
 /// column of the binary table.   If larray is TRUE, then the corresponding
 /// bit is set to 1, otherwise it is set to 0.
 /// The binary table column being written to must have datatype 'B' or 'X'.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column to write (1 = 1st col)
+/// * `frow`   — (I) first row to write (1 = 1st row)
+/// * `fbit`   — (I) first bit to write (1 = 1st)
+/// * `nbit`   — (I) number of bits to write
+/// * `larray` — (I) array of logicals corresponding to bits
+/// * `status` — (IO) error status
 pub fn ffpclx_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    frow: LONGLONG,      /* I - first row to write (1 = 1st row)        */
-    fbit: c_long,        /* I - first bit to write (1 = 1st)            */
-    nbit: c_long,        /* I - number of bits to write                 */
-    larray: &[c_char],   /* I - array of logicals corresponding to bits */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    frow: LONGLONG,
+    fbit: c_long,
+    nbit: c_long,
+    larray: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut bstart: LONGLONG = 0;
     let mut repeat: LONGLONG = 0;
