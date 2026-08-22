@@ -1,3 +1,25 @@
+//! The tiled-image compression driver.
+//!
+//! A tile-compressed image is not stored as an image at all: it is a binary
+//! table whose `COMPRESSED_DATA` column holds one variable-length byte array
+//! per tile, with `ZIMAGE`, `ZCMPTYPE`, `ZBITPIX`, `ZNAXISn` and `ZTILEn`
+//! keywords recording the image it represents. This module is what makes that
+//! table look like an image to the rest of the library: it splits an image into
+//! tiles, compresses each, and reassembles them on the way back.
+//!
+//! The codecs themselves are external crates -- `ricecomp`, `pliocomp` and
+//! `hcompress` -- plus `libz-rs-sys` for GZIP and `libbz2-rs-sys` for BZIP2.
+//! What lives here is the driver: tile geometry, the `ZSCALE`/`ZZERO` scaling,
+//! null handling via `ZBLANK`, and the dithering that
+//! [`crate::quantize`] applies when a floating point image is compressed
+//! lossily.
+//!
+//! Ported from CFITSIO's `imcompress.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center. See the "Image Compression" section of the CFITSIO
+//! User's Reference Guide.
+#![warn(missing_docs)]
+
 use crate::helpers::aligned::AlignedBytes;
 use core::ffi::CStr;
 use core::slice;
@@ -180,7 +202,10 @@ pub(crate) fn fits_init_randoms() -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Error callback the bzip2 library calls on an internal failure.
+///
+/// Declared by the bzip2 code in `bzlib_private.h`; it is never expected to be
+/// reached, and pushes a message onto the error stack if it is.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub extern "C" fn bz_internal_error(_errcode: c_int) {
     // FFI WRAPPER
@@ -189,18 +214,23 @@ pub extern "C" fn bz_internal_error(_errcode: c_int) {
     ffpmsg_str("This should never happen");
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the image compression algorithm that should be
 /// used when writing a FITS image.  The image is divided into tiles, and
 /// each tile is compressed and stored in a row of at variable length binary
 /// table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ctype`  — image compression type code;
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_compression_type(
-    fptr: *mut fitsfile, /* I - FITS file pointer     */
-    ctype: c_int,        /* image compression type code;                        */
+    fptr: *mut fitsfile,
+    ctype: c_int,
     /* allowed values: RICE_1, GZIP_1, GZIP_2, PLIO_1,     */
     /*  HCOMPRESS_1, BZIP2_1, and NOCOMPRESS               */
-    status: *mut c_int, /* IO - error status                                   */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -211,17 +241,22 @@ pub unsafe extern "C" fn fits_set_compression_type(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the image compression algorithm that should be
 /// used when writing a FITS image.  The image is divided into tiles, and
 /// each tile is compressed and stored in a row of at variable length binary
 /// table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ctype`  — image compression type code;
+/// * `status` — (IO) error status
 pub fn fits_set_compression_type_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer     */
-    ctype: c_int,        /* image compression type code;                        */
+    fptr: &mut fitsfile,
+    ctype: c_int,
     /* allowed values: RICE_1, GZIP_1, GZIP_2, PLIO_1,     */
     /*  HCOMPRESS_1, BZIP2_1, and NOCOMPRESS               */
-    status: &mut c_int, /* IO - error status                                   */
+    status: &mut c_int,
 ) -> c_int {
     if ctype != RICE_1
         && ctype != GZIP_1
@@ -241,18 +276,24 @@ pub fn fits_set_compression_type_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the size (dimension) of the image
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ndim`   — number of dimensions in the compressed image
+/// * `dims`   — size of image compression tile in each dimension
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_tile_dim(
-    fptr: *mut fitsfile, /* I - FITS file pointer             */
-    ndim: c_int,         /* number of dimensions in the compressed image      */
-    dims: *const c_long, /* size of image compression tile in each dimension  */
+    fptr: *mut fitsfile,
+    ndim: c_int,
+    dims: *const c_long,
     /* default tile size = (NAXIS1, 1, 1, ...)            */
-    status: *mut c_int, /* IO - error status                        */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -271,17 +312,23 @@ pub unsafe extern "C" fn fits_set_tile_dim(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the size (dimension) of the image
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ndim`   — number of dimensions in the compressed image
+/// * `dims`   — size of image compression tile in each dimension
+/// * `status` — (IO) error status
 pub fn fits_set_tile_dim_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    ndim: c_int,         /* number of dimensions in the compressed image      */
-    dims: &[c_long],     /* size of image compression tile in each dimension  */
+    fptr: &mut fitsfile,
+    ndim: c_int,
+    dims: &[c_long],
     /* default tile size = (NAXIS1, 1, 1, ...)            */
-    status: &mut c_int, /* IO - error status                        */
+    status: &mut c_int,
 ) -> c_int {
     if ndim < 0 || ndim > MAX_COMPRESS_DIM as c_int {
         *status = BAD_DIMEN;
@@ -294,16 +341,21 @@ pub fn fits_set_tile_dim_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the quantization level, q,  that
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `qlevel` — floating point quantization level
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_quantize_level(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    qlevel: f32,         /* floating point quantization level      */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    qlevel: f32,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -314,16 +366,17 @@ pub unsafe extern "C" fn fits_set_quantize_level(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the quantization level, q,  that
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
-pub fn fits_set_quantize_level_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    qlevel: f32,         /* floating point quantization level      */
-    status: &mut c_int,  /* IO - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `qlevel` — floating point quantization level
+/// * `status` — (IO) error status
+pub fn fits_set_quantize_level_safe(fptr: &mut fitsfile, qlevel: f32, status: &mut c_int) -> c_int {
     if qlevel == 0. {
         /* this means don't quantize the floating point values. Instead, */
         /* the floating point values will be losslessly compressed */
@@ -335,17 +388,22 @@ pub fn fits_set_quantize_level_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///This routine specifies what type of dithering (randomization) should
 ///be performed when quantizing floating point images to integer prior to
 ///compression.   A value of -1 means do no dithering.  A value of 0 means
 ///use the default SUBTRACTIVE_DITHER_1 (which is equivalent to dither = 1).
 ///A value of 2 means use SUBTRACTIVE_DITHER_2.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `method` — quantization method
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_quantize_method(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    method: c_int,       /* quantization method       */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    method: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -356,16 +414,21 @@ pub unsafe extern "C" fn fits_set_quantize_method(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///This routine specifies what type of dithering (randomization) should
 ///be performed when quantizing floating point images to integer prior to
 ///compression.   A value of -1 means do no dithering.  A value of 0 means
 ///use the default SUBTRACTIVE_DITHER_1 (which is equivalent to dither = 1).
 ///A value of 2 means use SUBTRACTIVE_DITHER_2.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `method` — quantization method
+/// * `status` — (IO) error status
 pub fn fits_set_quantize_method_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    method: c_int,       /* quantization method       */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    method: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut method = method;
 
@@ -382,15 +445,20 @@ pub fn fits_set_quantize_method_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// the name of this routine has changed.  This is kept here only for backwards
+/// The name of this routine has changed.  This is kept here only for backwards
 /// compatibility for any software that may be calling the old routine.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `dither` — dither type
+/// * `status` — (IO) error status
 #[deprecated]
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn fits_set_quantize_dither(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    dither: c_int,       /* dither type      */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    dither: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -401,18 +469,22 @@ pub unsafe extern "C" fn fits_set_quantize_dither(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// the name of this routine has changed.  This is kept here only for backwards
+/// The name of this routine has changed.  This is kept here only for backwards
 /// compatibility for any software that may be calling the old routine.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `dither` — dither type
+/// * `status` — (IO) error status
 pub fn fits_set_quantize_dither_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    dither: c_int,       /* dither type      */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    dither: c_int,
+    status: &mut c_int,
 ) -> c_int {
     fits_set_quantize_method_safe(fptr, dither, status)
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the offset that should be applied when
 /// calculating the random dithering when quantizing floating point iamges.
 /// A random offset should be applied to each image to avoid quantization
@@ -423,11 +495,17 @@ pub fn fits_set_quantize_dither_safe(
 /// offset = 0 means use the default random dithering based on system time
 /// offset = negative means randomly chose dithering based on 1st tile checksum
 /// offset = [1 - 10000] means use that particular dithering pattern
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `seed`   — random dithering seed value (1 to 10000)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_dither_seed(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    seed: c_int,         /* random dithering seed value (1 to 10000) */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    seed: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -438,7 +516,6 @@ pub unsafe extern "C" fn fits_set_dither_seed(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the offset that should be applied when
 /// calculating the random dithering when quantizing floating point iamges.
 /// A random offset should be applied to each image to avoid quantization
@@ -449,11 +526,13 @@ pub unsafe extern "C" fn fits_set_dither_seed(
 /// offset = 0 means use the default random dithering based on system time
 /// offset = negative means randomly chose dithering based on 1st tile checksum
 /// offset = [1 - 10000] means use that particular dithering pattern
-pub fn fits_set_dither_seed_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    seed: c_int,         /* random dithering seed value (1 to 10000) */
-    status: &mut c_int,  /* IO - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `seed`   — random dithering seed value (1 to 10000)
+/// * `status` — (IO) error status
+pub fn fits_set_dither_seed_safe(fptr: &mut fitsfile, seed: c_int, status: &mut c_int) -> c_int {
     /* if positive, ensure that the value is in the range 1 to 10000 */
     if seed > 10000 {
         ffpmsg_str("illegal dithering seed value (fits_set_dither_seed)");
@@ -465,14 +544,19 @@ pub fn fits_set_dither_seed_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// The name of this routine has changed.  This is kept just for
 /// backwards compatibility with any software that calls the old name
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `offset` — random dithering offset value (1 to 10000)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_dither_offset(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    offset: c_int,       /* random dithering offset value (1 to 10000) */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    offset: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -484,18 +568,22 @@ pub unsafe extern "C" fn fits_set_dither_offset(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// The name of this routine has changed.  This is kept just for
 /// backwards compatibility with any software that calls the old name
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `offset` — random dithering offset value (1 to 10000)
+/// * `status` — (IO) error status
 pub fn fits_set_dither_offset_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    offset: c_int,       /* random dithering offset value (1 to 10000) */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    offset: c_int,
+    status: &mut c_int,
 ) -> c_int {
     fits_set_dither_seed_safe(fptr, offset, status)
 }
 
-/*--------------------------------------------------------------------------*/
 /// ********************************************************************
 /// ********************************************************************
 /// THIS ROUTINE IS PROVIDED ONLY FOR BACKWARDS COMPATIBILITY;
@@ -510,13 +598,19 @@ pub fn fits_set_dither_offset_safe(
 ///
 /// Feb 2008:  the "noisebits" parameter has been replaced with the more
 /// general "quantize level" parameter.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `noisebits` — noise_bits parameter value
+/// * `status`    — (IO) error status
 #[deprecated]
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn fits_set_noise_bits(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    noisebits: c_int,    /* noise_bits parameter value       */
+    fptr: *mut fitsfile,
+    noisebits: c_int,
     /* (default = 4)                    */
-    status: *mut c_int, /* IO - error status                */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -528,7 +622,6 @@ pub unsafe extern "C" fn fits_set_noise_bits(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// ********************************************************************
 /// ********************************************************************
 /// THIS ROUTINE IS PROVIDED ONLY FOR BACKWARDS COMPATIBILITY;
@@ -543,12 +636,18 @@ pub unsafe extern "C" fn fits_set_noise_bits(
 ///
 /// Feb 2008:  the "noisebits" parameter has been replaced with the more
 /// general "quantize level" parameter.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `noisebits` — noise_bits parameter value
+/// * `status`    — (IO) error status
 #[deprecated]
 pub fn fits_set_noise_bits_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    noisebits: c_int,    /* noise_bits parameter value       */
+    fptr: &mut fitsfile,
+    noisebits: c_int,
     /* (default = 4)                    */
-    status: &mut c_int, /* IO - error status                */
+    status: &mut c_int,
 ) -> c_int {
     if noisebits < 1 || noisebits > 16 {
         *status = DATA_COMPRESSION_ERR;
@@ -560,14 +659,19 @@ pub fn fits_set_noise_bits_safe(
     fits_set_quantize_level_safe(fptr, qlevel, status)
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the hcompress scale parameter.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — hcompress scale parameter value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_hcomp_scale(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    scale: f32,          /* hcompress scale parameter value       */
+    fptr: *mut fitsfile,
+    scale: f32,
     /* (default = 0.0)                    */
-    status: *mut c_int, /* IO - error status                */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -577,30 +681,40 @@ pub unsafe extern "C" fn fits_set_hcomp_scale(
         fits_set_hcomp_scale_safe(fptr, scale, status)
     }
 }
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the hcompress scale parameter.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — hcompress scale parameter value
+/// * `status` — (IO) error status
 pub fn fits_set_hcomp_scale_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    scale: f32,          /* hcompress scale parameter value       */
+    fptr: &mut fitsfile,
+    scale: f32,
     /* (default = 0.0)                    */
-    status: &mut c_int, /* IO - error status                */
+    status: &mut c_int,
 ) -> c_int {
     fptr.Fptr.request_hcomp_scale = scale;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the hcompress smooth parameter.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `smooth` — hcompress smooth parameter value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_hcomp_smooth(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    smooth: c_int,       /* hcompress smooth parameter value       */
+    fptr: *mut fitsfile,
+    smooth: c_int,
     /* if scale > 1 and smooth != 0, then */
     /*  the image will be smoothed when it is */
     /* decompressed to remove some of the */
     /* 'blockiness' in the image produced */
     /* by the lossy compression    */
-    status: *mut c_int, /* IO - error status                */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -611,27 +725,33 @@ pub unsafe extern "C" fn fits_set_hcomp_smooth(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies the value of the hcompress smooth parameter.
-pub fn fits_set_hcomp_smooth_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    smooth: c_int,       /* hcompress smooth parameter value       */
-    status: &mut c_int,  /* IO - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `smooth` — hcompress smooth parameter value
+/// * `status` — (IO) error status
+pub fn fits_set_hcomp_smooth_safe(fptr: &mut fitsfile, smooth: c_int, status: &mut c_int) -> c_int {
     (fptr.Fptr).request_hcomp_smooth = smooth;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies whether images with integer pixel values should
 /// quantized and compressed the same way float images are compressed.
 /// The default is to not do this, and instead apply a lossless compression
 /// algorithm to integer images.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `lossy_int` — (I) True (!= 0) or False (0)
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_lossy_int(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    lossy_int: c_int,    /* I - True (!= 0) or False (0) */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    lossy_int: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -642,30 +762,36 @@ pub unsafe extern "C" fn fits_set_lossy_int(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies whether images with integer pixel values should
 /// quantized and compressed the same way float images are compressed.
 /// The default is to not do this, and instead apply a lossless compression
 /// algorithm to integer images.
-pub fn fits_set_lossy_int_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    lossy_int: c_int,    /* I - True (!= 0) or False (0) */
-    status: &mut c_int,  /* IO - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `lossy_int` — (I) True (!= 0) or False (0)
+/// * `status`    — (IO) error status
+pub fn fits_set_lossy_int_safe(fptr: &mut fitsfile, lossy_int: c_int, status: &mut c_int) -> c_int {
     (fptr.Fptr).request_lossy_int_compress = lossy_int;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies whether the HDU that is being compressed is so large
 /// (i.e., > 4 GB) that the 'Q' type variable length array columns should be used
 /// rather than the normal 'P' type.  The allows the heap pointers to be stored
 /// as 64-bit quantities, rather than just 32-bits.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `huge`   — (I) True (!= 0) or False (0)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_set_huge_hdu(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    huge: c_int,         /* I - True (!= 0) or False (0) */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    huge: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -676,32 +802,38 @@ pub unsafe extern "C" fn fits_set_huge_hdu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine specifies whether the HDU that is being compressed is so large
 /// (i.e., > 4 GB) that the 'Q' type variable length array columns should be used
 /// rather than the normal 'P' type.  The allows the heap pointers to be stored
 /// as 64-bit quantities, rather than just 32-bits.
-pub fn fits_set_huge_hdu_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    huge: c_int,         /* I - True (!= 0) or False (0) */
-    status: &mut c_int,  /* IO - error status                */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `huge`   — (I) True (!= 0) or False (0)
+/// * `status` — (IO) error status
+pub fn fits_set_huge_hdu_safe(fptr: &mut fitsfile, huge: c_int, status: &mut c_int) -> c_int {
     (fptr.Fptr).request_huge_hdu = huge;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the image compression algorithm that should be
 /// used when writing a FITS image.  The image is divided into tiles, and
 /// each tile is compressed and stored in a row of at variable length binary
 /// table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ctype`  — image compression type code;
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_compression_type(
-    fptr: *mut fitsfile, /* I - FITS file pointer     */
-    ctype: *mut c_int,   /* image compression type code;                        */
+    fptr: *mut fitsfile,
+    ctype: *mut c_int,
     /* allowed values:                                     */
     /* RICE_1, GZIP_1, GZIP_2, PLIO_1, HCOMPRESS_1, BZIP2_1 */
-    status: *mut c_int, /* IO - error status                                   */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -713,17 +845,22 @@ pub unsafe extern "C" fn fits_get_compression_type(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the image compression algorithm that should be
 /// used when writing a FITS image.  The image is divided into tiles, and
 /// each tile is compressed and stored in a row of at variable length binary
 /// table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ctype`  — image compression type code;
+/// * `status` — (IO) error status
 pub fn fits_get_compression_type_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer     */
-    ctype: &mut c_int,   /* image compression type code;                        */
+    fptr: &mut fitsfile,
+    ctype: &mut c_int,
     /* allowed values:                                     */
     /* RICE_1, GZIP_1, GZIP_2, PLIO_1, HCOMPRESS_1, BZIP2_1 */
-    status: &mut c_int, /* IO - error status                                   */
+    status: &mut c_int,
 ) -> c_int {
     *ctype = (fptr.Fptr).request_compress_type;
 
@@ -743,18 +880,24 @@ pub fn fits_get_compression_type_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the size (dimension) of the image
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ndim`   — number of dimensions in the compressed image
+/// * `dims`   — size of image compression tile in each dimension
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_tile_dim(
-    fptr: *mut fitsfile, /* I - FITS file pointer             */
-    ndim: c_int,         /* number of dimensions in the compressed image      */
-    dims: *mut c_long,   /* size of image compression tile in each dimension  */
+    fptr: *mut fitsfile,
+    ndim: c_int,
+    dims: *mut c_long,
     /* default tile size = (NAXIS1, 1, 1, ...)           */
-    status: *mut c_int, /* IO - error status                        */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -773,17 +916,23 @@ pub unsafe extern "C" fn fits_get_tile_dim(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the size (dimension) of the image
 /// compression  tiles that should be used when writing a FITS
 /// image.  The image is divided into tiles, and each tile is compressed
 /// and stored in a row of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ndim`   — number of dimensions in the compressed image
+/// * `dims`   — size of image compression tile in each dimension
+/// * `status` — (IO) error status
 pub fn fits_get_tile_dim_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    ndim: c_int,         /* number of dimensions in the compressed image      */
-    dims: &mut [c_long], /* size of image compression tile in each dimension  */
+    fptr: &mut fitsfile,
+    ndim: c_int,
+    dims: &mut [c_long],
     /* default tile size = (NAXIS1, 1, 1, ...)           */
-    status: &mut c_int, /* IO - error status                        */
+    status: &mut c_int,
 ) -> c_int {
     if ndim < 0 || ndim > MAX_COMPRESS_DIM as c_int {
         *status = BAD_DIMEN;
@@ -796,7 +945,16 @@ pub fn fits_get_tile_dim_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
+/// Clear the compression parameters recorded for the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+///
+/// # Safety
+///
+/// `fptr` and `status` must be non-null and valid.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_unset_compression_param(
     fptr: *mut fitsfile,
@@ -811,7 +969,12 @@ pub unsafe extern "C" fn fits_unset_compression_param(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Clear the compression parameters recorded for the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 pub fn fits_unset_compression_param_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     (fptr.Fptr).compress_type = 0;
     (fptr.Fptr).quantize_level = 0.0;
@@ -826,7 +989,19 @@ pub fn fits_unset_compression_param_safe(fptr: &mut fitsfile, status: &mut c_int
     *status
 }
 
-/*--------------------------------------------------------------------------*/
+/// Clear the compression settings requested for the next image written.
+///
+/// These are the `request_*` fields, which are what a `fits_set_*` call sets;
+/// they become the HDU's actual parameters when an image is compressed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+///
+/// # Safety
+///
+/// `fptr` and `status` must be non-null and valid.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_unset_compression_request(
     fptr: *mut fitsfile,
@@ -841,7 +1016,12 @@ pub unsafe extern "C" fn fits_unset_compression_request(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Clear the compression settings requested for the next image written.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 pub fn fits_unset_compression_request_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     (fptr.Fptr).request_compress_type = 0;
     (fptr.Fptr).request_quantize_level = 0.0;
@@ -858,7 +1038,6 @@ pub fn fits_unset_compression_request_safe(fptr: &mut fitsfile, status: &mut c_i
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Set the preference for various compression options, based
 /// on keywords in the input file that
 /// provide guidance about how the HDU should be compressed when written
@@ -879,7 +1058,6 @@ pub unsafe extern "C" fn fits_set_compression_pref(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Set the preference for various compression options, based
 /// on keywords in the input file that
 /// provide guidance about how the HDU should be compressed when written
@@ -1052,7 +1230,6 @@ pub fn fits_set_compression_pref_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// ********************************************************************
 /// ********************************************************************
 /// THIS ROUTINE IS PROVIDED ONLY FOR BACKWARDS COMPATIBILITY;
@@ -1073,13 +1250,19 @@ pub fn fits_set_compression_pref_safe(
 /// noise bits = natural logarithm (quantize level) / natural log (2)
 ///
 /// This result is rounded to the nearest integer.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `noisebits` — noise_bits parameter value
+/// * `status`    — (IO) error status
 #[deprecated]
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn fits_get_noise_bits(
-    fptr: *mut fitsfile,   /* I - FITS file pointer   */
-    noisebits: *mut c_int, /* noise_bits parameter value       */
+    fptr: *mut fitsfile,
+    noisebits: *mut c_int,
     /* (default = 4)                    */
-    status: *mut c_int, /* IO - error status                */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1091,12 +1274,17 @@ pub unsafe extern "C" fn fits_get_noise_bits(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the noise_bits parameter value.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `noisebits` — noise_bits parameter value
+/// * `status`    — (IO) error status
 pub fn fits_get_noise_bits_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer   */
-    noisebits: &mut c_int, /* noise_bits parameter value       */
-    status: &mut c_int,    /* IO - error status                */
+    fptr: &mut fitsfile,
+    noisebits: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let qlevel: f64 = f64::from((fptr.Fptr).request_quantize_level);
 
@@ -1108,16 +1296,21 @@ pub fn fits_get_noise_bits_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the value of the noice_bits parameter that
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `qlevel` — quantize level parameter value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_quantize_level(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    qlevel: *mut f32,    /* quantize level parameter value       */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    qlevel: *mut f32,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1129,15 +1322,20 @@ pub unsafe extern "C" fn fits_get_quantize_level(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the value of the noice_bits parameter that
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `qlevel` — quantize level parameter value
+/// * `status` — (IO) error status
 pub fn fits_get_quantize_level_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    qlevel: &mut f32,    /* quantize level parameter value       */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    qlevel: &mut f32,
+    status: &mut c_int,
 ) -> c_int {
     if (fptr.Fptr).request_quantize_level == NO_QUANTIZE {
         *qlevel = 0.0;
@@ -1148,16 +1346,21 @@ pub fn fits_get_quantize_level_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the value of the dithering offset parameter that
 /// is used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `offset` — dithering offset parameter value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_dither_seed(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    offset: *mut c_int,  /* dithering offset parameter value       */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    offset: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1169,30 +1372,40 @@ pub unsafe extern "C" fn fits_get_dither_seed(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the value of the dithering offset parameter that
 /// is used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `offset` — dithering offset parameter value
+/// * `status` — (IO) error status
 pub fn fits_get_dither_seed_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    offset: &mut c_int,  /* dithering offset parameter value       */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    offset: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     *offset = (fptr.Fptr).request_dither_seed;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine returns the value of the noice_bits parameter that
 /// should be used when compressing floating point images.  The image is
 /// divided into tiles, and each tile is compressed and stored in a row
 /// of at variable length binary table column.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — Hcompress scale parameter value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_get_hcomp_scale(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    scale: *mut f32,     /* Hcompress scale parameter value       */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    scale: *mut f32,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1204,23 +1417,32 @@ pub unsafe extern "C" fn fits_get_hcomp_scale(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the Hcompress scale parameter value.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — Hcompress scale parameter value
+/// * `status` — (IO) error status
 pub fn fits_get_hcomp_scale_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    scale: &mut f32,     /* Hcompress scale parameter value       */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    scale: &mut f32,
+    status: &mut c_int,
 ) -> c_int {
     *scale = (fptr.Fptr).request_hcomp_scale;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `smooth` — Hcompress smooth parameter value
+/// * `status` — (IO) error status
 pub unsafe extern "C" fn fits_get_hcomp_smooth(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    smooth: *mut c_int,  /* Hcompress smooth parameter value       */
-    status: *mut c_int,  /* IO - error status                */
+    fptr: *mut fitsfile,
+    smooth: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1232,32 +1454,40 @@ pub unsafe extern "C" fn fits_get_hcomp_smooth(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the Hcompress smooth parameter value.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `smooth` — Hcompress smooth parameter value
+/// * `status` — (IO) error status
 pub fn fits_get_hcomp_smooth_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    smooth: &mut c_int,  /* Hcompress smooth parameter value       */
-    status: &mut c_int,  /* IO - error status                */
+    fptr: &mut fitsfile,
+    smooth: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     *smooth = (fptr.Fptr).request_hcomp_smooth;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `infptr`  — pointer to image to be compressed
+/// * `outfptr` — empty HDU for output compressed image
+/// * `status`  — (IO) error status
 pub unsafe extern "C" fn fits_img_compress(
-    infptr: *mut fitsfile,  /* pointer to image to be compressed */
-    outfptr: *mut fitsfile, /* empty HDU for output compressed image */
-    status: *mut c_int,     /* IO - error status               */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
+    /*
+    This routine initializes the output table, copies all the keywords,
+    and  loops through the input image, compressing the data and
+    writing the compressed tiles to the output table.
 
-                            /*
-                            This routine initializes the output table, copies all the keywords,
-                            and  loops through the input image, compressing the data and
-                            writing the compressed tiles to the output table.
-
-                            This is a high level routine that is called by the fpack and funpack
-                            FITS compression utilities.
-                            */
+    This is a high level routine that is called by the fpack and funpack
+    FITS compression utilities.
+    */
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1269,15 +1499,20 @@ pub unsafe extern "C" fn fits_img_compress(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compress an image and write to output table.
 /// This routine initializes the output table, copies all the keywords,
 /// and loops through the input image, compressing the data and
 /// writing the compressed tiles to the output table.
+///
+/// # Parameters
+///
+/// * `infptr`  — pointer to image to be compressed
+/// * `outfptr` — empty HDU for output compressed image
+/// * `status`  — (IO) error status
 pub fn fits_img_compress_safe(
-    infptr: &mut fitsfile,  /* pointer to image to be compressed */
-    outfptr: &mut fitsfile, /* empty HDU for output compressed image */
-    status: &mut c_int,     /* IO - error status               */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     let mut bitpix: c_int = 0;
     let mut naxis: c_int = 0;
@@ -1390,14 +1625,17 @@ pub fn fits_img_compress_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// create a BINTABLE extension for the output compressed image.
+/// Create a BINTABLE extension for the output compressed image.
+///
+/// # Parameters
+///
+/// * `writebitpix` — write the ZBITPIX, ZNAXIS, and ZNAXES keyword?
 pub(crate) fn imcomp_init_table(
     outfptr: &mut fitsfile,
     inbitpix: c_int,
     naxis: c_int,
     naxes: &[c_long],
-    writebitpix: bool, /* write the ZBITPIX, ZNAXIS, and ZNAXES keyword? */
+    writebitpix: bool,
     status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -1991,7 +2229,6 @@ pub(crate) fn imcomp_init_table(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This function returns the maximum number of bytes in a compressed
 /// image line.
 ///
@@ -2046,7 +2283,6 @@ fn imcomp_calc_max_elem(comptype: c_int, nx: c_int, zbitpix: c_int, blocksize: c
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine does the following:
 /// - reads an image one tile at a time
 /// - if it is a float or double image, then it tries to quantize the pixels
@@ -2384,7 +2620,6 @@ fn imcomp_compress_image(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This is the main compression routine.
 ///
 /// This routine does the following to the input tile of pixels:
@@ -2403,9 +2638,13 @@ fn imcomp_compress_image(
 /// that is supported when writing to normal FITS images.  The datatype of the
 /// input array must have the same datatype (either signed or unsigned) as the
 /// output (compressed) FITS image in some cases.
+///
+/// # Parameters
+///
+/// * `row` — tile number = row in the binary table that holds the compressed data
 fn imcomp_compress_tile(
     outfptr: &mut fitsfile,
-    row: c_long, /* tile number = row in the binary table that holds the compressed data */
+    row: c_long,
     datatype: c_int,
     tiledata: &mut [u8],
     tilelen: c_long,
@@ -3247,7 +3486,6 @@ fn imcomp_compress_tile(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 fn imcomp_write_nocompress_tile(
     outfptr: &mut fitsfile,
     row: c_long,
@@ -3310,7 +3548,6 @@ fn imcomp_write_nocompress_tile(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input integer*2 tile array in place to 4 or 8-byte ints for compression,
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
@@ -3444,7 +3681,6 @@ fn imcomp_convert_tile_tshort(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input  tile array of pixels for compression.
 /// Convert input unsigned integer*2 tile array in place to 4 or 8-byte ints
 /// for compression,
@@ -3544,7 +3780,6 @@ fn imcomp_convert_tile_tushort(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input integer tile array in place to 4 or 8-byte ints for compression,
 /// If needed, do null value substitution.
@@ -3594,7 +3829,6 @@ fn imcomp_convert_tile_tint(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input unsigned integer tile array in place to 4 or 8-byte ints for compression,
 /// If needed, do null value substitution.
@@ -3655,7 +3889,6 @@ fn imcomp_convert_tile_tuint(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input unsigned integer*1 tile array in place to 4 or 8-byte ints for compression,
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
@@ -3739,7 +3972,6 @@ fn imcomp_convert_tile_tbyte(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input integer*1 tile array in place to 4 or 8-byte ints for compression,
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
@@ -3829,7 +4061,6 @@ fn imcomp_convert_tile_tsbyte(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input float tile array in place to 4 or 8-byte ints for compression,
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
@@ -4017,7 +4248,6 @@ fn imcomp_convert_tile_tfloat(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Prepare the input tile array of pixels for compression.
 /// Convert input double tile array in place to 4-byte ints for compression,
 /// If needed, convert 4 or 8-byte ints and do null value substitution.
@@ -4182,8 +4412,7 @@ fn imcomp_convert_tile_tdouble(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution AND scaling of the integer array.
+/// Do null value substitution AND scaling of the integer array.
 /// If array value = nullflagval, then set the value to nullval.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscale(
@@ -4219,8 +4448,7 @@ fn imcomp_nullscale(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution.
+/// Do null value substitution.
 /// If array value = nullflagval, then set the value to nullval.
 fn imcomp_nullvalues(
     idata: &mut [c_int],
@@ -4237,8 +4465,7 @@ fn imcomp_nullvalues(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do inverse scaling the integer values.
+/// Do inverse scaling the integer values.
 fn imcomp_scalevalues(
     idata: &mut [c_int],
     tilelen: c_long,
@@ -4266,8 +4493,7 @@ fn imcomp_scalevalues(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution AND scaling of the integer array.
+/// Do null value substitution AND scaling of the integer array.
 /// If array value = nullflagval, then set the value to nullval.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscalei2(
@@ -4303,8 +4529,7 @@ fn imcomp_nullscalei2(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution.
+/// Do null value substitution.
 /// If array value = nullflagval, then set the value to nullval.
 fn imcomp_nullvaluesi2(
     idata: &mut [c_short],
@@ -4321,8 +4546,7 @@ fn imcomp_nullvaluesi2(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do inverse scaling the integer values.
+/// Do inverse scaling the integer values.
 fn imcomp_scalevaluesi2(
     idata: &mut [c_short],
     tilelen: c_long,
@@ -4350,8 +4574,7 @@ fn imcomp_scalevaluesi2(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 fn imcomp_nullfloats(
     fdata: &[f32],
@@ -4407,8 +4630,7 @@ fn imcomp_nullfloats(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 fn imcomp_nullfloats_inplace(
     idata: &mut [i32],
@@ -4466,8 +4688,7 @@ fn imcomp_nullfloats_inplace(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscalefloats(
@@ -4526,8 +4747,7 @@ fn imcomp_nullscalefloats(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscalefloats_inplace(
@@ -4588,8 +4808,7 @@ fn imcomp_nullscalefloats_inplace(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nulldoubles(
@@ -4645,8 +4864,7 @@ fn imcomp_nulldoubles(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nulldoubles_inplace(
@@ -4704,8 +4922,7 @@ fn imcomp_nulldoubles_inplace(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscaledoubles(
@@ -4764,8 +4981,7 @@ fn imcomp_nullscaledoubles(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
-/// do null value substitution  of the float array.
+/// Do null value substitution  of the float array.
 /// If array value = nullflagval, then set the output value to FLOATNULLVALUE.
 /// Otherwise, inverse scale the integer value.
 fn imcomp_nullscaledoubles_inplace(
@@ -4825,20 +5041,30 @@ fn imcomp_nullscaledoubles_inplace(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// Write a section of a compressed image.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the array to be written
+/// * `infpixel`  — (I) 'bottom left corner' of the subsection
+/// * `inlpixel`  — (I) 'top right corner' of the subsection
+/// * `nullcheck` — (I) 0 for no null checking
+/// * `array`     — (I) array of values to be written
+/// * `nullval`   — (I) undefined pixel value
+/// * `status`    — (IO) error status
 pub(crate) fn fits_write_compressed_img(
-    fptr: &mut fitsfile,      /* I - FITS file pointer     */
-    datatype: c_int,          /* I - datatype of the array to be written      */
-    infpixel: &[c_long],      /* I - 'bottom left corner' of the subsection   */
-    inlpixel: &[c_long],      /* I - 'top right corner' of the subsection     */
-    nullcheck: NullCheckType, /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    infpixel: &[c_long],
+    inlpixel: &[c_long],
+    nullcheck: NullCheckType,
     /*     1: pixels that are = nullval will be     */
     /*     written with the FITS null pixel value   */
     /*     (floating point arrays only)             */
-    array: &[u8],                /* I - array of values to be written            */
-    nullval: &Option<NullValue>, /* I - undefined pixel value                    */
-    status: &mut c_int,          /* IO - error status                            */
+    array: &[u8],
+    nullval: &Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tiledim: [c_int; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut naxis: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -5130,7 +5356,6 @@ pub(crate) fn fits_write_compressed_img(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write a consecutive set of pixels to a compressed image.  This routine
 /// interpretes the n-dimensional image as a long one-dimensional array.
 /// This is actually a rather inconvenient way to write compressed images in
@@ -5139,18 +5364,29 @@ pub(crate) fn fits_write_compressed_img(
 ///
 /// The general strategy used here is to write the requested pixels in blocks
 /// that correspond to rectangular image sections.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the array to be written
+/// * `fpixel`    — (I) 'first pixel to write
+/// * `npixel`    — (I) number of pixels to write
+/// * `nullcheck` — (I) 0 for no null checking
+/// * `array`     — (I) array of values to write
+/// * `nullval`   — (I) value used to represent undefined pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fits_write_compressed_pixels(
-    fptr: &mut fitsfile,      /* I - FITS file pointer   */
-    datatype: c_int,          /* I - datatype of the array to be written      */
-    fpixel: LONGLONG,         /* I - 'first pixel to write          */
-    npixel: LONGLONG,         /* I - number of pixels to write      */
-    nullcheck: NullCheckType, /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    fpixel: LONGLONG,
+    npixel: LONGLONG,
+    nullcheck: NullCheckType,
     /*     1: pixels that are = nullval will be     */
     /*     written with the FITS null pixel value   */
     /*     (floating point arrays only)             */
-    array: &[u8],                /* I - array of values to write                */
-    nullval: &Option<NullValue>, /* I - value used to represent undefined pixels*/
-    status: &mut c_int,          /* IO - error status                           */
+    array: &[u8],
+    nullval: &Option<NullValue>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: c_int = 0;
     let mut bytesperpixel: c_int = 0;
@@ -5311,27 +5547,41 @@ pub(crate) fn fits_write_compressed_pixels(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// in general we have to write the first partial row of the image,
+/// In general we have to write the first partial row of the image,
 /// followed by the middle complete rows, followed by the last
 /// partial row of the image.  If the first or last rows are complete,
 /// then write them at the same time as all the middle rows.
+///
+/// # Parameters
+///
+/// * `fptr`          — (I) FITS file
+/// * `datatype`      — (I) datatype of the array to be written
+/// * `bytesperpixel` — (I) number of bytes per pixel in array
+/// * `nplane`        — (I) which plane of the cube to write
+/// * `firstcoord`    — I coordinate of first pixel to write
+/// * `lastcoord`     — I coordinate of last pixel to write
+/// * `naxes`         — I size of each image dimension
+/// * `nullcheck`     — (I) 0 for no null checking
+/// * `array`         — (I) array of values that are written
+/// * `nullval`       — (I) value for undefined pixels
+/// * `nread`         — (O) total number of pixels written
+/// * `status`        — (IO) error status
 fn fits_write_compressed_img_plane(
-    fptr: &mut fitsfile,       /* I - FITS file    */
-    datatype: c_int,           /* I - datatype of the array to be written    */
-    bytesperpixel: c_int,      /* I - number of bytes per pixel in array */
-    nplane: c_long,            /* I - which plane of the cube to write      */
-    firstcoord: &mut [c_long], /* I coordinate of first pixel to write */
-    lastcoord: &[c_long],      /* I coordinate of last pixel to write */
-    naxes: &[c_long],          /* I size of each image dimension */
-    nullcheck: NullCheckType,  /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    bytesperpixel: c_int,
+    nplane: c_long,
+    firstcoord: &mut [c_long],
+    lastcoord: &[c_long],
+    naxes: &[c_long],
+    nullcheck: NullCheckType,
     /*     1: pixels that are = nullval will be     */
     /*     written with the FITS null pixel value   */
     /*     (floating point arrays only)             */
-    array: &[u8],                /* I - array of values that are written        */
-    nullval: &Option<NullValue>, /* I - value for undefined pixels              */
-    nread: &mut c_long,          /* O - total number of pixels written          */
-    status: &mut c_int,          /* IO - error status                           */
+    array: &[u8],
+    nullval: &Option<NullValue>,
+    nread: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
     /* bottom left coord. and top right coord. */
     let mut blc: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -5445,13 +5695,18 @@ fn fits_write_compressed_img_plane(
 /* ###                 Image Decompression Routines                     ### */
 /* ######################################################################## */
 
-/*--------------------------------------------------------------------------*/
 /// This routine decompresses the whole image and writes it to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_img_decompress(
-    infptr: *mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
-    status: *mut c_int,     /* IO - error status               */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5463,12 +5718,17 @@ pub unsafe extern "C" fn fits_img_decompress(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine decompresses the whole image and writes it to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 pub fn fits_img_decompress_safe(
-    infptr: &mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
-    status: &mut c_int,     /* IO - error status               */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     let mut datatype: c_int = 0;
     let mut nullcheck: NullCheckType = NullCheckType::None;
@@ -5543,16 +5803,21 @@ pub fn fits_img_decompress_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// THIS IS AN OBSOLETE ROUTINE.  USE fits_img_decompress instead!!!
 ///
 /// This routine decompresses the whole image and writes it to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 #[deprecated(note = "Use fits_img_decompress instead")]
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub unsafe extern "C" fn fits_decompress_img(
-    infptr: *mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
-    status: *mut c_int,     /* IO - error status               */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5564,14 +5829,19 @@ pub unsafe extern "C" fn fits_decompress_img(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// THIS IS AN OBSOLETE ROUTINE.  USE fits_img_decompress instead!!!
 ///
 /// This routine decompresses the whole image and writes it to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 fn fits_decompress_img_safe(
-    infptr: &mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
-    status: &mut c_int,     /* IO - error status               */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     let mut datatype: c_int = 0;
     let mut byte_per_pix: usize = 0;
@@ -5714,14 +5984,19 @@ fn fits_decompress_img_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine reads the header of the input tile compressed image and
 /// converts it to that of a standard uncompress FITS image.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_img_decompress_header(
-    infptr: *mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: *mut fitsfile, /* empty HDU for output uncompressed image */
-    status: *mut c_int,     /* IO - error status               */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5733,13 +6008,18 @@ pub unsafe extern "C" fn fits_img_decompress_header(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine reads the header of the input tile compressed image and
 /// converts it to that of a standard uncompress FITS image.
+///
+/// # Parameters
+///
+/// * `infptr`  — image (bintable) to uncompress
+/// * `outfptr` — empty HDU for output uncompressed image
+/// * `status`  — (IO) error status
 pub fn fits_img_decompress_header_safe(
-    infptr: &mut fitsfile,  /* image (bintable) to uncompress */
-    outfptr: &mut fitsfile, /* empty HDU for output uncompressed image */
-    status: &mut c_int,     /* IO - error status               */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     let mut writeprime = false;
     let mut hdupos: c_int = 0;
@@ -5922,24 +6202,37 @@ pub fn fits_img_decompress_header_safe(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// Read a section of a compressed image;  Note: lpixel may be larger than the
 /// size of the uncompressed image.  Only the pixels within the image will be
 /// returned.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the array to be returned
+/// * `infpixel`  — (I) 'bottom left corner' of the subsection
+/// * `inlpixel`  — (I) 'top right corner' of the subsection
+/// * `ininc`     — (I) increment to be applied in each dimension
+/// * `nullcheck` — (I) 0 for no null checking
+/// * `nullval`   — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of flags = 1 if nullcheck = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn fits_read_compressed_img(
-    fptr: &mut fitsfile,          /* I - FITS file pointer      */
-    datatype: c_int,              /* I - datatype of the array to be returned      */
-    infpixel: &[LONGLONG],        /* I - 'bottom left corner' of the subsection    */
-    inlpixel: &[LONGLONG],        /* I - 'top right corner' of the subsection      */
-    ininc: &[c_long],             /* I - increment to be applied in each dimension */
-    mut nullcheck: NullCheckType, /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    infpixel: &[LONGLONG],
+    inlpixel: &[LONGLONG],
+    ininc: &[c_long],
+    mut nullcheck: NullCheckType,
     /*     1: set undefined pixels = nullval       */
     /*     2: set nullarray=1 for undefined pixels */
-    nullval: &Option<NullValue>, /* I - value for undefined pixels              */
-    array: &mut [u8],            /* O - array of values that are returned       */
-    mut nullarray: Option<&mut [c_char]>, /* O - array of flags = 1 if nullcheck = 2     */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,          /* IO - error status                           */
+    nullval: &Option<NullValue>,
+    array: &mut [u8],
+    mut nullarray: Option<&mut [c_char]>,
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut tiledim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -6191,21 +6484,33 @@ pub(crate) fn fits_read_compressed_img(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// This is similar to fits_read_compressed_img, except that it writes
 /// the pixels to the output image, on a tile by tile basis instead of returning
 /// the array.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the array to be returned
+/// * `infpixel`  — (I) 'bottom left corner' of the subsection
+/// * `inlpixel`  — (I) 'top right corner' of the subsection
+/// * `ininc`     — (I) increment to be applied in each dimension
+/// * `nullcheck` — (I) 0 for no null checking, 1: set undefined pixels = nullval
+/// * `nullval`   — (I) value for undefined pixels
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `outfptr`   — (I) FITS file pointer
+/// * `status`    — (IO) error status
 fn fits_read_write_compressed_img(
-    fptr: &mut fitsfile,            /* I - FITS file pointer      */
-    datatype: c_int,                /* I - datatype of the array to be returned      */
-    infpixel: &[LONGLONG],          /* I - 'bottom left corner' of the subsection    */
-    inlpixel: &[LONGLONG],          /* I - 'top right corner' of the subsection      */
-    ininc: &[c_long],               /* I - increment to be applied in each dimension */
-    mut nullcheck: NullCheckType, /* I - 0 for no null checking, 1: set undefined pixels = nullval                  */
-    nullval: &Option<NullValue>,  /* I - value for undefined pixels              */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    outfptr: &mut fitsfile,       /* I - FITS file pointer                    */
-    status: &mut c_int,           /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    infpixel: &[LONGLONG],
+    inlpixel: &[LONGLONG],
+    ininc: &[c_long],
+    mut nullcheck: NullCheckType,
+    nullval: &Option<NullValue>,
+    mut anynul: Option<&mut c_int>,
+    outfptr: &mut fitsfile,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
     let mut tiledim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -6456,7 +6761,6 @@ fn fits_read_write_compressed_img(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a consecutive set of pixels from a compressed image.  This routine
 /// interpretes the n-dimensional image as a long one-dimensional array.
 /// This is actually a rather inconvenient way to read compressed images in
@@ -6465,19 +6769,32 @@ fn fits_read_write_compressed_img(
 ///
 /// The general strategy used here is to read the requested pixels in blocks
 /// that correspond to rectangular image sections.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the array to be returned
+/// * `fpixel`    — (I) 'first pixel to read
+/// * `npixel`    — (I) number of pixels to read
+/// * `nullcheck` — (I) 0 for no null checking
+/// * `nullval`   — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of flags = 1 if nullcheck = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn fits_read_compressed_pixels(
-    fptr: &mut fitsfile,      /* I - FITS file pointer    */
-    datatype: c_int,          /* I - datatype of the array to be returned     */
-    fpixel: LONGLONG,         /* I - 'first pixel to read          */
-    npixel: LONGLONG,         /* I - number of pixels to read      */
-    nullcheck: NullCheckType, /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    fpixel: LONGLONG,
+    npixel: LONGLONG,
+    nullcheck: NullCheckType,
     /*     1: set undefined pixels = nullval       */
     /*     2: set nullarray=1 for undefined pixels */
-    nullval: &Option<NullValue>, /* I - value for undefined pixels              */
-    array: &mut [u8],            /* O - array of values that are returned       */
-    mut nullarray: Option<&mut [c_char]>, /* O - array of flags = 1 if nullcheck = 2     */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,          /* IO - error status                           */
+    nullval: &Option<NullValue>,
+    array: &mut [u8],
+    mut nullarray: Option<&mut [c_char]>,
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis: c_int = 0;
     let mut bytesperpixel: usize = 0;
@@ -6672,29 +6989,46 @@ pub(crate) fn fits_read_compressed_pixels(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// in general we have to read the first partial row of the image,
+/// In general we have to read the first partial row of the image,
 /// followed by the middle complete rows, followed by the last
 /// partial row of the image.  If the first or last rows are complete,
 /// then read them at the same time as all the middle rows.
+///
+/// # Parameters
+///
+/// * `fptr`          — (I) FITS file
+/// * `datatype`      — (I) datatype of the array to be returned
+/// * `bytesperpixel` — (I) number of bytes per pixel in array
+/// * `nplane`        — (I) which plane of the cube to read
+/// * `firstcoord`    — coordinate of first pixel to read
+/// * `lastcoord`     — coordinate of last pixel to read
+/// * `inc`           — increment of pixels to read
+/// * `naxes`         — size of each image dimension
+/// * `nullcheck`     — (I) 0 for no null checking
+/// * `nullval`       — (I) value for undefined pixels
+/// * `array`         — (O) array of values that are returned
+/// * `nullarray`     — (O) array of flags = 1 if nullcheck = 2
+/// * `anynul`        — (O) set to 1 if any values are null; else 0
+/// * `nread`         — (O) total number of pixels read and returned
+/// * `status`        — (IO) error status
 fn fits_read_compressed_img_plane(
-    fptr: &mut fitsfile,         /* I - FITS file   */
-    datatype: c_int,             /* I - datatype of the array to be returned      */
-    bytesperpixel: c_int,        /* I - number of bytes per pixel in array */
-    nplane: c_long,              /* I - which plane of the cube to read      */
-    firstcoord: &mut [LONGLONG], /* coordinate of first pixel to read */
-    lastcoord: &[LONGLONG],      /* coordinate of last pixel to read */
-    inc: &[c_long],              /* increment of pixels to read */
-    naxes: &[c_long],            /* size of each image dimension */
-    nullcheck: NullCheckType,    /* I - 0 for no null checking                   */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    bytesperpixel: c_int,
+    nplane: c_long,
+    firstcoord: &mut [LONGLONG],
+    lastcoord: &[LONGLONG],
+    inc: &[c_long],
+    naxes: &[c_long],
+    nullcheck: NullCheckType,
     /*     1: set undefined pixels = nullval       */
     /*     2: set nullarray=1 for undefined pixels */
-    nullval: &Option<NullValue>, /* I - value for undefined pixels              */
-    array: &mut [u8],            /* O - array of values that are returned       */
-    mut nullarray: Option<&mut [c_char]>, /* O - array of flags = 1 if nullcheck = 2     */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    nread: &mut c_long,          /* O - total number of pixels read and returned*/
-    status: &mut c_int,          /* IO - error status                           */
+    nullval: &Option<NullValue>,
+    array: &mut [u8],
+    mut nullarray: Option<&mut [c_char]>,
+    mut anynul: Option<&mut c_int>,
+    nread: &mut c_long,
+    status: &mut c_int,
 ) -> c_int {
     /* bottom left coord. and top right coord. */
     let mut blc: [LONGLONG; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM];
@@ -6855,7 +7189,6 @@ fn fits_read_compressed_img_plane(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine reads keywords from a BINTABLE extension containing a
 /// compressed image.
 pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mut c_int) -> c_int {
@@ -7352,7 +7685,6 @@ pub(crate) fn imcomp_get_compressed_image_par(infptr: &mut fitsfile, status: &mu
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine reads the header keywords from the input image and
 /// copies them to the output image;  the manditory structural keywords
 /// and the checksum keywords are not copied. If the DATE keyword is copied,
@@ -7406,7 +7738,6 @@ fn imcomp_copy_imheader(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the uncompressed input image
 /// and to the compressed image (in a binary table)
 fn imcomp_copy_img2comp(
@@ -7550,7 +7881,6 @@ fn imcomp_copy_img2comp(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine copies the header keywords from the compressed input image
 /// and to the uncompressed image (in a binary table)
 fn imcomp_copy_comp2img(
@@ -7666,7 +7996,6 @@ fn imcomp_copy_comp2img(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine copies any unexpected keywords from the primary array
 /// of the compressed input image into the header of the uncompressed image
 /// (which is the primary array of the output file).
@@ -7706,20 +8035,29 @@ fn imcomp_copy_prime2img(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine decompresses one tile of the image
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `nrow`       — (I) row of table to read and uncompress
+/// * `tilelen`    — (I) number of pixels in the tile
+/// * `datatype`   — (I) datatype to be returned in 'buffer'
+/// * `nullcheck`  — (I) 0 for no null checking
+/// * `nulval`     — (I) value to be used for undefined pixels
+/// * `buffer`     — (O) buffer for returned decompressed values
+/// * `bnullarray` — (O) buffer for returned null flags
+/// * `anynul`     — (O) any null values returned?
 fn imcomp_decompress_tile(
     infptr: &mut fitsfile,
-    nrow: c_int,                    /* I - row of table to read and uncompress */
-    tilelen: c_int,                 /* I - number of pixels in the tile        */
-    datatype: c_int,                /* I - datatype to be returned in 'buffer' */
-    mut nullcheck: NullCheckType,   /* I - 0 for no null checking */
-    nulval: &Option<NullValue>,     /* I - value to be used for undefined pixels */
-    buffer: &mut [u8],              /* O - buffer for returned decompressed values */
-    bnullarray: &mut [c_char],      /* O - buffer for returned null flags */
-    mut anynul: Option<&mut c_int>, /* O - any null values returned?  */
+    nrow: c_int,
+    tilelen: c_int,
+    datatype: c_int,
+    mut nullcheck: NullCheckType,
+    nulval: &Option<NullValue>,
+    buffer: &mut [u8],
+    bnullarray: &mut [c_char],
+    mut anynul: Option<&mut c_int>,
     status: &mut c_int,
 ) -> c_int {
     let mut tiledatatype: c_int = 0;
@@ -9541,16 +9879,24 @@ fn imcomp_decompress_tile(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// test if there are any intersecting pixels between this tile and the section
+/// Test if there are any intersecting pixels between this tile and the section
 /// of the image defined by fixel, lpixel, ininc.
+///
+/// # Parameters
+///
+/// * `ndim`    — (I) number of dimension in the tile and image
+/// * `tfpixel` — (I) first pixel number in each dim. of the tile
+/// * `tlpixel` — (I) last pixel number in each dim. of the tile
+/// * `fpixel`  — (I) first pixel number in each dim. of the image
+/// * `lpixel`  — (I) last pixel number in each dim. of the image
+/// * `ininc`   — (I) increment to be applied in each image dimen.
 fn imcomp_test_overlap(
-    ndim: c_int,        /* I - number of dimension in the tile and image */
-    tfpixel: &[c_long], /* I - first pixel number in each dim. of the tile */
-    tlpixel: &[c_long], /* I - last pixel number in each dim. of the tile */
-    fpixel: &[c_long],  /* I - first pixel number in each dim. of the image */
-    lpixel: &[c_long],  /* I - last pixel number in each dim. of the image */
-    ininc: &[c_long],   /* I - increment to be applied in each image dimen. */
+    ndim: c_int,
+    tfpixel: &[c_long],
+    tlpixel: &[c_long],
+    fpixel: &[c_long],
+    lpixel: &[c_long],
+    ininc: &[c_long],
     status: &mut c_int,
 ) -> c_int {
     let mut imgdim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; /* product of preceding dimensions in the  output image, allowing for inc factor */
@@ -9636,21 +9982,34 @@ fn imcomp_test_overlap(
     1 /* there appears to be  intersecting pixels */
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the intersecting pixels from a decompressed tile to the output image.
+/// Copy the intersecting pixels from a decompressed tile to the output image.
 /// Both the tile and the image must have the same number of dimensions.
+///
+/// # Parameters
+///
+/// * `tile`       — (I) multi dimensional array of tile pixels
+/// * `pixlen`     — (I) number of bytes in each tile or image pixel
+/// * `ndim`       — (I) number of dimension in the tile and image
+/// * `tfpixel`    — (I) first pixel number in each dim. of the tile
+/// * `tlpixel`    — (I) last pixel number in each dim. of the tile
+/// * `bnullarray` — (I) array of null flags; used if nullcheck = 2
+/// * `image`      — (O) multi dimensional output image
+/// * `fpixel`     — (I) first pixel number in each dim. of the image
+/// * `lpixel`     — (I) last pixel number in each dim. of the image
+/// * `ininc`      — (I) increment to be applied in each image dimen.
+/// * `nullcheck`  — (I) 0, 1: do nothing; 2: set nullarray for nulls
 fn imcomp_copy_overlap(
-    tile: &[c_char],          /* I - multi dimensional array of tile pixels */
-    pixlen: c_int,            /* I - number of bytes in each tile or image pixel */
-    ndim: c_int,              /* I - number of dimension in the tile and image */
-    tfpixel: &[c_long],       /* I - first pixel number in each dim. of the tile */
-    tlpixel: &[c_long],       /* I - last pixel number in each dim. of the tile */
-    bnullarray: &[c_char],    /* I - array of null flags; used if nullcheck = 2 */
-    image: &mut [c_char],     /* O - multi dimensional output image */
-    fpixel: &[c_long],        /* I - first pixel number in each dim. of the image */
-    lpixel: &[c_long],        /* I - last pixel number in each dim. of the image */
-    ininc: &[c_long],         /* I - increment to be applied in each image dimen. */
-    nullcheck: NullCheckType, /* I - 0, 1: do nothing; 2: set nullarray for nulls */
+    tile: &[c_char],
+    pixlen: c_int,
+    ndim: c_int,
+    tfpixel: &[c_long],
+    tlpixel: &[c_long],
+    bnullarray: &[c_char],
+    image: &mut [c_char],
+    fpixel: &[c_long],
+    lpixel: &[c_long],
+    ininc: &[c_long],
+    nullcheck: NullCheckType,
     mut nullarray: Option<&mut [c_char]>,
     status: &mut c_int,
 ) -> c_int {
@@ -9910,20 +10269,32 @@ fn imcomp_copy_overlap(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Similar to imcomp_copy_overlap, except it copies the overlapping pixels from
 /// the 'image' to the 'tile'.
+///
+/// # Parameters
+///
+/// * `tile`        — (O) multi dimensional array of tile pixels
+/// * `pixlen`      — (I) number of bytes in each tile or image pixel
+/// * `ndim`        — (I) number of dimension in the tile and image
+/// * `tfpixel`     — (I) first pixel number in each dim. of the tile
+/// * `tlpixel`     — (I) last pixel number in each dim. of the tile
+/// * `_bnullarray` — (I) array of null flags; used if nullcheck = 2
+/// * `image`       — (I) multi dimensional output image
+/// * `fpixel`      — (I) first pixel number in each dim. of the image
+/// * `lpixel`      — (I) last pixel number in each dim. of the image
+/// * `_nullcheck`  — (I) 0, 1: do nothing; 2: set nullarray for nulls
 fn imcomp_merge_overlap(
-    tile: &mut [c_char],       /* O - multi dimensional array of tile pixels */
-    pixlen: c_int,             /* I - number of bytes in each tile or image pixel */
-    ndim: c_int,               /* I - number of dimension in the tile and image */
-    tfpixel: &[c_long],        /* I - first pixel number in each dim. of the tile */
-    tlpixel: &[c_long],        /* I - last pixel number in each dim. of the tile */
-    _bnullarray: &[c_char],    /* I - array of null flags; used if nullcheck = 2 */
-    image: &[c_char],          /* I - multi dimensional output image */
-    fpixel: &[c_long],         /* I - first pixel number in each dim. of the image */
-    lpixel: &[c_long],         /* I - last pixel number in each dim. of the image */
-    _nullcheck: NullCheckType, /* I - 0, 1: do nothing; 2: set nullarray for nulls */
+    tile: &mut [c_char],
+    pixlen: c_int,
+    ndim: c_int,
+    tfpixel: &[c_long],
+    tlpixel: &[c_long],
+    _bnullarray: &[c_char],
+    image: &[c_char],
+    fpixel: &[c_long],
+    lpixel: &[c_long],
+    _nullcheck: NullCheckType,
     status: &mut c_int,
 ) -> c_int {
     let mut imgdim: [c_long; MAX_COMPRESS_DIM] = [0; MAX_COMPRESS_DIM]; // product of preceding dimensions in the output image, allowing for inc factor
@@ -10168,24 +10539,39 @@ fn imcomp_merge_overlap(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Unquantize byte values into the scaled floating point values
+///
+/// # Parameters
+///
+/// * `row`            — tile number = row number in table
+/// * `input`          — (I) array of values to be converted
+/// * `ntodo`          — (I) number of elements in the array
+/// * `scale`          — (I) FITS TSCALn or BSCALE value
+/// * `zero`           — (I) FITS TZEROn or BZERO value
+/// * `_dither_method` — (I) dithering method to use
+/// * `nullcheck`      — (I) null checking code; 0 = don't check
+/// * `tnull`          — (I) value of FITS TNonen keyword if any
+/// * `nullval`        — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`      — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`        — (O) set to 1 if any pixels are null
+/// * `output`         — (O) array of converted pixels
+/// * `status`         — (IO) error status
 fn unquantize_i1r4(
-    row: c_long,              /* tile number = row number in table  */
-    input: &[c_uchar],        /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    _dither_method: c_int,    /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[c_uchar],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    _dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: c_uchar,              /* I - value of FITS TNonen keyword if any */
-    nullval: f32,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f32],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: c_uchar,
+    nullval: f32,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f32],
+    status: &mut c_int,
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10259,24 +10645,39 @@ fn unquantize_i1r4(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Unquantize short integer values into the scaled floating point values
+///
+/// # Parameters
+///
+/// * `row`            — seed for random values
+/// * `input`          — (I) array of values to be converted
+/// * `ntodo`          — (I) number of elements in the array
+/// * `scale`          — (I) FITS TSCALn or BSCALE value
+/// * `zero`           — (I) FITS TZEROn or BZERO value
+/// * `_dither_method` — (I) dithering method to use
+/// * `nullcheck`      — (I) null checking code; 0 = don't check
+/// * `tnull`          — (I) value of FITS TNonen keyword if any
+/// * `nullval`        — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`      — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`        — (O) set to 1 if any pixels are null
+/// * `output`         — (O) array of converted pixels
+/// * `status`         — (IO) error status
 fn unquantize_i2r4(
-    row: c_long,              /* seed for random values  */
-    input: &[c_short],        /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    _dither_method: c_int,    /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[c_short],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    _dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: c_short,              /* I - value of FITS TNonen keyword if any */
-    nullval: f32,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f32],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: c_short,
+    nullval: f32,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f32],
+    status: &mut c_int,
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10351,24 +10752,39 @@ fn unquantize_i2r4(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Unquantize int integer values into the scaled floating point values
+///
+/// # Parameters
+///
+/// * `row`           — tile number = row number in table
+/// * `input`         — (I) array of values to be converted
+/// * `ntodo`         — (I) number of elements in the array
+/// * `scale`         — (I) FITS TSCALn or BSCALE value
+/// * `zero`          — (I) FITS TZEROn or BZERO value
+/// * `dither_method` — (I) dithering method to use
+/// * `nullcheck`     — (I) null checking code; 0 = don't check
+/// * `tnull`         — (I) value of FITS TNonen keyword if any
+/// * `nullval`       — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`     — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`       — (O) set to 1 if any pixels are null
+/// * `output`        — (O) array of converted pixels
+/// * `status`        — (IO) error status
 fn unquantize_i4r4(
-    row: c_long,              /* tile number = row number in table    */
-    input: &[INT32BIT],       /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[INT32BIT],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: INT32BIT,             /* I - value of FITS TNonen keyword if any */
-    nullval: f32,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f32],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: INT32BIT,
+    nullval: f32,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f32],
+    status: &mut c_int,
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10441,24 +10857,39 @@ fn unquantize_i4r4(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Unquantize byte values into the scaled floating point values
+///
+/// # Parameters
+///
+/// * `row`            — tile number = row number in table
+/// * `input`          — (I) array of values to be converted
+/// * `ntodo`          — (I) number of elements in the array
+/// * `scale`          — (I) FITS TSCALn or BSCALE value
+/// * `zero`           — (I) FITS TZEROn or BZERO value
+/// * `_dither_method` — (I) dithering method to use
+/// * `nullcheck`      — (I) null checking code; 0 = don't check
+/// * `tnull`          — (I) value of FITS TNonen keyword if any
+/// * `nullval`        — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`      — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`        — (O) set to 1 if any pixels are null
+/// * `output`         — (O) array of converted pixels
+/// * `status`         — (IO) error status
 fn unquantize_i1r8(
-    row: c_long,              /* tile number = row number in table  */
-    input: &[c_uchar],        /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    _dither_method: c_int,    /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[c_uchar],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    _dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: c_uchar,              /* I - value of FITS TNonen keyword if any */
-    nullval: f64,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f64],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: c_uchar,
+    nullval: f64,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f64],
+    status: &mut c_int,
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10533,26 +10964,40 @@ fn unquantize_i1r8(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `row`            — tile number = row number in table
+/// * `input`          — (I) array of values to be converted
+/// * `ntodo`          — (I) number of elements in the array
+/// * `scale`          — (I) FITS TSCALn or BSCALE value
+/// * `zero`           — (I) FITS TZEROn or BZERO value
+/// * `_dither_method` — (I) dithering method to use
+/// * `nullcheck`      — (I) null checking code; 0 = don't check
+/// * `tnull`          — (I) value of FITS TNonen keyword if any
+/// * `nullval`        — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`      — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`        — (O) set to 1 if any pixels are null
+/// * `output`         — (O) array of converted pixels
+/// * `status`         — (IO) error status
 fn unquantize_i2r8(
-    row: c_long,              /* tile number = row number in table  */
-    input: &[c_short],        /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    _dither_method: c_int,    /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[c_short],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    _dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: c_short,              /* I - value of FITS TNonen keyword if any */
-    nullval: f64,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f64],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
-                                 /*
-                                 Unquantize short integer values into the scaled floating point values
-                                 */
+    tnull: c_short,
+    nullval: f64,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f64],
+    status: &mut c_int,
+    /*
+    Unquantize short integer values into the scaled floating point values
+    */
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10625,24 +11070,39 @@ fn unquantize_i2r8(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Unquantize int integer values into the scaled floating point values
+///
+/// # Parameters
+///
+/// * `row`           — tile number = row number in table
+/// * `input`         — (I) array of values to be converted
+/// * `ntodo`         — (I) number of elements in the array
+/// * `scale`         — (I) FITS TSCALn or BSCALE value
+/// * `zero`          — (I) FITS TZEROn or BZERO value
+/// * `dither_method` — (I) dithering method to use
+/// * `nullcheck`     — (I) null checking code; 0 = don't check
+/// * `tnull`         — (I) value of FITS TNonen keyword if any
+/// * `nullval`       — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`     — (I) bad pixel array, if nullcheck = 2
+/// * `anynull`       — (O) set to 1 if any pixels are null
+/// * `output`        — (O) array of converted pixels
+/// * `status`        — (IO) error status
 fn unquantize_i4r8(
-    row: c_long,              /* tile number = row number in table    */
-    input: &[INT32BIT],       /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    dither_method: c_int,     /* I - dithering method to use             */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    row: c_long,
+    input: &[INT32BIT],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    dither_method: c_int,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: INT32BIT,             /* I - value of FITS TNonen keyword if any */
-    nullval: f64,                /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* I - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [f64],          /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: INT32BIT,
+    nullval: f64,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [f64],
+    status: &mut c_int,
 ) -> c_int {
     let mut nextrand: c_int = 0;
     let mut iseed: c_int = 0;
@@ -10715,8 +11175,7 @@ fn unquantize_i4r8(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert pixels that are equal to nullflag to NaNs.
+/// Convert pixels that are equal to nullflag to NaNs.
 /// Note that indata and outdata point to the same location.
 fn imcomp_float2nan(
     indata: &[f32],
@@ -10734,8 +11193,7 @@ fn imcomp_float2nan(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert pixels that are equal to nullflag to NaNs.
+/// Convert pixels that are equal to nullflag to NaNs.
 /// Note that indata and outdata point to the same location.
 fn imcomp_float2nan_inplace(
     indata: &mut [f32],
@@ -10752,8 +11210,7 @@ fn imcomp_float2nan_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert pixels that are equal to nullflag to NaNs.
+/// Convert pixels that are equal to nullflag to NaNs.
 /// Note that indata and outdata point to the same location.
 fn imcomp_double2nan(
     indata: &[f64],
@@ -10771,8 +11228,7 @@ fn imcomp_double2nan(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert pixels that are equal to nullflag to NaNs.
+/// Convert pixels that are equal to nullflag to NaNs.
 /// Note that indata and outdata point to the same location.
 fn imcomp_double2nan_inplace(
     indata: &mut [f64],
@@ -10793,7 +11249,6 @@ fn imcomp_double2nan_inplace(
 /*    TABLE COMPRESSION ROUTINES                                           */
 /* =-====================================================================== */
 
-/*--------------------------------------------------------------------------*/
 /// Compress the input FITS Binary Table.
 ///
 /// First divide the table into equal sized chunks (analogous to image tiles)
@@ -10847,6 +11302,17 @@ pub unsafe extern "C" fn fits_compress_table(
     }
 }
 
+/// Compress a binary table, writing the result to `outfptr`.
+///
+/// The table is transposed from row-major to column-major in chunks, so that
+/// each column's values sit together and compress well, then each column is
+/// compressed with the algorithm suited to its datatype.
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer to the input table
+/// * `outfptr` — (I) FITS file pointer to the output table
+/// * `status`  — (IO) error status
 pub fn fits_compress_table_safe(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
@@ -11352,9 +11818,7 @@ pub fn fits_compress_table_safe(
                 if coltype[ii] < 0 {
                     /* this is a variable length array (VLA) column */
 
-                    /*=========================================================================*/
                     /* variable-length array columns are a complicated special case  */
-                    /*=========================================================================*/
 
                     /* allocate memory to hold all the VLA descriptors from the input table, plus */
                     /* room to hold the descriptors to the compressed VLAs in the output table */
@@ -11868,7 +12332,6 @@ pub fn fits_compress_table_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the table that was compressed with fits_compress_table
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_uncompress_table(
@@ -11886,7 +12349,6 @@ pub unsafe extern "C" fn fits_uncompress_table(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the table that was compressed with fits_compress_table
 pub fn fits_uncompress_table_safe(
     infptr: &mut fitsfile,
@@ -11995,7 +12457,6 @@ pub fn fits_uncompress_table_safe(
             return *status;
         }
 
-        /**** get size of the uncompressed table */
         fits_read_key_lng(
             infptr,
             cs!(c"ZNAXIS1"),
@@ -12959,8 +13420,7 @@ pub fn fits_uncompress_table_safe(
         *status
     }
 }
-/*--------------------------------------------------------------------------*/
-/// shuffle the bytes in an array of 2-byte integers in the heap
+/// Shuffle the bytes in an array of 2-byte integers in the heap
 fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     let length = length as usize;
     let heap = cast_slice_mut(heap);
@@ -12988,8 +13448,7 @@ fn fits_shuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// shuffle the bytes in an array of 4-byte integers or floats
+/// Shuffle the bytes in an array of 4-byte integers or floats
 fn fits_shuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     let length = length as usize;
     let heap = cast_slice_mut(heap);
@@ -13023,8 +13482,7 @@ fn fits_shuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// shuffle the bytes in an array of 8-byte integers or doubles in the heap
+/// Shuffle the bytes in an array of 8-byte integers or doubles in the heap
 fn fits_shuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     let length = length as usize;
     let heap = cast_slice_mut(heap);
@@ -13108,7 +13566,6 @@ fn fits_shuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Undo the byte shuffling of an array of `length` values of `NBYTES` bytes each.
 ///
 /// The shuffled heap holds `NBYTES` planes of `length` bytes: every value's first
@@ -13129,31 +13586,27 @@ fn unshuffle_bytes<const NBYTES: usize>(heap: &mut [c_char], length: usize) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// unshuffle the bytes in an array of 2-byte integers
+/// Unshuffle the bytes in an array of 2-byte integers
 fn fits_unshuffle_2bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     unshuffle_bytes::<2>(heap, length as usize);
 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// unshuffle the bytes in an array of 4-byte integers or floats
+/// Unshuffle the bytes in an array of 4-byte integers or floats
 fn fits_unshuffle_4bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     unshuffle_bytes::<4>(heap, length as usize);
 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// unshuffle the bytes in an array of 8-byte integers or doubles
+/// Unshuffle the bytes in an array of 8-byte integers or doubles
 fn fits_unshuffle_8bytes(heap: &mut [c_char], length: LONGLONG, status: &mut c_int) -> c_int {
     unshuffle_bytes::<8>(heap, length as usize);
 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert the input array of 32-bit integers into an array of 64-bit integers,
 /// in place. This will overwrite the input array with the new longer array starting
 /// at the same memory location.
@@ -13227,7 +13680,6 @@ fn fits_int_to_longlong_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert the input array of 16-bit integers into an array of 32-bit integers,
 /// in place. This will overwrite the input array with the new longer array starting
 /// at the same memory location.
@@ -13302,7 +13754,6 @@ fn fits_short_to_int_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert the input array of 16-bit unsigned integers into an array of 32-bit
 /// integers, in place. This will overwrite the input array with the new longer
 /// array starting at the same memory location.
@@ -13377,7 +13828,6 @@ fn fits_ushort_to_int_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert the input array of 8-bit unsigned integers into an array of 32-bit
 /// integers, in place. This will overwrite the input array with the new longer
 /// array starting at the same memory location.
@@ -13393,7 +13843,7 @@ fn fits_ushort_to_int_inplace(
 fn fits_ubyte_to_int_inplace(
     ubytearray: &mut [c_uchar],
     length: c_long,
-    status: &mut c_int, /* */
+    status: &mut c_int,
 ) -> c_int {
     let mut ntodo: c_long;
     let mut firstelem: usize;
@@ -13451,7 +13901,6 @@ fn fits_ubyte_to_int_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert the input array of 8-bit signed integers into an array of 32-bit
 /// integers, in place. This will overwrite the input array with the new longer
 /// array starting at the same memory location.
@@ -13530,7 +13979,6 @@ fn fits_sbyte_to_int_inplace(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// The quantizing algorithms treat all N-dimensional tiles as if they
 /// were 2 dimensions (trowsize * ntrows).  This sets trowsize to the
 /// first dimensional size encountered that's > 1 (typically the X
