@@ -1,3 +1,6 @@
+//! Decomposing a `Vec` into the raw parts the C-facing structures hold.
+#![warn(missing_docs)]
+
 use core::mem::ManuallyDrop;
 
 /// Decomposes a `Vec<T>` into its raw components: `(pointer, length, capacity)`.
@@ -5,12 +8,12 @@ use core::mem::ManuallyDrop;
 /// Returns the raw pointer to the underlying data, the length of
 /// the vector (in elements), and the allocated capacity of the
 /// data (in elements). These are the same arguments in the same
-/// order as the arguments to [`from_raw_parts`].
+/// order as the arguments to [`Vec::from_raw_parts`].
 ///
 /// After calling this function, the caller is responsible for the
 /// memory previously managed by the `Vec`. The only way to do
 /// this is to convert the raw pointer, length, and capacity back
-/// into a `Vec` with the [`from_raw_parts`] function, allowing
+/// into a `Vec` with the [`Vec::from_raw_parts`] function, allowing
 /// the destructor to perform the cleanup.
 #[must_use = "losing the pointer will leak memory"]
 pub(crate) fn vec_into_raw_parts<T>(v: Vec<T>) -> (*mut T, usize, usize) {
