@@ -1,48 +1,23 @@
-/*------------------------------------------------------------------------*/
-/*                                                                        */
-/*  These routines have been modified by William Pence for use by CFITSIO */
-/*        The original files were provided by Doug Mink                   */
-/*------------------------------------------------------------------------*/
-
-/* File imhfile.c
-* August 6, 1998
-* By Doug Mink, based on Mike VanHilst's readiraf.c
-
-* Module:      imhfile.c (IRAF .imh image file reading and writing)
-* Purpose:     Read and write IRAF image files (and translate headers)
-* Subroutine:  irafrhead (filename, lfhead, fitsheader, lihead)
-*              Read IRAF image header
-* Subroutine:  irafrimage (fitsheader)
-*              Read IRAF image pixels (call after irafrhead)
-* Subroutine:	same_path (pixname, hdrname)
-*		Put filename and header path together
-* Subroutine:	iraf2fits (hdrname, irafheader, nbiraf, nbfits)
-*		Convert IRAF image header to FITS image header
-* Subroutine:  irafgeti4 (irafheader, offset)
-*		Get 4-byte integer from arbitrary part of IRAF header
-* Subroutine:  irafgetc2 (irafheader, offset)
-*		Get character string from arbitrary part of IRAF v.1 header
-* Subroutine:  irafgetc (irafheader, offset)
-*		Get character string from arbitrary part of IRAF header
-* Subroutine:  iraf2str (irafstring, nchar)
-* 		Convert 2-byte/char IRAF string to 1-byte/char string
-* Subroutine:	irafswap (bitpix,string,nbytes)
-*		Swap bytes in string in place, with FITS bits/pixel code
-* Subroutine:	irafswap2 (string,nbytes)
-*		Swap bytes in string in place
-* Subroutine	irafswap4 (string,nbytes)
-*		Reverse bytes of Integer*4 or Real*4 vector in place
-* Subroutine	irafswap8 (string,nbytes)
-*		Reverse bytes of Real*8 vector in place
-
-
-* Copyright:   2000 Smithsonian Astrophysical Observatory
-*              You may do anything you like with this file except remove
-*              this copyright.  The Smithsonian Astrophysical Observatory
-*              makes no representations about the suitability of this
-*              software for any purpose.  It is provided "as is" without
-*              express or implied warranty.
-*/
+//! Reading IRAF `.imh` image files and translating their headers to FITS.
+//!
+//! An IRAF image is a pair of files: a header (`.imh`) and a pixel file, whose
+//! path the header records. Opening one here reads the header, converts it into
+//! an equivalent FITS header, and reads the pixels, so that the rest of the
+//! library sees an ordinary in-memory FITS image.
+//!
+//! The two formats differ in byte order and in string representation -- IRAF
+//! v.1 headers store two bytes per character -- so most of this module is
+//! conversion rather than I/O.
+//!
+//! Based on `imhfile.c` by Doug Mink, August 6 1998, in turn based on Mike
+//! VanHilst's `readiraf.c`, modified by William Pence for use by CFITSIO.
+//!
+//! Copyright 2000 Smithsonian Astrophysical Observatory. You may do anything
+//! you like with this file except remove this copyright. The Smithsonian
+//! Astrophysical Observatory makes no representations about the suitability of
+//! this software for any purpose. It is provided "as is" without express or
+//! implied warranty.
+#![warn(missing_docs)]
 
 use crate::c_types::{c_char, c_int};
 use crate::helpers::vec_raw_parts::vec_into_raw_parts;
@@ -135,12 +110,16 @@ const MAXINT: c_int = 2147483647; /* Biggest number that can fit in long */
 static SWAPHEAD: Mutex<bool> = Mutex::new(false); /* =1 to swap data bytes of IRAF header values */
 static SWAPDATA: Mutex<bool> = Mutex::new(false); /* =1 to swap bytes in IRAF data pixels */
 
-/*--------------------------------------------------------------------------*/
 /// Delete the iraf .imh header file and the associated .pix data file
+///
+/// # Parameters
+///
+/// * `filename` — name of input file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_delete_iraf_file(
-    filename: *const c_char, /* name of input file      */
-    status: *mut c_int,      /* IO - error status       */
+    filename: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -151,12 +130,13 @@ pub unsafe extern "C" fn fits_delete_iraf_file(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the iraf .imh header file and the associated .pix data file
-pub fn fits_delete_iraf_file_safe(
-    filename: &[c_char], /* name of input file      */
-    status: &mut c_int,  /* IO - error status       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `filename` — name of input file
+/// * `status`   — (IO) error status
+pub fn fits_delete_iraf_file_safe(filename: &[c_char], status: &mut c_int) -> c_int {
     let mut lenirafhead: usize = 0;
     let mut pixfilename: [c_char; SZ_IM2PIXFILE + 1] = [0; SZ_IM2PIXFILE + 1];
 
@@ -196,15 +176,22 @@ pub fn fits_delete_iraf_file_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Driver routine that reads an IRAF image into memory, also converting
 /// it into FITS format.
+///
+/// # Parameters
+///
+/// * `filename` — name of input file
+/// * `buffptr`  — (O) memory pointer (initially ptr::null_mut())
+/// * `buffsize` — (O) size of mem buffer, in bytes
+/// * `filesize` — (O) size of FITS file, in bytes
+/// * `status`   — (IO) error status
 pub(crate) fn iraf2mem(
-    filename: &[c_char],       /* name of input file                 */
-    buffptr: *mut *mut c_char, /* O - memory pointer (initially ptr::null_mut())    */
-    buffsize: &mut usize,      /* O - size of mem buffer, in bytes        */
-    filesize: &mut usize,      /* O - size of FITS file, in bytes         */
-    status: &mut c_int,        /* IO - error status                       */
+    filename: &[c_char],
+    buffptr: *mut *mut c_char,
+    buffsize: &mut usize,
+    filesize: &mut usize,
+    status: &mut c_int,
 ) -> c_int {
     let mut lenirafhead: usize = 0;
     let buffptr = unsafe { buffptr.as_mut().expect(NULL_MSG) };
@@ -256,16 +243,16 @@ pub(crate) fn iraf2mem(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// irafrdhead  (was irafrhead in D. Mink's original code)
 /// Open and read the iraf .imh file.
 /// The imhdr format is defined in iraf/lib/imhdr.h, some of which defines or mimicked, above.
 // `std::io::ErrorKind` is retained deliberately: the `core::io` equivalent is still unstable.
 #[allow(clippy::std_instead_of_core)]
-fn irafrdhead(
-    filename: &[c_char], /* Name of IRAF header file */
-    lihead: &mut usize,  /* Length of IRAF image header in bytes (returned) */
-) -> Result<Vec<c_char>, Error> {
+/// # Parameters
+///
+/// * `filename` — Name of IRAF header file
+/// * `lihead`   — Length of IRAF image header in bytes (returned)
+fn irafrdhead(filename: &[c_char], lihead: &mut usize) -> Result<Vec<c_char>, Error> {
     use std::io::ErrorKind;
 
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -353,11 +340,15 @@ fn irafrdhead(
     Ok(irafheader)
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `buffptr`  — FITS image header (filled)
+/// * `buffsize` — allocated size of the buffer
+/// * `filesize` — actual size of the FITS file
 fn irafrdimage(
-    buffptr: &mut Vec<c_char>, /* FITS image header (filled) */
-    buffsize: &mut usize,      /* allocated size of the buffer */
-    filesize: &mut usize,      /* actual size of the FITS file */
+    buffptr: &mut Vec<c_char>,
+    buffsize: &mut usize,
+    filesize: &mut usize,
     status: &mut c_int,
 ) -> c_int {
     let mut nax: c_int = 1;
@@ -568,7 +559,6 @@ fn irafrdimage(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return IRAF image format version number from magic word in IRAF header
 fn head_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_int {
     /* Check header file magic word */
@@ -583,7 +573,6 @@ fn head_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_in
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return IRAF image format version number from magic word in IRAF pixel file
 fn pix_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_int {
     /* Check pixel file header magic word */
@@ -598,14 +587,15 @@ fn pix_version(irafheader: &[c_char] /* IRAF image header from file */) -> c_int
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Verify that file is valid IRAF imhdr or impix by checking first 5 chars
 /// Returns 0 on success, 1 on failure
-fn irafncmp(
-    irafheader: &[c_char], /* IRAF image header from file */
-    teststring: &[c_char], /* C character string to compare */
-    nc: usize,             /* Number of characters to compate */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `irafheader` — IRAF image header from file
+/// * `teststring` — C character string to compare
+/// * `nc`         — Number of characters to compate
+fn irafncmp(irafheader: &[c_char], teststring: &[c_char], nc: usize) -> c_int {
     let line = iraf2str(irafheader, nc);
 
     if line.is_none() {
@@ -620,15 +610,23 @@ fn irafncmp(
         1
     }
 }
-/*--------------------------------------------------------------------------*/
 /// Convert IRAF image header to FITS image header, returning FITS header
+///
+/// # Parameters
+///
+/// * `hdrname`    — IRAF header file name (may be path)
+/// * `irafheader` — IRAF image header
+/// * `nbiraf`     — Number of bytes in IRAF header
+/// * `buffptr`    — pointer to the FITS header
+/// * `nbfits`     — allocated size of the FITS header buffer
+/// * `fitssize`   — Number of bytes in FITS header (returned)
 fn iraftofits(
-    hdrname: &[c_char],        /* IRAF header file name (may be path) */
-    irafheader: &[c_char],     /* IRAF image header */
-    nbiraf: usize,             /* Number of bytes in IRAF header */
-    buffptr: &mut Vec<c_char>, /* pointer to the FITS header  */
-    nbfits: &mut usize,        /* allocated size of the FITS header buffer */
-    fitssize: &mut usize,      /* Number of bytes in FITS header (returned) */
+    hdrname: &[c_char],
+    irafheader: &[c_char],
+    nbiraf: usize,
+    buffptr: &mut Vec<c_char>,
+    nbfits: &mut usize,
+    fitssize: &mut usize,
     /*  = number of bytes to the end of the END keyword */
     status: &mut c_int,
 ) -> c_int {
@@ -1051,12 +1049,17 @@ fn iraftofits(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get the IRAF pixel file name
+///
+/// # Parameters
+///
+/// * `hdrname`     — IRAF header file name (may be path)
+/// * `irafheader`  — IRAF image header
+/// * `pixfilename` — IRAF pixel file name
 fn getirafpixname(
-    hdrname: &[c_char],         /* IRAF header file name (may be path) */
-    irafheader: &[c_char],      /* IRAF image header */
-    pixfilename: &mut [c_char], /* IRAF pixel file name */
+    hdrname: &[c_char],
+    irafheader: &[c_char],
+    pixfilename: &mut [c_char],
     status: &mut c_int,
 ) -> c_int {
     let mut newpixname = None;
@@ -1102,7 +1105,6 @@ fn getirafpixname(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /* True if `c` is a directory separator.  CFITSIO only looks for '/', but on
  * Windows header pathnames arrive with '\' separators, so accept both there;
  * otherwise the directory prefix is stripped and the pixel file can't be found. */
@@ -1110,7 +1112,6 @@ fn is_path_sep(c: c_char) -> bool {
     c == bb(b'/') || (cfg!(target_os = "windows") && c == bb(b'\\'))
 }
 
-/*--------------------------------------------------------------------------*/
 /* True if `pixname` already contains a directory separator.  CFITSIO only
  * tests for '/', which is how it decides a pixel file name is "bare" (no path)
  * and needs the header directory prepended.  On Windows a resolved absolute
@@ -1122,12 +1123,12 @@ fn has_path_sep(s: &[c_char]) -> bool {
         || (cfg!(target_os = "windows") && strchr_safe(s, bb(b'\\')).is_some())
 }
 
-/*--------------------------------------------------------------------------*/
 /* Put filename and header path together */
-fn same_path(
-    pixname: &[c_char], /* IRAF pixel file pathname */
-    hdrname: &[c_char], /* IRAF image header file pathname */
-) -> Option<Vec<c_char>> {
+/// # Parameters
+///
+/// * `pixname` — IRAF pixel file pathname
+/// * `hdrname` — IRAF image header file pathname
+fn same_path(pixname: &[c_char], hdrname: &[c_char]) -> Option<Vec<c_char>> {
     /*  WDP - 10/16/2007 - increased allocation to avoid possible overflow */
     /*    newpixname =  calloc (SZ_IM2PIXFILE, sizeof (char)); */
 
@@ -1182,17 +1183,18 @@ fn same_path(
     Some(newpixname)
 }
 
-/*--------------------------------------------------------------------------*/
 ///  check if the IRAF file is in big endian (sun) format (= 0) or not
 ///  This is done by checking the 4 byte integer in the header that
 ///  represents the iraf pixel type.  This 4-byte word is guaranteed to
 ///  have the least sig byte != 0 and the most sig byte = 0,  so if the
 ///  first byte of the word != 0, then the file in little endian format
 ///  like on an Alpha machine.                                          
-fn isirafswapped(
-    irafheader: &[c_char], /* IRAF image header */
-    offset: usize,         /* Number of bytes to skip before number */
-) -> bool {
+///
+/// # Parameters
+///
+/// * `irafheader` — IRAF image header
+/// * `offset`     — Number of bytes to skip before number
+fn isirafswapped(irafheader: &[c_char], offset: usize) -> bool {
     let mut swapped = false;
 
     swapped = irafheader[offset] != 0;
@@ -1200,11 +1202,11 @@ fn isirafswapped(
     swapped
 }
 
-/*--------------------------------------------------------------------------*/
-fn irafgeti4(
-    irafheader: &[c_char], /* IRAF image header */
-    offset: usize,         /* Number of bytes to skip before number */
-) -> c_int {
+/// # Parameters
+///
+/// * `irafheader` — IRAF image header
+/// * `offset`     — Number of bytes to skip before number
+fn irafgeti4(irafheader: &[c_char], offset: usize) -> c_int {
     let cheader = irafheader;
 
     let mut itemp: [c_int; 1] = [0; 1];
@@ -1227,25 +1229,27 @@ fn irafgeti4(
     itemp[0]
 }
 
-/*--------------------------------------------------------------------------*/
 /// IRAFGETC2 -- Get character string from arbitrary part of v.1 IRAF header
-fn irafgetc2(
-    irafheader: &[c_char], /* IRAF image header */
-    offset: usize,         /* Number of bytes to skip before string */
-    nc: usize,             /* Maximum number of characters in string */
-) -> Option<Vec<c_char>> {
+///
+/// # Parameters
+///
+/// * `irafheader` — IRAF image header
+/// * `offset`     — Number of bytes to skip before string
+/// * `nc`         — Maximum number of characters in string
+fn irafgetc2(irafheader: &[c_char], offset: usize, nc: usize) -> Option<Vec<c_char>> {
     let irafstring = irafgetc(irafheader, offset, 2 * (nc + 1));
 
     iraf2str(&irafstring.unwrap(), nc)
 }
 
-/*--------------------------------------------------------------------------*/
 /// IRAFGETC -- Get character string from arbitrary part of IRAF header
-fn irafgetc(
-    irafheader: &[c_char], /* IRAF image header */
-    offset: usize,         /* Number of bytes to skip before string */
-    nc: usize,             /* Maximum number of characters in string */
-) -> Option<Vec<c_char>> {
+///
+/// # Parameters
+///
+/// * `irafheader` — IRAF image header
+/// * `offset`     — Number of bytes to skip before string
+/// * `nc`         — Maximum number of characters in string
+fn irafgetc(irafheader: &[c_char], offset: usize, nc: usize) -> Option<Vec<c_char>> {
     let cheader = irafheader;
 
     let mut ctemp = Vec::new();
@@ -1265,12 +1269,13 @@ fn irafgetc(
     Some(ctemp)
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert IRAF 2-byte/char string to 1-byte/char string
-fn iraf2str(
-    irafstring: &[c_char], /* IRAF 2-byte/character string */
-    nchar: usize,          /* Number of characters in string */
-) -> Option<Vec<c_char>> {
+///
+/// # Parameters
+///
+/// * `irafstring` — IRAF 2-byte/character string
+/// * `nchar`      — Number of characters in string
+fn iraf2str(irafstring: &[c_char], nchar: usize) -> Option<Vec<c_char>> {
     let mut string = Vec::new();
 
     if string.try_reserve_exact(nchar + 1).is_err() {
@@ -1292,14 +1297,19 @@ fn iraf2str(
     Some(string)
 }
 
-/*--------------------------------------------------------------------------*/
 /// IRAFSWAP -- Reverse bytes of any type of vector in place
+///
+/// # Parameters
+///
+/// * `bitpix` — Number of bits per pixel
+/// * `string` — Address of starting point of bytes to swap
+/// * `nbytes` — Number of bytes to swap
 fn irafswap(
-    bitpix: c_int, /* Number of bits per pixel */
+    bitpix: c_int,
     /*  16 = short, -16 = unsigned short, 32 = int */
     /* -32 = float, -64 = double */
-    string: &mut [c_char], /* Address of starting point of bytes to swap */
-    nbytes: usize,         /* Number of bytes to swap */
+    string: &mut [c_char],
+    nbytes: usize,
 ) {
     match bitpix {
         16 => {
@@ -1336,12 +1346,13 @@ fn irafswap(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///IRAFSWAP2 -- Swap bytes in string in place
-fn irafswap2(
-    string: &mut [c_char], /* Address of starting point of bytes to swap */
-    nbytes: usize,         /* Number of bytes to swap */
-) {
+///
+/// # Parameters
+///
+/// * `string` — Address of starting point of bytes to swap
+/// * `nbytes` — Number of bytes to swap
+fn irafswap2(string: &mut [c_char], nbytes: usize) {
     let slast = nbytes;
     let mut sbyte = 0;
     while sbyte < slast {
@@ -1350,12 +1361,13 @@ fn irafswap2(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// IRAFSWAP4 -- Reverse bytes of Integer*4 or Real*4 vector in place
-fn irafswap4(
-    string: &mut [c_char], /* Address of Integer*4 or Real*4 vector */
-    nbytes: usize,         /* Number of bytes to reverse */
-) {
+///
+/// # Parameters
+///
+/// * `string` — Address of Integer*4 or Real*4 vector
+/// * `nbytes` — Number of bytes to reverse
+fn irafswap4(string: &mut [c_char], nbytes: usize) {
     let slast = nbytes;
     let mut sbyte = 0;
     while sbyte < slast {
@@ -1371,12 +1383,13 @@ fn irafswap4(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// IRAFSWAP8 -- Reverse bytes of Real*8 vector in place
-fn irafswap8(
-    string: &mut [c_char], /* Address of Real*8 vector */
-    nbytes: usize,         /* Number of bytes to reverse */
-) {
+///
+/// # Parameters
+///
+/// * `string` — Address of Real*8 vector
+/// * `nbytes` — Number of bytes to reverse
+fn irafswap8(string: &mut [c_char], nbytes: usize) {
     let slast = nbytes;
     let mut sbyte = 0;
     while sbyte < slast {
@@ -1400,7 +1413,6 @@ fn irafswap8(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 fn machswap() -> bool {
     let mut itest: [c_int; 1] = [1; 1];
     let ctest: &[c_char] = cast_slice_mut(&mut itest);
@@ -1408,24 +1420,21 @@ fn machswap() -> bool {
     ctest[0] != 0
 }
 
-/*--------------------------------------------------------------------------*/
 /*             the following routines were originally in hget.c             */
-/*--------------------------------------------------------------------------*/
 
 static LHEAD0: usize = 0;
 
-/*--------------------------------------------------------------------------*/
 /// Extract long value for variable from FITS header string
-fn hgeti4(
-    hstring: &mut [c_char], /* character string containing FITS header information
-                            in the format <keyword>= <value> {/ <comment>} */
-    keyword: &[c_char], /* character string containing the name of the keyword
-                        the value of which is returned.  hget searches for a
-                        line beginning with this string.  if "[n]" is present,
-                        the n'th token in the value is returned.
-                        (the first 8 characters must be unique) */
-    ival: &mut c_int,
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `hstring` — character string containing FITS header information in the format
+///              `<keyword>`= `<value>` {/ `<comment>`}
+/// * `keyword` — character string containing the name of the keyword the value of which
+///              is returned. hget searches for a line beginning with this string. if
+///              "`[n]`" is present, the n'th token in the value is returned. (the
+///              first 8 characters must be unique)
+fn hgeti4(hstring: &mut [c_char], keyword: &[c_char], ival: &mut c_int) -> c_int {
     let mut dval: f64 = 0.0;
     let mut minint: c_int = 0;
     let mut val: [c_char; 30] = [0; 30];
@@ -1456,19 +1465,19 @@ fn hgeti4(
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// Extract string value for variable from FITS header string
-fn hgets(
-    hstring: &mut [c_char], /* character string containing FITS header information
-                            in the format <keyword>= <value> {/ <comment>} */
-    keyword: &[c_char], /* character string containing the name of the keyword
-                        the value of which is returned.  hget searches for a
-                        line beginning with this string.  if "[n]" is present,
-                        the n'th token in the value is returned.
-                        (the first 8 characters must be unique) */
-    lstr: usize,        /* Size of str in characters */
-    str: &mut [c_char], /* String (returned) */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `hstring` — character string containing FITS header information in the format
+///              `<keyword>`= `<value>` {/ `<comment>`}
+/// * `keyword` — character string containing the name of the keyword the value of which
+///              is returned. hget searches for a line beginning with this string. if
+///              "`[n]`" is present, the n'th token in the value is returned. (the
+///              first 8 characters must be unique)
+/// * `lstr`    — Size of str in characters
+/// * `str`     — String (returned)
+fn hgets(hstring: &mut [c_char], keyword: &[c_char], lstr: usize, str: &mut [c_char]) -> c_int {
     let mut lval: usize = 0;
 
     /* Get value and comment from header string */
@@ -1490,17 +1499,17 @@ fn hgets(
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// Extract character value for variable from FITS header string
-fn hgetc(
-    hstring: &mut [c_char], /* character string containing FITS header information
-                            in the format <keyword>= <value> {/ <comment>} */
-    keyword0: &[c_char], /* character string containing the name of the keyword
-                         the value of which is returned.  hget searches for a
-                         line beginning with this string.  if "[n]" is present,
-                         the n'th token in the value is returned.
-                         (the first 8 characters must be unique) */
-) -> Option<Vec<c_char>> {
+///
+/// # Parameters
+///
+/// * `hstring`  — character string containing FITS header information in the format
+///               `<keyword>`= `<value>` {/ `<comment>`}
+/// * `keyword0` — character string containing the name of the keyword the value of
+///               which is returned. hget searches for a line beginning with this
+///               string. if "`[n]`" is present, the n'th token in the value is
+///               returned. (the first 8 characters must be unique)
+fn hgetc(hstring: &mut [c_char], keyword0: &[c_char]) -> Option<Vec<c_char>> {
     let mut cval: [c_char; 80] = [0; 80];
     // let value: Option<usize>;
     let mut squot: [c_char; 2] = [0; 2];
@@ -1665,22 +1674,24 @@ fn hgetc(
     Some(Vec::from(cval))
 }
 
-/*-------------------------------------------------------------------*/
 /// Find beginning of fillable blank line before FITS header keyword line
+///
+/// # Parameters
+///
+/// * `hstring` — character string containing fits-style header information in the
+///              format `<keyword>`= `<value>` {/ `<comment>`} the default is that each
+///              entry is 80 characters long; however, lines may be of arbitrary length
+///              terminated by nulls, carriage returns or linefeeds, if packed is true.
+/// * `keyword` — character string containing the name of the variable to be returned.
+///              ksearch searches for a line beginning with this string. The string may
+///              be a character literal or a character variable terminated by a null or
+///              '$'. it is truncated to 8 characters.
 fn blsearch(
     /* Find entry for keyword keyword in FITS header string hstring.
     (the keyword may have a maximum of eight letters)
     ptr::null_mut() is returned if the keyword is not found */
-    hstring: &mut [c_char], /* character string containing fits-style header
-                            information in the format <keyword>= <value> {/ <comment>}
-                            the default is that each entry is 80 characters long;
-                            however, lines may be of arbitrary length terminated by
-                            nulls, carriage returns or linefeeds, if packed is true.  */
-    keyword: &[c_char], /* character string containing the name of the variable
-                        to be returned.  ksearch searches for a line beginning
-                        with this string.  The string may be a character
-                        literal or a character variable terminated by a null
-                        or '$'.  it is truncated to 8 characters. */
+    hstring: &mut [c_char],
+    keyword: &[c_char],
 ) -> Option<usize> {
     let mut lhstr: usize = 0;
 
@@ -1758,22 +1769,24 @@ fn blsearch(
     if bval < pval { Some(bval) } else { None }
 }
 
-/*-------------------------------------------------------------------*/
 /// Find FITS header line containing specified keyword
+///
+/// # Parameters
+///
+/// * `hstring` — character string containing fits-style header information in the
+///              format `<keyword>`= `<value>` {/ `<comment>`} the default is that each
+///              entry is 80 characters long; however, lines may be of arbitrary length
+///              terminated by nulls, carriage returns or linefeeds, if packed is true.
+/// * `keyword` — character string containing the name of the variable to be returned.
+///              ksearch searches for a line beginning with this string. The string may
+///              be a character literal or a character variable terminated by a null or
+///              '$'. it is truncated to 8 characters.
 fn ksearch(
     /* Find entry for keyword keyword in FITS header string hstring.
     (the keyword may have a maximum of eight letters)
     ptr::null_mut() is returned if the keyword is not found */
-    hstring: &mut [c_char], /* character string containing fits-style header
-                            information in the format <keyword>= <value> {/ <comment>}
-                            the default is that each entry is 80 characters long;
-                            however, lines may be of arbitrary length terminated by
-                            nulls, carriage returns or linefeeds, if packed is true.  */
-    keyword: &[c_char], /* character string containing the name of the variable
-                        to be returned.  ksearch searches for a line beginning
-                        with this string.  The string may be a character
-                        literal or a character variable terminated by a null
-                        or '$'.  it is truncated to 8 characters. */
+    hstring: &mut [c_char],
+    keyword: &[c_char],
 ) -> Option<usize> {
     let mut icol: usize = 0;
     let mut lkey: usize = 0;
@@ -1837,23 +1850,25 @@ fn ksearch(
     pval
 }
 
-/*-------------------------------------------------------------------*/
 /// Find string s2 within null-terminated string s1
-fn strsrch(
-    s1: &[c_char], /* String to search */
-    s2: &[c_char], /* String to look for */
-) -> Option<usize> {
+///
+/// # Parameters
+///
+/// * `s1` — String to search
+/// * `s2` — String to look for
+fn strsrch(s1: &[c_char], s2: &[c_char]) -> Option<usize> {
     let ls1 = strlen_safe(s1);
     strnsrch(s1, s2, ls1)
 }
 
-/*-------------------------------------------------------------------*/
 /// Find string s2 within string s1
-fn strnsrch(
-    s1: &[c_char], /* String to search */
-    s2: &[c_char], /* String to look for */
-    ls1: usize,    /* Length of string being searched */
-) -> Option<usize> {
+///
+/// # Parameters
+///
+/// * `s1`  — String to search
+/// * `s2`  — String to look for
+/// * `ls1` — Length of string being searched
+fn strnsrch(s1: &[c_char], s2: &[c_char], ls1: usize) -> Option<usize> {
     let mut cfirst: c_char = 0;
     let mut clast: c_char = 0;
     let mut i: usize = 0;
@@ -1911,24 +1926,21 @@ fn strnsrch(
     None
 }
 
-/*-------------------------------------------------------------------*/
 /*             the following routines were originally in hget.c      */
-/*-------------------------------------------------------------------*/
 
-/*-------------------------------------------------------------------*/
 /// HPUTI4 - Set int keyword = ival in FITS header string
-fn hputi4(
-    hstring: &mut [c_char], /* character string containing FITS-style header
-                            information in the format
-                            <keyword>= <value> {/ <comment>}
-                            each entry is padded with spaces to 80 characters */
-
-    keyword: &[c_char], /* character string containing the name of the variable
-                        to be returned.  hput searches for a line beginning
-                        with this string, and if there isn't one, creates one.
-                           The first 8 characters of keyword must be unique. */
-    ival: c_int, /* int number */
-) {
+///
+/// # Parameters
+///
+/// * `hstring` — character string containing FITS-style header information in the
+///              format `<keyword>`= `<value>` {/ `<comment>`} each entry is padded
+///              with spaces to 80 characters
+/// * `keyword` — character string containing the name of the variable to be returned.
+///              hput searches for a line beginning with this string, and if there
+///              isn't one, creates one. The first 8 characters of keyword must be
+///              unique.
+/// * `ival`    — int number
+fn hputi4(hstring: &mut [c_char], keyword: &[c_char], ival: c_int) {
     let mut value: [c_char; 30] = [0; 30];
 
     /* Translate value from binary to ASCII */
@@ -1940,13 +1952,14 @@ fn hputi4(
     /* Return to calling program */
 }
 
-/*-------------------------------------------------------------------*/
 /// HPUTL - Set keyword = F if lval=0, else T, in FITS header string
-fn hputl(
-    hstring: &mut [c_char], /* FITS header */
-    keyword: &[c_char],     /* Keyword name */
-    lval: c_int,            /* logical variable (0=false, else true) */
-) {
+///
+/// # Parameters
+///
+/// * `hstring` — FITS header
+/// * `keyword` — Keyword name
+/// * `lval`    — logical variable (0=false, else true)
+fn hputl(hstring: &mut [c_char], keyword: &[c_char], lval: c_int) {
     let mut value: [c_char; 8] = [0; 8];
 
     /* Translate value from binary to ASCII */
@@ -1962,14 +1975,15 @@ fn hputl(
     /* Return to calling program */
 }
 
-/*-------------------------------------------------------------------*/
 ///  HPUTS - Set character string keyword = 'cval' in FITS header string
-fn hputs(
-    hstring: &mut [c_char], /* FITS header */
-    keyword: &[c_char],     /* Keyword name */
-    cval: &[c_char],        /* character string containing the value for variable
-                            keyword.  trailing and leading blanks are removed.  */
-) {
+///
+/// # Parameters
+///
+/// * `hstring` — FITS header
+/// * `keyword` — Keyword name
+/// * `cval`    — character string containing the value for variable keyword. trailing
+///              and leading blanks are removed.
+fn hputs(hstring: &mut [c_char], keyword: &[c_char], cval: &[c_char]) {
     let squot = 39;
     let mut value: [c_char; 70] = [0; 70];
 
@@ -1992,14 +2006,13 @@ fn hputs(
     /* Return to calling program */
 }
 
-/*---------------------------------------------------------------------*/
 /// HPUTC - Set character string keyword = value in FITS header string
-fn hputc(
-    hstring: &mut [c_char],
-    keyword: &[c_char],
-    value: &[c_char], /* character string containing the value for variable
-                      keyword.  trailing and leading blanks are removed.  */
-) {
+///
+/// # Parameters
+///
+/// * `value` — character string containing the value for variable keyword. trailing and
+///            leading blanks are removed.
+fn hputc(hstring: &mut [c_char], keyword: &[c_char], value: &[c_char]) {
     let squot: c_char = 39 as c_int as c_char;
     let mut line: [c_char; 100] = [0; 100];
     let mut newcom: [c_char; 50] = [0; 50];
@@ -2160,7 +2173,6 @@ fn hputc(
     }
 }
 
-/*-------------------------------------------------------------------*/
 /// HPUTCOM - Set comment for keyword or on line in FITS header string
 fn hputcom(hstring: &mut [c_char], keyword: &[c_char], comment: &[c_char]) {
     let mut squot: c_char = 0;
