@@ -1,3 +1,15 @@
+//! Routines that create, copy, insert and delete whole HDUs.
+//!
+//! Inserting or deleting an HDU shifts every following HDU in the file, which
+//! is why these routines rewrite the file's HDU offsets as they go. Creating an
+//! image or table extension here writes only the required keywords; the data
+//! unit is filled in by the column and image I/O routines.
+//!
+//! Ported from CFITSIO's `edithdu.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
+
 use crate::c_types::{FILE, c_char, c_int, c_long};
 use crate::helpers::cfile::CFile;
 use crate::{
@@ -28,15 +40,24 @@ use std::io::Write;
 
 use core::{cmp, ffi::CStr};
 
-/*--------------------------------------------------------------------------*/
-/// copy the CHDU from infptr to the CHDU of outfptr.
-/// This will also allocate space in the output header for MOREKY keywords
+/// Copy the current HDU from `infptr` and append it to the end of the file
+/// associated with `outfptr`.
+///
+/// Space may be reserved in the output header for `morekeys` additional
+/// keywords.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `morekeys` — (I) reserve space in output header
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcopy(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    morekeys: c_int,        /* I - reserve space in output header   */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    morekeys: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -58,14 +79,23 @@ pub unsafe extern "C" fn ffcopy(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the CHDU from infptr to the CHDU of outfptr.
-/// This will also allocate space in the output header for MOREKY keywords
+/// Copy the current HDU from `infptr` and append it to the end of the file
+/// associated with `outfptr`.
+///
+/// Space may be reserved in the output header for `morekeys` additional
+/// keywords.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `morekeys` — (I) reserve space in output header
+/// * `status`   — (IO) error status
 pub fn ffcopy_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    morekeys: c_int,        /* I - reserve space in output header   */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    morekeys: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nspace: c_int = 0;
 
@@ -104,16 +134,24 @@ pub fn ffcopy_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy all or part of the input file to the output file.
+/// Copy all or part of the input file to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`    — (I) FITS file pointer to input file
+/// * `outfptr`   — (I) FITS file pointer to output file
+/// * `previous`  — (I) copy any previous HDUs?
+/// * `current`   — (I) copy the current HDU?
+/// * `following` — (I) copy any following HDUs?
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpfl(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    previous: c_int,        /* I - copy any previous HDUs?   */
-    current: c_int,         /* I - copy the current HDU?     */
-    following: c_int,       /* I - copy any following HDUs?   */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    previous: c_int,
+    current: c_int,
+    following: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -135,15 +173,23 @@ pub unsafe extern "C" fn ffcpfl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy all or part of the input file to the output file.
+/// Copy all or part of the input file to the output file.
+///
+/// # Parameters
+///
+/// * `infptr`    — (I) FITS file pointer to input file
+/// * `outfptr`   — (I) FITS file pointer to output file
+/// * `previous`  — (I) copy any previous HDUs?
+/// * `current`   — (I) copy the current HDU?
+/// * `following` — (I) copy any following HDUs?
+/// * `status`    — (IO) error status
 pub fn ffcpfl_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    previous: c_int,        /* I - copy any previous HDUs?   */
-    current: c_int,         /* I - copy the current HDU?     */
-    following: c_int,       /* I - copy any following HDUs?   */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    previous: c_int,
+    current: c_int,
+    following: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdunum = 0;
 
@@ -191,13 +237,18 @@ pub fn ffcpfl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the header keywords from infptr to outfptr.
+/// Copy the header keywords from `infptr` to `outfptr`.
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer to input file
+/// * `outfptr` — (I) FITS file pointer to output file
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcphd(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -219,13 +270,14 @@ pub unsafe extern "C" fn ffcphd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the header keywords from infptr to outfptr.
-pub fn ffcphd_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    status: &mut c_int,     /* IO - error status     */
-) -> c_int {
+/// Copy the header keywords from `infptr` to `outfptr`.
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer to input file
+/// * `outfptr` — (I) FITS file pointer to output file
+/// * `status`  — (IO) error status
+pub fn ffcphd_safe(infptr: &mut fitsfile, outfptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut nkeys: c_int = 0;
     let mut inPrim: c_int = 0;
     let mut outPrim: c_int = 0;
@@ -398,18 +450,30 @@ pub fn ffcphd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy the table structure from an existing table HDU, but only
-/// copy a limited row range.  All header keywords from the input
-/// table are copied directly, but NAXSI2 and PCOUNT are set to their
-/// correct values.
+/// Copy the structure of an open table to a new table, optionally copying a
+/// limited range of rows.
+///
+/// All header keywords from the input table are copied directly, but `NAXIS2`
+/// and `PCOUNT` are set to their correct values. Useful when a task will filter
+/// rows before transferring them, so that a pristine output table with zero
+/// rows is wanted to start with. `nrows` may be 0. The first row of a table is
+/// row 1.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `firstrow` — (I) number of first row to copy (1 based)
+/// * `nrows`    — (I) number of rows to copy
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpht(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,        /* I - number of rows to copy  */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -421,17 +485,29 @@ pub unsafe extern "C" fn ffcpht(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy the table structure from an existing table HDU, but only
-/// copy a limited row range.  All header keywords from the input
-/// table are copied directly, but NAXSI2 and PCOUNT are set to their
-/// correct values.
+/// Copy the structure of an open table to a new table, optionally copying a
+/// limited range of rows.
+///
+/// All header keywords from the input table are copied directly, but `NAXIS2`
+/// and `PCOUNT` are set to their correct values. Useful when a task will filter
+/// rows before transferring them, so that a pristine output table with zero
+/// rows is wanted to start with. `nrows` may be 0. The first row of a table is
+/// row 1.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `firstrow` — (I) number of first row to copy (1 based)
+/// * `nrows`    — (I) number of rows to copy
+/// * `status`   — (IO) error status
 pub fn ffcpht_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,        /* I - number of rows to copy  */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -460,14 +536,24 @@ pub fn ffcpht_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the data unit from the CHDU of infptr to the CHDU of outfptr.
+/// Copy the data unit, and not the header, from the current HDU of `infptr` to
+/// the current HDU of `outfptr`.
+///
+/// This overwrites any data previously in the output HDU. A low level routine
+/// used by [`ffcopy_safe`], but also useful to an application that wants to copy
+/// the data from one file to another while modifying the header itself.
 /// This will overwrite any data already in the outfptr CHDU.
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer to input file
+/// * `outfptr` — (I) FITS file pointer to output file
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpdt(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -489,14 +575,20 @@ pub unsafe extern "C" fn ffcpdt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// copy the data unit from the CHDU of infptr to the CHDU of outfptr.
+/// Copy the data unit, and not the header, from the current HDU of `infptr` to
+/// the current HDU of `outfptr`.
+///
+/// This overwrites any data previously in the output HDU. A low level routine
+/// used by [`ffcopy_safe`], but also useful to an application that wants to copy
+/// the data from one file to another while modifying the header itself.
 /// This will overwrite any data already in the outfptr CHDU.
-pub fn ffcpdt_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    status: &mut c_int,     /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer to input file
+/// * `outfptr` — (I) FITS file pointer to output file
+/// * `status`  — (IO) error status
+pub fn ffcpdt_safe(infptr: &mut fitsfile, outfptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut nb: c_long = 0;
     let mut indatastart: LONGLONG = 0;
     let mut indataend: LONGLONG = 0;
@@ -548,13 +640,19 @@ pub fn ffcpdt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// write the data unit from the CHDU of infptr to the output file stream
+/// Write the data unit from the current HDU of `infptr` to the output file
+/// stream.
+///
+/// # Parameters
+///
+/// * `infptr`    — (I) FITS file pointer to input file
+/// * `outstream` — (I) stream to write HDU to
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffwrhdu(
-    infptr: *mut fitsfile, /* I - FITS file pointer to input file  */
-    outstream: *mut FILE,  /* I - stream to write HDU to */
-    status: *mut c_int,    /* IO - error status     */
+    infptr: *mut fitsfile,
+    outstream: *mut FILE,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -565,13 +663,14 @@ pub unsafe extern "C" fn ffwrhdu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the current HDU to the output stream.
-pub fn ffwrhdu_safe(
-    infptr: &mut fitsfile, /* I - FITS file pointer to input file  */
-    outstream: *mut FILE,  /* I - stream to write HDU to */
-    status: &mut c_int,    /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `infptr`    — (I) FITS file pointer to input file
+/// * `outstream` — (I) stream to write HDU to
+/// * `status`    — (IO) error status
+pub fn ffwrhdu_safe(infptr: &mut fitsfile, outstream: *mut FILE, status: &mut c_int) -> c_int {
     let mut hdustart: LONGLONG = 0;
     let mut hduend: LONGLONG = 0;
     let mut buffer: [c_char; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
@@ -598,15 +697,22 @@ pub fn ffwrhdu_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert an IMAGE extension following the current HDU
+/// Insert an IMAGE extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffiimg(
-    fptr: *mut fitsfile,  /* I - FITS file pointer           */
-    bitpix: c_int,        /* I - bits per pixel              */
-    naxis: c_int,         /* I - number of axes in the array */
-    naxes: *const c_long, /* I - size of each axis           */
-    status: *mut c_int,   /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -619,14 +725,21 @@ pub unsafe extern "C" fn ffiimg(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert an IMAGE extension following the current HDU
+/// Insert an IMAGE extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffiimg_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[c_long],    /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut tnaxes: [LONGLONG; 99] = [0; 99];
 
@@ -651,15 +764,22 @@ pub fn ffiimg_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert an IMAGE extension following the current HDU
+/// Insert an IMAGE extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffiimgll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer           */
-    bitpix: c_int,          /* I - bits per pixel              */
-    naxis: c_int,           /* I - number of axes in the array */
-    naxes: *const LONGLONG, /* I - size of each axis           */
-    status: *mut c_int,     /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -672,14 +792,21 @@ pub unsafe extern "C" fn ffiimgll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert an IMAGE extension following the current HDU
+/// Insert an IMAGE extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffiimgll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[LONGLONG],  /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut bytlen: c_int = 0;
     let mut nexthdu: c_int = 0;
@@ -900,20 +1027,32 @@ pub fn ffiimgll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert an ASCII table extension following the current HDU
+/// Insert an ASCII table extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of row in the table
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tbcol`   — (I) byte offset in row to each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffitab(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    naxis1: LONGLONG,            /* I - width of row in the table                */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tbcol: *const c_long,        /* I - byte offset in row to each column        */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
-    extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: *const *const c_char,
+    tbcol: *const c_long,
+    tform: *const *const c_char,
+    tunit: *const *const c_char,
+    extnmx: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -946,19 +1085,31 @@ pub unsafe extern "C" fn ffitab(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert an ASCII table extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of row in the table
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `v_ttype` — (I) name of each column
+/// * `tbcol`   — (I) byte offset in row to each column
+/// * `v_tform` — (I) value of TFORMn keyword for each column
+/// * `v_tunit` — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 pub fn ffitab_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                        */
-    naxis1: LONGLONG,              /* I - width of row in the table                */
-    naxis2: LONGLONG,              /* I - number of rows in the table              */
-    tfields: c_int,                /* I - number of columns in the table           */
-    v_ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    tbcol: Option<&[c_long]>,      /* I - byte offset in row to each column        */
-    v_tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    v_tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnmx: Option<&[c_char]>,     /* I - value of EXTNAME keyword, if any         */
-    status: &mut c_int,            /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    v_ttype: &[Option<&[c_char]>],
+    tbcol: Option<&[c_long]>,
+    v_tform: &[&[c_char]],
+    v_tunit: Option<&[Option<&[c_char]>]>,
+    extnmx: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut nunit: c_int = 0;
 
@@ -1133,19 +1284,30 @@ pub fn ffitab_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// insert a Binary table extension following the current HDU
+/// Insert a binary table extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `pcount`  — (I) size of special data area (heap)
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffibin(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
-    extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
-    pcount: LONGLONG,            /* I - size of special data area (heap)         */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: *const *const c_char,
+    tform: *const *const c_char,
+    tunit: *const *const c_char,
+    extnmx: *const c_char,
+    pcount: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1171,18 +1333,29 @@ pub unsafe extern "C" fn ffibin(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert a Binary table extension following the current HDU.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `pcount`  — (I) size of special data area (heap)
+/// * `status`  — (IO) error status
 pub fn ffibin_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnmx: Option<&[c_char]>,   /* I - value of EXTNAME keyword, if any         */
-    pcount: LONGLONG,            /* I - size of special data area (heap)         */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: &[Option<&[c_char]>],
+    tform: &[&[c_char]],
+    tunit: Option<&[Option<&[c_char]>]>,
+    extnmx: Option<&[c_char]>,
+    pcount: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut nunit: c_int = 0;
 
@@ -1353,15 +1526,20 @@ pub fn ffibin_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the CHDU.  If the CHDU is the primary array, then replace the HDU
 /// with an empty primary array with no data.   Return the
 /// type of the new CHDU after the old CHDU is deleted.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdutype` — (O) type of the new CHDU after deletion
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdhdu(
-    fptr: *mut fitsfile, /* I - FITS file pointer                   */
-    hdutype: *mut c_int, /* O - type of the new CHDU after deletion */
-    status: *mut c_int,  /* IO - error status                       */
+    fptr: *mut fitsfile,
+    hdutype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1373,15 +1551,16 @@ pub unsafe extern "C" fn ffdhdu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the CHDU.  If the CHDU is the primary array, then replace the HDU
 /// with an empty primary array with no data.   Return the
 /// type of the new CHDU after the old CHDU is deleted.
-pub fn ffdhdu_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                   */
-    hdutype: Option<&mut c_int>, /* O - type of the new CHDU after deletion */
-    status: &mut c_int,          /* IO - error status                       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdutype` — (O) type of the new CHDU after deletion
+/// * `status`  — (IO) error status
+pub fn ffdhdu_safe(fptr: &mut fitsfile, hdutype: Option<&mut c_int>, status: &mut c_int) -> c_int {
     let mut tmptype = 0;
     let mut nblocks: c_long = 0;
     let naxes: [c_long; 1] = [0; 1];
