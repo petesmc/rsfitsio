@@ -53,6 +53,43 @@
 #![deny(clippy::std_instead_of_core, clippy::std_instead_of_alloc)]
 // #![deny(clippy::unnecessary_cast)]
 
+//! A Rust port of [CFITSIO](https://heasarc.gsfc.nasa.gov/fitsio/), the
+//! reference library for reading and writing FITS files.
+//!
+//! # Layout
+//!
+//! Every public CFITSIO routine `ffxyz` exists in three forms:
+//!
+//! * `ffxyz` — a `#[no_mangle] pub unsafe extern "C" fn` C ABI entry point,
+//!   which null-checks its raw pointers and delegates. These are
+//!   `#[deprecated]` so that internal callers reach for the safe form instead.
+//! * `ffxyz_safe` — the safe implementation, taking references, slices and
+//!   `Option`s. An opened file is an `Option<Box<fitsfile>>`.
+//! * an alias under its `fits_*` spelling in [`aliases`].
+//!
+//! [`aliases::c_api`] and [`aliases::rust_api`] mirror CFITSIO's `fitsio.h` and
+//! `longnam.h` exactly, and are the intended entry point; the implementation
+//! modules are exposed mainly so that the port can be read against the original
+//! C. [`fitsio`] holds the datatypes, symbolic constants and error status
+//! codes.
+//!
+//! # Error handling
+//!
+//! Routines return a `c_int` status code and also write it through their
+//! `status` parameter; `0` means success. A non-zero status on input is
+//! generally passed straight back out, so a sequence of calls can be made
+//! without checking in between. The symbolic names are in [`fitsio`], and
+//! [`aliases::rust_api::fits_get_errstatus`] turns one into a message.
+//!
+//! # Compression
+//!
+//! The PLIO, Rice and Hcompress codecs are the separate `pliocomp`, `ricecomp`
+//! and `hcompress` crates; GZIP uses `libz-rs-sys` and BZIP2 uses
+//! `libbz2-rs-sys` behind the default `bzip2` feature. Quantization
+//! ([`quantize`]) and the tiled-image driver ([`imcompress`]) are in this
+//! crate.
+#![warn(missing_docs)]
+
 extern crate alloc;
 
 pub mod c_types;
@@ -146,8 +183,13 @@ use fitsio::{
 
 use crate::c_types::*;
 
+/// Serializes the critical sections that CFITSIO guards with `FFLOCK`.
 pub(crate) static MUTEX_LOCK: Mutex<bool> = Mutex::new(false);
 
+/// Enter a critical section, as CFITSIO's `FFLOCK` macro does.
+///
+/// Recovers from a poisoned mutex rather than panicking; see the comment in the
+/// body for why.
 pub(crate) fn FFLOCK<'a>() -> MutexGuard<'a, bool> {
     // Recover from a poisoned mutex rather than panicking. The guarded value is
     // just a sentinel bool used to serialize critical sections, so it isn't
@@ -159,15 +201,23 @@ pub(crate) fn FFLOCK<'a>() -> MutexGuard<'a, bool> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Leave a critical section entered with [`FFLOCK`], as CFITSIO's `FFUNLOCK`
+/// macro does.
 pub(crate) fn FFUNLOCK(p: MutexGuard<'_, bool>) {
     drop(p);
 }
 
+/// Hands out a raw mutable pointer to `Self`, for the `extern "C"` entry
+/// points that must return one.
 pub trait ToRaw {
+    /// The raw mutable pointer to `self`.
     fn as_raw_mut(&mut self) -> *mut Self;
 }
 
+/// Flattens an optional buffer to the raw pointer the C API expects, mapping
+/// `None` to null.
 pub trait AsMutPtr<T> {
+    /// The raw pointer to the first element, or null if there is no buffer.
     fn as_mut_ptr(&self) -> *mut T;
 }
 
@@ -180,11 +230,17 @@ impl<T> AsMutPtr<T> for Option<&mut [T]> {
     }
 }
 
+/// Reinterprets a byte literal as a `c_char`, whose signedness is
+/// target-dependent.
 #[inline(always)]
 pub fn bb(n: u8) -> c_char {
     n as c_char
 }
 
+/// Formats into a `[c_char]` buffer, truncating at `$len - 1` and
+/// nul-terminating, as C's `snprintf` does.
+///
+/// Evaluates to the number of characters written, excluding the terminator.
 #[macro_export]
 macro_rules! int_snprintf {
     ($dst:expr, $len:expr, $($arg:tt)*) => {
@@ -204,6 +260,11 @@ macro_rules! int_snprintf {
     };
 }
 
+/// Borrows a `[c_char]` buffer as a string for formatting, stopping at the
+/// first nul.
+///
+/// FITS buffers can hold arbitrary bytes and may have no terminator at all, so
+/// invalid UTF-8 is replaced rather than causing a panic.
 #[macro_export]
 macro_rules! slice_to_str {
     ($e:expr) => {
@@ -218,6 +279,8 @@ macro_rules! slice_to_str {
     };
 }
 
+/// Borrows a `&CStr` literal as the `&[c_char]` the safe routines take,
+/// including its nul terminator.
 #[macro_export]
 macro_rules! cs {
     ($e: expr) => {
@@ -225,6 +288,13 @@ macro_rules! cs {
     };
 }
 
+/// Rebinds a `*const c_char` parameter as an `Option<&[c_char]>`, mapping null
+/// to `None`.
+///
+/// # Safety
+///
+/// The pointer, if non-null, must point at a nul-terminated string that stays
+/// valid for the lifetime of the binding.
 #[macro_export]
 macro_rules! nullable_slice_cstr {
     ($e: ident) => {
@@ -235,6 +305,13 @@ macro_rules! nullable_slice_cstr {
     };
 }
 
+/// Rebinds a `*mut c_char` parameter as an `Option<&mut [c_char]>`, mapping
+/// null to `None`.
+///
+/// # Safety
+///
+/// The pointer, if non-null, must point at a nul-terminated string that stays
+/// valid and uniquely borrowed for the lifetime of the binding.
 #[macro_export]
 macro_rules! nullable_slice_cstr_mut {
     ($e: ident) => {
@@ -250,6 +327,13 @@ macro_rules! nullable_slice_cstr_mut {
     };
 }
 
+/// Rebinds a non-null `*const c_char` parameter as a `&[c_char]`, including
+/// its nul terminator.
+///
+/// # Safety
+///
+/// The pointer must be non-null and point at a nul-terminated string that stays
+/// valid for the lifetime of the binding.
 #[macro_export]
 macro_rules! raw_to_slice {
     ($e: ident) => {
@@ -266,15 +350,29 @@ pub(crate) type TKeywordVecs<'a> = (
     Option<Vec<Option<&'a [c_char]>>>,
 );
 
+/// The raw `char **` column-keyword arrays a table-creation entry point
+/// receives, held together so they can be converted as a unit.
 pub(crate) struct TKeywords<'a> {
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
+    /// Number of columns in the table.
+    tfields: c_int,
+    /// Name of each column.
+    ttype: *const *const c_char,
+    /// Value of the `TFORMn` keyword for each column.
+    tform: *const *const c_char,
+    /// Value of the `TUNITn` keyword for each column.
+    tunit: *const *const c_char,
     marker: PhantomData<&'a ()>,
 }
 
 impl<'a> TKeywords<'a> {
+    /// Wraps the raw column-keyword arrays.
+    ///
+    /// # Parameters
+    ///
+    /// * `tfields` — (I) number of columns in the table
+    /// * `ttype`   — (I) name of each column
+    /// * `tform`   — (I) value of the `TFORMn` keyword for each column
+    /// * `tunit`   — (I) value of the `TUNITn` keyword for each column, or null
     pub fn new(
         tfields: c_int,
         ttype: *const *const c_char,
@@ -290,6 +388,15 @@ impl<'a> TKeywords<'a> {
         }
     }
 
+    /// Converts the raw arrays into borrowed slices.
+    ///
+    /// Returns empty vectors if `tfields` is 0 or if `ttype` or `tform` is
+    /// null, and `None` for `tunit` if that array is null.
+    ///
+    /// # Safety
+    ///
+    /// Each non-null pointer must point at `tfields` nul-terminated strings
+    /// that outlive `'a`.
     pub unsafe fn tkeywords_to_vecs(&'a self) -> TKeywordVecs<'a> {
         unsafe {
             // Handle case where tfields is 0 or pointers are null
@@ -342,6 +449,8 @@ impl<'a> TKeywords<'a> {
     }
 }
 
+/// Number of pixels in an image section running from `blc` to `trc` in steps
+/// of `inc`, along every axis.
 pub(crate) fn calculate_subsection_length(blc: &[c_long], trc: &[c_long], inc: &[c_long]) -> usize {
     assert!(blc.len() == trc.len() && blc.len() == inc.len());
 
@@ -357,6 +466,8 @@ pub(crate) fn calculate_subsection_length(blc: &[c_long], trc: &[c_long], inc: &
     acc
 }
 
+/// Number of pixels in an image section running from `blc` to `trc` with a
+/// step of one along every axis.
 pub(crate) fn calculate_subsection_length_unit(blc: &[c_long], trc: &[c_long]) -> usize {
     assert!(blc.len() == trc.len());
 
@@ -372,40 +483,69 @@ pub(crate) fn calculate_subsection_length_unit(blc: &[c_long], trc: &[c_long]) -
     acc
 }
 
+/// Borrows each `Vec` in a slice as a shared slice.
 pub(crate) fn vecs_to_slices<T>(vecs: &[Vec<T>]) -> Vec<&[T]> {
     vecs.iter().map(Vec::as_slice).collect()
 }
 
+/// Borrows each `Vec` in a slice as a mutable slice.
 pub(crate) fn vecs_to_slices_mut<T>(vecs: &mut [Vec<T>]) -> Vec<&mut [T]> {
     vecs.iter_mut().map(Vec::as_mut_slice).collect()
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
+/// How a read routine should report undefined pixels.
 pub enum NullCheckType {
-    None = 0,         // No null checking
-    SetPixel = 1,     // Set undefined pixels as a null value
-    SetNullArray = 2, // Set a null array = 1 for undefined pixels
+    /// Do no null checking.
+    None = 0,
+    /// Set undefined pixels to the caller's null value.
+    SetPixel = 1,
+    /// Set the corresponding entry of a null array to 1 for undefined pixels.
+    SetNullArray = 2,
 }
 
+/// A null value of any of the datatypes the API accepts, as read from the
+/// caller's `void *`.
+///
+/// The C passes the null value as an untyped pointer alongside a datatype code;
+/// this carries the two together so the value cannot be read at the wrong type.
 #[derive(Debug, PartialEq, Clone)]
 pub enum NullValue {
+    /// A `float` null value.
     Float(f32),
+    /// A `double` null value.
     Double(f64),
+    /// A `long` null value.
     Long(c_long),
+    /// An `unsigned long` null value.
     ULong(c_ulong),
+    /// A signed 64-bit integer null value.
     LONGLONG(LONGLONG),
+    /// An unsigned 64-bit integer null value.
     ULONGLONG(ULONGLONG),
+    /// An `int` null value.
     Int(c_int),
+    /// An `unsigned int` null value.
     UInt(c_uint),
+    /// A `short` null value.
     Short(c_short),
+    /// An `unsigned short` null value.
     UShort(c_ushort),
+    /// A signed byte null value.
     Byte(i8),
+    /// An unsigned byte null value.
     UByte(c_uchar),
+    /// A logical null value.
     Logical(c_char),
+    /// A string null value.
     String(CString),
 }
 
 impl NullValue {
+    /// The null value widened to an `f64`, for the comparisons the scaling
+    /// code does in floating point.
+    ///
+    /// Returns `0.0` for [`NullValue::String`], which has no numeric value.
     pub fn get_value_as_f64(&self) -> f64 {
         match self {
             NullValue::Float(v) => f64::from(*v),
@@ -425,6 +565,17 @@ impl NullValue {
         }
     }
 
+    /// Reads a null value of the given datatype out of a caller-supplied
+    /// pointer.
+    ///
+    /// Returns `None` if `value` is null or `datatype` is not a recognized
+    /// code; the caller decides which of those is an error.
+    ///
+    /// # Safety
+    ///
+    /// `value`, if non-null, must point at a readable value of the type
+    /// `datatype` names. It is read unaligned, since the C commonly points it
+    /// into a byte buffer.
     pub fn from_raw_ptr(datatype: c_int, value: *const c_void) -> Option<Self> {
         if value.is_null() {
             return None;
@@ -482,28 +633,57 @@ impl NullValue {
     }
 }
 
+/// A borrowed keyword value of any of the datatypes the API accepts.
+///
+/// The shared counterpart of [`KeywordDatatypeMut`], used by the routines that
+/// write a keyword whose type is chosen at run time.
 #[derive(Debug, PartialEq)]
 pub enum KeywordDatatype<'a> {
+    /// A keyword value that is an unsigned byte.
     TBYTE(&'a c_uchar),
+    /// A keyword value that is a signed byte.
     TSBYTE(&'a c_schar),
+    /// A keyword value that is a `short`.
     TSHORT(&'a c_short),
+    /// A keyword value that is an `unsigned short`.
     TUSHORT(&'a c_ushort),
+    /// A keyword value that is an `int`.
     TINT(&'a c_int),
+    /// A keyword value that is an `unsigned int`.
     TUINT(&'a c_uint),
+    /// A keyword value that is a `long`.
     TLONG(&'a c_long),
+    /// A keyword value that is an `unsigned long`.
     TULONG(&'a c_ulong),
+    /// A keyword value that is a `float`.
     TFLOAT(&'a f32),
+    /// A keyword value that is a `double`.
     TDOUBLE(&'a f64),
+    /// A keyword value that is a string.
     TSTRING(&'a [c_char]),
+    /// A keyword value that is a logical value.
     TLOGICAL(&'a c_int),
+    /// A keyword value that is a single-precision complex value.
     TCOMPLEX(&'a [f32; 2]),
+    /// A keyword value that is a double-precision complex value.
     TDBLCOMPLEX(&'a [f64; 2]),
+    /// A keyword value that is an unsigned 64-bit integer.
     TULONGLONG(&'a ULONGLONG),
+    /// A keyword value that is a signed 64-bit integer.
     TLONGLONG(&'a LONGLONG),
+    /// The datatype code was not recognized; it is carried through so the
+    /// caller can report it.
     INVALID(c_int),
 }
 
 impl KeywordDatatype<'_> {
+    /// Borrows a keyword value of the given datatype from a caller-supplied
+    /// pointer, yielding [`KeywordDatatype::INVALID`] for an unrecognized code.
+    ///
+    /// # Safety
+    ///
+    /// `value` must be non-null and point at a readable, correctly aligned
+    /// value of the type `datatype` names, living at least as long as `'_`.
     pub fn from_datatype(datatype: c_int, value: *const c_void) -> Self {
         match datatype {
             TBYTE => KeywordDatatype::TBYTE(unsafe { &*value.cast::<c_uchar>() }),
@@ -528,6 +708,8 @@ impl KeywordDatatype<'_> {
         }
     }
 
+    /// The datatype code this variant corresponds to, or the code that was not
+    /// recognized for [`KeywordDatatype::INVALID`].
     pub fn to_datatype_code(&self) -> c_int {
         match self {
             KeywordDatatype::TBYTE(_) => TBYTE,
@@ -551,28 +733,61 @@ impl KeywordDatatype<'_> {
     }
 }
 
+/// A mutably borrowed keyword value of any of the datatypes the API accepts.
+///
+/// The mutable counterpart of [`KeywordDatatype`], used by the routines that
+/// read a keyword into a caller-supplied location whose type is chosen at run
+/// time.
 #[derive(Debug, PartialEq)]
 pub enum KeywordDatatypeMut<'a> {
+    /// A keyword value that is an unsigned byte.
     TBYTE(&'a mut c_uchar),
+    /// A keyword value that is a signed byte.
     TSBYTE(&'a mut c_char),
+    /// A keyword value that is a `short`.
     TSHORT(&'a mut c_short),
+    /// A keyword value that is an `unsigned short`.
     TUSHORT(&'a mut c_ushort),
+    /// A keyword value that is an `int`.
     TINT(&'a mut c_int),
+    /// A keyword value that is an `unsigned int`.
     TUINT(&'a mut c_uint),
+    /// A keyword value that is a `long`.
     TLONG(&'a mut c_long),
+    /// A keyword value that is an `unsigned long`.
     TULONG(&'a mut c_ulong),
+    /// A keyword value that is a `float`.
     TFLOAT(&'a mut f32),
+    /// A keyword value that is a `double`.
     TDOUBLE(&'a mut f64),
+    /// A keyword value that is a string.
     TSTRING(&'a mut [c_char; FLEN_VALUE]),
+    /// A keyword value that is a logical value.
     TLOGICAL(&'a mut c_int),
+    /// A keyword value that is a single-precision complex value.
     TCOMPLEX(&'a mut [f32; 2]),
+    /// A keyword value that is a double-precision complex value.
     TDBLCOMPLEX(&'a mut [f64; 2]),
+    /// A keyword value that is an unsigned 64-bit integer.
     TULONGLONG(&'a mut ULONGLONG),
+    /// A keyword value that is a signed 64-bit integer.
     TLONGLONG(&'a mut LONGLONG),
+    /// The datatype code was not recognized; it is carried through so the
+    /// caller can report it.
     INVALID(c_int),
 }
 
 impl KeywordDatatypeMut<'_> {
+    /// Mutably borrows a keyword value of the given datatype from a
+    /// caller-supplied pointer, yielding [`KeywordDatatypeMut::INVALID`] for an
+    /// unrecognized code.
+    ///
+    /// # Safety
+    ///
+    /// `value` must be non-null and point at a writable, correctly aligned,
+    /// uniquely borrowed value of the type `datatype` names, living at least as
+    /// long as `'_`. For [`TSTRING`] it must have room for [`FLEN_VALUE`]
+    /// characters.
     pub fn from_datatype(datatype: c_int, value: *mut c_void) -> Self {
         match datatype {
             TBYTE => KeywordDatatypeMut::TBYTE(unsafe { &mut *value.cast::<c_uchar>() }),
@@ -601,6 +816,8 @@ impl KeywordDatatypeMut<'_> {
         }
     }
 
+    /// The datatype code this variant corresponds to, or the code that was not
+    /// recognized for [`KeywordDatatypeMut::INVALID`].
     pub fn to_datatype_code(&self) -> c_int {
         match self {
             KeywordDatatypeMut::TBYTE(_) => TBYTE,
@@ -624,6 +841,8 @@ impl KeywordDatatypeMut<'_> {
     }
 }
 
+/// Width in bytes of one element of a datatype, or `None` if the code is not
+/// recognized. `TSTRING` reports the width of a pointer.
 pub(crate) fn bytes_per_datatype(datatype: c_int) -> Option<usize> {
     match datatype {
         TBIT => Some(1),
@@ -647,7 +866,10 @@ pub(crate) fn bytes_per_datatype(datatype: c_int) -> Option<usize> {
     }
 }
 
-//https://stackoverflow.com/questions/65601579/parse-an-integer-ignoring-any-non-numeric-suffix
+/// Parses a leading integer, ignoring any non-numeric suffix, as C's `atoi`
+/// does.
+///
+/// See <https://stackoverflow.com/questions/65601579/parse-an-integer-ignoring-any-non-numeric-suffix>.
 fn atoi<F: FromStr>(input: &str) -> Result<F, <F as FromStr>::Err> {
     let input = input.trim();
 
@@ -670,7 +892,8 @@ fn atoi<F: FromStr>(input: &str) -> Result<F, <F as FromStr>::Err> {
     input[..end_idx].parse::<F>()
 }
 
-/// Parse a c_char slice to c_int, matching C's atoi behavior (returns 0 on error)
+/// Parses a `[c_char]` buffer as a `c_int`, matching C's `atoi`: returns 0
+/// rather than an error on anything unparseable.
 fn parse_c_int(cs: &[c_char]) -> c_int {
     // Convert c_char slice to UTF-8 string
     if let Ok(s) = str::from_utf8(cast_slice(cs)) {
@@ -681,7 +904,10 @@ fn parse_c_int(cs: &[c_char]) -> c_int {
     }
 }
 
-// https://stackoverflow.com/questions/65264069/alignment-of-floating-point-numbers-printed-in-scientific-notation
+/// Formats a `double` in scientific notation with a fixed-width exponent, so
+/// that a column of them lines up as C's `%E` does.
+///
+/// See <https://stackoverflow.com/questions/65264069/alignment-of-floating-point-numbers-printed-in-scientific-notation>.
 fn fmt_f64(num: f64, precision: usize, exp_pad: usize) -> String {
     let mut num = format!("{num:.precision$E}");
     // Safe to `unwrap` as `num` is guaranteed to contain `'e'`
@@ -696,29 +922,40 @@ fn fmt_f64(num: f64, precision: usize, exp_pad: usize) -> String {
     num.to_string()
 }
 
+/// `fopen` mode string for writing a binary file.
 const WB_MODE: *const c_char = c"wb".as_ptr().cast::<c_char>();
+/// `fopen` mode string for reading a binary file.
 const RB_MODE: *const c_char = c"rb".as_ptr().cast::<c_char>();
 
 #[cfg(not(target_os = "windows"))]
 unsafe extern "C" {
 
+    /// The C runtime's standard input stream.
     #[cfg_attr(target_os = "macos", link_name = "__stdinp")]
     pub unsafe static mut stdin: *mut FILE;
 
+    /// The C runtime's standard output stream.
     #[cfg_attr(target_os = "macos", link_name = "__stdoutp")]
     pub unsafe static mut stdout: *mut FILE;
 
+    /// The C runtime's standard error stream.
     #[cfg_attr(target_os = "macos", link_name = "__stderrp")]
     pub unsafe static mut stderr: *mut FILE;
 }
 
 #[cfg(windows)]
 unsafe extern "C" {
+    /// The Windows CRT accessor for the standard streams, which are not
+    /// exported as symbols there. Index 0 is stdin, 1 stdout, 2 stderr.
     pub unsafe fn __acrt_iob_func(idx: libc::c_uint) -> *mut FILE;
 }
 
 #[macro_export]
 #[cfg(not(target_os = "windows"))]
+/// The C runtime's standard input stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDIN {
     () => {
         $crate::stdin
@@ -727,6 +964,10 @@ macro_rules! STDIN {
 
 #[macro_export]
 #[cfg(windows)]
+/// The C runtime's standard input stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDIN {
     () => {
         $crate::__acrt_iob_func(0)
@@ -735,6 +976,10 @@ macro_rules! STDIN {
 
 #[macro_export]
 #[cfg(not(target_os = "windows"))]
+/// The C runtime's standard output stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDOUT {
     () => {
         $crate::stdout
@@ -743,6 +988,10 @@ macro_rules! STDOUT {
 
 #[macro_export]
 #[cfg(windows)]
+/// The C runtime's standard output stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDOUT {
     () => {
         $crate::__acrt_iob_func(1)
@@ -751,6 +1000,10 @@ macro_rules! STDOUT {
 
 #[macro_export]
 #[cfg(not(target_os = "windows"))]
+/// The C runtime's standard error stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDERR {
     () => {
         $crate::stderr
@@ -759,6 +1012,10 @@ macro_rules! STDERR {
 
 #[macro_export]
 #[cfg(windows)]
+/// The C runtime's standard error stream.
+///
+/// A macro because Windows has no exported symbol for it: there the streams
+/// are reached through `__acrt_iob_func`.
 macro_rules! STDERR {
     () => {
         $crate::__acrt_iob_func(2)
