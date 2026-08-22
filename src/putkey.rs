@@ -1,9 +1,22 @@
-/*  This file, putkey.rs, contains routines that write keywords to          */
-/*  a FITS header.                                                         */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that write keywords to a FITS header.
+//!
+//! The `ffpky*` family appends a keyword of a given datatype, formatting the
+//! value into the card's value field; the `ffpkn*` family writes an indexed set
+//! such as `TTYPEn`. Writing a value too long for one card uses the long-string
+//! convention, continuing it over `CONTINUE` keywords.
+//!
+//! Also here are the routines that write the required keywords for each HDU
+//! type (`ffphps`, `ffphbn`, `ffphtb`), which is how a newly created HDU gets
+//! its mandatory structure, and the number-to-string formatters the whole
+//! family is built on.
+//!
+//! Appending a keyword may need more room than the current header has, in which
+//! case a FITS block is inserted and the data that follows is moved.
+//!
+//! Ported from CFITSIO's `putkey.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use alloc::ffi::CString;
 use core::ffi::CStr;
@@ -35,18 +48,25 @@ use crate::{bb, cs, parse_c_int};
 use crate::{buffers::*, nullable_slice_cstr, raw_to_slice};
 use crate::{fitsio::*, fmt_f64};
 
-/*--------------------------------------------------------------------------*/
-/// create an IMAGE extension following the current HDU. If the
+/// Create an IMAGE extension following the current HDU. If the
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcrim(
-    fptr: *mut fitsfile,  /* I - FITS file pointer           */
-    bitpix: c_int,        /* I - bits per pixel              */
-    naxis: c_int,         /* I - number of axes in the array */
-    naxes: *const c_long, /* I - size of each axis           */
-    status: *mut c_int,   /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -62,17 +82,24 @@ pub unsafe extern "C" fn ffcrim(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// create an IMAGE extension following the current HDU. If the
+/// Create an IMAGE extension following the current HDU. If the
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffcrim_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[c_long],    /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -104,18 +131,25 @@ pub fn ffcrim_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// create an IMAGE extension following the current HDU. If the
+/// Create an IMAGE extension following the current HDU. If the
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcrimll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer           */
-    bitpix: c_int,          /* I - bits per pixel              */
-    naxis: c_int,           /* I - number of axes in the array */
-    naxes: *const LONGLONG, /* I - size of each axis           */
-    status: *mut c_int,     /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -128,17 +162,24 @@ pub unsafe extern "C" fn ffcrimll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// create an IMAGE extension following the current HDU. If the
+/// Create an IMAGE extension following the current HDU. If the
 /// current HDU is empty (contains no header keywords), then simply
 /// write the required image (or primary array) keywords to the current
 /// HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffcrimll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[LONGLONG],  /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -170,19 +211,30 @@ pub fn ffcrimll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create a table extension in a FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tbltype` — (I) type of table to create
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnm`   — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcrtb(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    tbltype: c_int,              /* I - type of table to create                  */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
-    extnm: *const c_char,        /* I - value of EXTNAME keyword, if any         */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    tbltype: c_int,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: *const *const c_char,
+    tform: *const *const c_char,
+    tunit: *const *const c_char,
+    extnm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -208,18 +260,29 @@ pub unsafe extern "C" fn ffcrtb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create a table extension in a FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `tbltype` — (I) type of table to create
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnm`   — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 pub fn ffcrtb_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    tbltype: c_int,              /* I - type of table to create                  */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnm: Option<&[c_char]>,    /* I - value of EXTNAME keyword, if any         */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    tbltype: c_int,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: &[Option<&[c_char]>],
+    tform: &[&[c_char]],
+    tunit: Option<&[Option<&[c_char]>]>,
+    extnm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let naxis1: LONGLONG = 0;
 
@@ -258,15 +321,22 @@ pub fn ffcrtb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// write STANDARD set of required primary header keywords
+/// Write STANDARD set of required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphps(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    bitpix: c_int,        /* I - number of bits per data value pixel      */
-    naxis: c_int,         /* I - number of axes in the data array         */
-    naxes: *const c_long, /* I - length of each data axis                 */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -283,14 +353,21 @@ pub unsafe extern "C" fn ffphps(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// write STANDARD set of required primary header keywords
+/// Write STANDARD set of required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffphps_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    bitpix: c_int,       /* I - number of bits per data value pixel      */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[c_long],    /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     let simple: c_int = 1; /* does file conform to FITS standard? 1/0  */
     let pcount: LONGLONG = 0; /* number of group parameters (usually 0)   */
@@ -304,15 +381,22 @@ pub fn ffphps_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write STANDARD set of required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphpsll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                        */
-    bitpix: c_int,          /* I - number of bits per data value pixel      */
-    naxis: c_int,           /* I - number of axes in the data array         */
-    naxes: *const LONGLONG, /* I - length of each data axis                 */
-    status: *mut c_int,     /* IO - error status                            */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -325,14 +409,21 @@ pub unsafe extern "C" fn ffphpsll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write STANDARD set of required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffphpsll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    bitpix: c_int,       /* I - number of bits per data value pixel      */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let simple: c_int = 1; /* does file conform to FITS standard? 1/0  */
     let pcount: LONGLONG = 0; /* number of group parameters (usually 0)   */
@@ -345,19 +436,30 @@ pub fn ffphpsll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// write required primary header keywords
+/// Write required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `simple` — (I) does file conform to FITS standard? 1/0
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `pcount` — (I) number of group parameters (usually 0)
+/// * `gcount` — (I) number of random groups (usually 1 or 0)
+/// * `extend` — (I) may FITS file have extensions?
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphpr(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    simple: c_int,        /* I - does file conform to FITS standard? 1/0  */
-    bitpix: c_int,        /* I - number of bits per data value pixel      */
-    naxis: c_int,         /* I - number of axes in the data array         */
-    naxes: *const c_long, /* I - length of each data axis                 */
-    pcount: LONGLONG,     /* I - number of group parameters (usually 0)   */
-    gcount: LONGLONG,     /* I - number of random groups (usually 1 or 0) */
-    extend: c_int,        /* I - may FITS file have extensions?           */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    simple: c_int,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    extend: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -376,18 +478,29 @@ pub unsafe extern "C" fn ffphpr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// write required primary header keywords
+/// Write required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `simple` — (I) does file conform to FITS standard? 1/0
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `pcount` — (I) number of group parameters (usually 0)
+/// * `gcount` — (I) number of random groups (usually 1 or 0)
+/// * `extend` — (I) may FITS file have extensions?
+/// * `status` — (IO) error status
 pub fn ffphpr_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    simple: c_int,       /* I - does file conform to FITS standard? 1/0  */
-    bitpix: c_int,       /* I - number of bits per data value pixel      */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[c_long],    /* I - length of each data axis                 */
-    pcount: LONGLONG,    /* I - number of group parameters (usually 0)   */
-    gcount: LONGLONG,    /* I - number of random groups (usually 1 or 0) */
-    extend: c_int,       /* I - may FITS file have extensions?           */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    simple: c_int,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    extend: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize = 0;
     let mut naxesll = [0 as LONGLONG; 20];
@@ -406,19 +519,30 @@ pub fn ffphpr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// write required primary header keywords
+/// Write required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `simple` — (I) does file conform to FITS standard? 1/0
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `pcount` — (I) number of group parameters (usually 0)
+/// * `gcount` — (I) number of random groups (usually 1 or 0)
+/// * `extend` — (I) may FITS file have extensions?
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphprll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                        */
-    simple: c_int,          /* I - does file conform to FITS standard? 1/0  */
-    bitpix: c_int,          /* I - number of bits per data value pixel      */
-    naxis: c_int,           /* I - number of axes in the data array         */
-    naxes: *const LONGLONG, /* I - length of each data axis                 */
-    pcount: LONGLONG,       /* I - number of group parameters (usually 0)   */
-    gcount: LONGLONG,       /* I - number of random groups (usually 1 or 0) */
-    extend: c_int,          /* I - may FITS file have extensions?           */
-    status: *mut c_int,     /* IO - error status                            */
+    fptr: *mut fitsfile,
+    simple: c_int,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    extend: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -436,18 +560,29 @@ pub unsafe extern "C" fn ffphprll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// write required primary header keywords
+/// Write required primary header keywords
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `simple` — (I) does file conform to FITS standard? 1/0
+/// * `bitpix` — (I) number of bits per data value pixel
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `pcount` — (I) number of group parameters (usually 0)
+/// * `gcount` — (I) number of random groups (usually 1 or 0)
+/// * `extend` — (I) may FITS file have extensions?
+/// * `status` — (IO) error status
 pub fn ffphprll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    simple: c_int,       /* I - does file conform to FITS standard? 1/0  */
-    bitpix: c_int,       /* I - number of bits per data value pixel      */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    pcount: LONGLONG,    /* I - number of group parameters (usually 0)   */
-    gcount: LONGLONG,    /* I - number of random groups (usually 1 or 0) */
-    extend: c_int,       /* I - may FITS file have extensions?           */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    simple: c_int,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    extend: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize = 0;
     let mut tnaxes: [c_long; 20] = [0; 20];
@@ -682,20 +817,32 @@ pub fn ffphprll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the ASCII TaBle:
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of row in the table
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tbcol`   — (I) byte offset in row to each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphtb(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    naxis1: LONGLONG,            /* I - width of row in the table                */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tbcol: *const c_long,        /* I - byte offset in row to each column        */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
-    extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: *const *const c_char,
+    tbcol: *const c_long,
+    tform: *const *const c_char,
+    tunit: *const *const c_char,
+    extnmx: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -728,19 +875,31 @@ pub unsafe extern "C" fn ffphtb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the ASCII TaBle:
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of row in the table
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tbcol`   — (I) byte offset in row to each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `status`  — (IO) error status
 pub fn ffphtb_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    naxis1: LONGLONG,            /* I - width of row in the table                */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    tbcol: Option<&[c_long]>,    /* I - byte offset in row to each column        */
-    tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnmx: Option<&[c_char]>,   /* I - value of EXTNAME keyword, if any         */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: &[Option<&[c_char]>],
+    tbcol: Option<&[c_long]>,
+    tform: &[&[c_char]],
+    tunit: Option<&[Option<&[c_char]>]>,
+    extnmx: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ncols: c_int = 0;
 
@@ -968,19 +1127,30 @@ pub fn ffphtb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the Binary Table:
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `pcount`  — (I) size of the variable length heap area
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphbn(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: *const *const c_char, /* I - name of each column                      */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    tunit: *const *const c_char, /* I - value of TUNITn keyword for each column  */
-    extnmx: *const c_char,       /* I - value of EXTNAME keyword, if any         */
-    pcount: LONGLONG,            /* I - size of the variable length heap area    */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: *const *const c_char,
+    tform: *const *const c_char,
+    tunit: *const *const c_char,
+    extnmx: *const c_char,
+    pcount: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1006,20 +1176,30 @@ pub unsafe extern "C" fn ffphbn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into the Binary Table:
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis2`  — (I) number of rows in the table
+/// * `tfields` — (I) number of columns in the table
+/// * `ttype`   — (I) name of each column
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `tunit`   — (I) value of TUNITn keyword for each column
+/// * `extnmx`  — (I) value of EXTNAME keyword, if any
+/// * `pcount`  — (I) size of the variable length heap area
+/// * `status`  — (IO) error status
 pub fn ffphbn_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                        */
-    naxis2: LONGLONG,            /* I - number of rows in the table              */
-    tfields: c_int,              /* I - number of columns in the table           */
-    ttype: &[Option<&[c_char]>], /* I - name of each column                      */
-    tform: &[&[c_char]],         /* I - value of TFORMn keyword for each column  */
-    tunit: Option<&[Option<&[c_char]>]>, /* I - value of TUNITn keyword for each column  */
-    extnmx: Option<&[c_char]>,   /* I - value of EXTNAME keyword, if any         */
-    pcount: LONGLONG,            /* I - size of the variable length heap area    */
-    status: &mut c_int,          /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis2: LONGLONG,
+    tfields: c_int,
+    ttype: &[Option<&[c_char]>],
+    tform: &[&[c_char]],
+    tunit: Option<&[Option<&[c_char]>]>,
+    extnmx: Option<&[c_char]>,
+    pcount: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut datatype: c_int = 0;
     let mut iread: c_int = 0;
@@ -1376,18 +1556,28 @@ pub fn ffphbn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into a conforming extension:
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `xtensionx` — (I) value for the XTENSION keyword
+/// * `bitpix`    — (I) value for the BIXPIX keyword
+/// * `naxis`     — (I) value for the NAXIS keyword
+/// * `naxes`     — (I) value for the NAXISn keywords
+/// * `pcount`    — (I) value for the PCOUNT keyword
+/// * `gcount`    — (I) value for the GCOUNT keyword
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphext(
-    fptr: *mut fitsfile,      /* I - FITS file pointer                       */
-    xtensionx: *const c_char, /* I - value for the XTENSION keyword          */
-    bitpix: c_int,            /* I - value for the BIXPIX keyword            */
-    naxis: c_int,             /* I - value for the NAXIS keyword             */
-    naxes: *const c_long,     /* I - value for the NAXISn keywords           */
-    pcount: LONGLONG,         /* I - value for the PCOUNT keyword            */
-    gcount: LONGLONG,         /* I - value for the GCOUNT keyword            */
-    status: *mut c_int,       /* IO - error status                           */
+    fptr: *mut fitsfile,
+    xtensionx: *const c_char,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1403,17 +1593,27 @@ pub unsafe extern "C" fn ffphext(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Put required Header keywords into a conforming extension:
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `xtensionx` — (I) value for the XTENSION keyword
+/// * `bitpix`    — (I) value for the BIXPIX keyword
+/// * `naxis`     — (I) value for the NAXIS keyword
+/// * `naxes`     — (I) value for the NAXISn keywords
+/// * `pcount`    — (I) value for the PCOUNT keyword
+/// * `gcount`    — (I) value for the GCOUNT keyword
+/// * `status`    — (IO) error status
 pub fn ffphext_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    xtensionx: &[c_char], /* I - value for the XTENSION keyword          */
-    bitpix: c_int,        /* I - value for the BIXPIX keyword            */
-    naxis: c_int,         /* I - value for the NAXIS keyword             */
-    naxes: &[c_long],     /* I - value for the NAXISn keywords           */
-    pcount: LONGLONG,     /* I - value for the PCOUNT keyword            */
-    gcount: LONGLONG,     /* I - value for the GCOUNT keyword            */
-    status: &mut c_int,   /* IO - error status                           */
+    fptr: &mut fitsfile,
+    xtensionx: &[c_char],
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    pcount: LONGLONG,
+    gcount: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut comm: [c_char; 81] = [0; 81];
@@ -1501,13 +1701,18 @@ pub fn ffphext_safe(
     *status
 }
 
-/*-------------------------------------------------------------------------*/
-/// write a keyword record (80 bytes long) to the end of the header
+/// Write a keyword record (80 bytes long) to the end of the header
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `card`   — (I) string to be written
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffprec(
-    fptr: *mut fitsfile, /* I - FITS file pointer        */
-    card: *const c_char, /* I - string to be written     */
-    status: *mut c_int,  /* IO - error status            */
+    fptr: *mut fitsfile,
+    card: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1520,13 +1725,14 @@ pub unsafe extern "C" fn ffprec(
     }
 }
 
-/*-------------------------------------------------------------------------*/
-/// write a keyword record (80 bytes long) to the end of the header
-pub fn ffprec_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer        */
-    card: &[c_char],     /* I - string to be written     */
-    status: &mut c_int,  /* IO - error status            */
-) -> c_int {
+/// Write a keyword record (80 bytes long) to the end of the header
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `card`   — (I) string to be written
+/// * `status` — (IO) error status
+pub fn ffprec_safe(fptr: &mut fitsfile, card: &[c_char], status: &mut c_int) -> c_int {
     let mut tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
     let mut ii: usize;
@@ -1605,14 +1811,20 @@ pub fn ffprec_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) a null-valued keyword and comment into the FITS header.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyu(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1626,13 +1838,19 @@ pub unsafe extern "C" fn ffpkyu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) a null-valued keyword and comment into the FITS header.  
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyu_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1649,17 +1867,24 @@ pub fn ffpkyu_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// The value string will be truncated at 68 characters which is the
 /// maximum length that will fit on a single FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkys(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: *const c_char,   /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const c_char,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1677,16 +1902,23 @@ pub unsafe extern "C" fn ffpkys(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// The value string will be truncated at 68 characters which is the
 /// maximum length that will fit on a single FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkys_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: &[c_char],        /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[c_char],
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1704,16 +1936,23 @@ pub fn ffpkys_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an integer keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyuj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: ULONGLONG,       /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: ULONGLONG,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1727,15 +1966,22 @@ pub unsafe extern "C" fn ffpkyuj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an integer keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyuj_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: ULONGLONG,        /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: ULONGLONG,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1752,17 +1998,25 @@ pub fn ffpkyuj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes a fixed float keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyf(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: f32,             /* I - keyword value                       */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: f32,
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1776,16 +2030,24 @@ pub unsafe extern "C" fn ffpkyf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes a fixed float keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyf_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: f32,              /* I - keyword value                       */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: f32,
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1802,17 +2064,25 @@ pub fn ffpkyf_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an exponential float keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkye(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: f32,             /* I - keyword value                       */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: f32,
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1826,16 +2096,24 @@ pub unsafe extern "C" fn ffpkye(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an exponential float keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkye_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: f32,              /* I - keyword value                       */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: f32,
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1852,17 +2130,25 @@ pub fn ffpkye_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes a fixed double keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyg(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: f64,             /* I - keyword value                       */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: f64,
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1876,16 +2162,24 @@ pub unsafe extern "C" fn ffpkyg(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes a fixed double keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyg_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: f64,              /* I - keyword value                       */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: f64,
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1902,17 +2196,25 @@ pub fn ffpkyg_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an exponential double keyword value.*/
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyd(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: f64,             /* I - keyword value                       */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: f64,
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1926,16 +2228,24 @@ pub unsafe extern "C" fn ffpkyd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an exponential double keyword value.*/
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyd_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: f64,              /* I - keyword value                       */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: f64,
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -1952,17 +2262,25 @@ pub fn ffpkyd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex float keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyc(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: *const [f32; 2], /* I - keyword value (real, imaginary)     */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const [f32; 2],
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1977,16 +2295,24 @@ pub unsafe extern "C" fn ffpkyc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex float keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyc_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: &[f32; 2],        /* I - keyword value (real, imaginary)     */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[f32; 2],
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -2024,17 +2350,25 @@ pub fn ffpkyc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex double keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkym(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: *const [f64; 2], /* I - keyword value (real, imaginary)     */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const [f64; 2],
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2049,16 +2383,24 @@ pub unsafe extern "C" fn ffpkym(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex double keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkym_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: &[f64; 2],        /* I - keyword value (real, imaginary)     */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[f64; 2],
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -2096,17 +2438,25 @@ pub fn ffpkym_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex float keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkfc(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: *const [f32; 2], /* I - keyword value (real, imaginary)     */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const [f32; 2],
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2121,16 +2471,24 @@ pub unsafe extern "C" fn ffpkfc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex float keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkfc_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: &[f32; 2],        /* I - keyword value (real, imaginary)     */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[f32; 2],
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -2167,17 +2525,25 @@ pub fn ffpkfc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex double keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkfm(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                   */
-    keyname: *const c_char, /* I - name of keyword to write            */
-    value: *const [f64; 2], /* I - keyword value (real, imaginary)     */
-    decim: c_int,           /* I - number of decimal places to display */
-    comm: *const c_char,    /* I - keyword comment                     */
-    status: *mut c_int,     /* IO - error status                       */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const [f64; 2],
+    decim: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2192,16 +2558,24 @@ pub unsafe extern "C" fn ffpkfm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an complex double keyword value. Format = (realvalue, imagvalue)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value (real, imaginary)
+/// * `decim`   — (I) number of decimal places to display
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkfm_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                   */
-    keyname: &[c_char],      /* I - name of keyword to write            */
-    value: &[f64; 2],        /* I - keyword value (real, imaginary)     */
-    decim: c_int,            /* I - number of decimal places to display */
-    comm: Option<&[c_char]>, /* I - keyword comment                     */
-    status: &mut c_int,      /* IO - error status                       */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[f64; 2],
+    decim: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut tmpstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -2238,7 +2612,6 @@ pub fn ffpkfm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 ///
 /// This routine is a modified version of ffpkys which supports the
@@ -2247,13 +2620,21 @@ pub fn ffpkfm_safe(
 /// have the name CONTINUE without an equal sign in column 9 of the card.
 /// This routine also supports simple string keywords which are less than
 /// 75 characters in length.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkls(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: *const c_char,   /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: *const c_char,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2272,7 +2653,6 @@ pub unsafe extern "C" fn ffpkls(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 ///
 /// This routine is a modified version of ffpkys which supports the
@@ -2281,12 +2661,20 @@ pub unsafe extern "C" fn ffpkls(
 /// have the name CONTINUE without an equal sign in column 9 of the card.
 /// This routine also supports simple string keywords which are less than
 /// 75 characters in length.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkls_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: &[c_char],        /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[c_char],
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -2297,7 +2685,6 @@ pub fn ffpkls_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 ///
 /// This routine is a modified version of ffpkys which supports the
@@ -2306,13 +2693,22 @@ pub fn ffpkls_safe(
 /// have the name CONTINUE without an equal sign in column 9 of the card.
 /// This routine also supports simple string keywords which are less than
 /// 75 characters in length.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `keyname`  — (I) name of keyword to write
+/// * `value`    — (I) keyword value
+/// * `comm`     — (I) keyword comment
+/// * `position` — (I) position to insert (-1 for end)
+/// * `status`   — (IO) error status
 pub fn fits_make_longstr_key_util(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: &[c_char],        /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    mut position: c_int,     /* I - position to insert (-1 for end) */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: &[c_char],
+    comm: Option<&[c_char]>,
+    mut position: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut commstring: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -2586,17 +2982,18 @@ pub fn fits_make_longstr_key_util(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the LONGSTRN keyword and a series of related COMMENT keywords
 /// which document that this FITS header may contain long string keyword
 /// values which are continued over multiple keywords using the HEASARC
 /// long string keyword convention.  If the LONGSTRN keyword already exists
 /// then this routine simple returns without doing anything.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffplsw(
-    fptr: *mut fitsfile, /* I - FITS file pointer  */
-    status: *mut c_int,  /* IO - error status       */
-) -> c_int {
+pub unsafe extern "C" fn ffplsw(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -2606,16 +3003,17 @@ pub unsafe extern "C" fn ffplsw(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the LONGSTRN keyword and a series of related COMMENT keywords
 /// which document that this FITS header may contain long string keyword
 /// values which are continued over multiple keywords using the HEASARC
 /// long string keyword convention.  If the LONGSTRN keyword already exists
 /// then this routine simple returns without doing anything.
-pub fn ffplsw_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer  */
-    status: &mut c_int,  /* IO - error status       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffplsw_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut valstring: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
     let mut tstatus = 0;
@@ -2672,17 +3070,24 @@ pub fn ffplsw_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Values equal to 0 will result in a False FITS keyword; any other
 /// non-zero value will result in a True FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyl(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: c_int,           /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: c_int,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2696,16 +3101,23 @@ pub unsafe extern "C" fn ffpkyl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Values equal to 0 will result in a False FITS keyword; any other
 /// non-zero value will result in a True FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyl_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: c_int,            /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: c_int,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2721,16 +3133,23 @@ pub fn ffpkyl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an integer keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyj(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: LONGLONG,        /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    value: LONGLONG,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2744,15 +3163,22 @@ pub unsafe extern "C" fn ffpkyj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes an integer keyword value.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyname` — (I) name of keyword to write
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkyj_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    value: LONGLONG,         /* I - keyword value            */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    value: LONGLONG,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2769,18 +3195,26 @@ pub fn ffpkyj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) a 'triple' precision keyword where the integer and
 /// fractional parts of the value are passed in separate parameters to
 /// increase the total amount of numerical precision.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `keyname`  — (I) name of keyword to write
+/// * `intval`   — (I) integer part of value
+/// * `fraction` — (I) fractional part of value
+/// * `comm`     — (I) keyword comment
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkyt(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    keyname: *const c_char, /* I - name of keyword to write */
-    intval: c_long,         /* I - integer part of value    */
-    fraction: f64,          /* I - fractional part of value */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    keyname: *const c_char,
+    intval: c_long,
+    fraction: f64,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2793,17 +3227,25 @@ pub unsafe extern "C" fn ffpkyt(
         ffpkyt_safe(fptr, keyname, intval, fraction, comm, status)
     }
 }
-/*--------------------------------------------------------------------------*/
 /// Write (put) a 'triple' precision keyword where the integer and
 /// fractional parts of the value are passed in separate parameters to
 /// increase the total amount of numerical precision.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `keyname`  — (I) name of keyword to write
+/// * `intval`   — (I) integer part of value
+/// * `fraction` — (I) fractional part of value
+/// * `comm`     — (I) keyword comment
+/// * `status`   — (IO) error status
 pub fn ffpkyt_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer        */
-    keyname: &[c_char],      /* I - name of keyword to write */
-    intval: c_long,          /* I - integer part of value    */
-    fraction: f64,           /* I - fractional part of value */
-    comm: Option<&[c_char]>, /* I - keyword comment          */
-    status: &mut c_int,      /* IO - error status            */
+    fptr: &mut fitsfile,
+    keyname: &[c_char],
+    intval: c_long,
+    fraction: f64,
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valstring: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -2838,15 +3280,20 @@ pub fn ffpkyt_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Write 1 or more COMMENT keywords.  If the comment string is too
 /// long to fit on a single keyword (72 chars) then it will automatically
 /// be continued on multiple CONTINUE keywords.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `comm`   — (I) comment string
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcom(
-    fptr: *mut fitsfile, /* I - FITS file pointer   */
-    comm: *const c_char, /* I - comment string      */
-    status: *mut c_int,  /* IO - error status       */
+    fptr: *mut fitsfile,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2858,15 +3305,16 @@ pub unsafe extern "C" fn ffpcom(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Write 1 or more COMMENT keywords.  If the comment string is too
 /// long to fit on a single keyword (72 chars) then it will automatically
 /// be continued on multiple CONTINUE keywords.
-pub fn ffpcom_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    comm: &[c_char],     /* I - comment string      */
-    status: &mut c_int,  /* IO - error status       */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `comm`   — (I) comment string
+/// * `status` — (IO) error status
+pub fn ffpcom_safe(fptr: &mut fitsfile, comm: &[c_char], status: &mut c_int) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
     if *status > 0 {
@@ -2888,15 +3336,20 @@ pub fn ffpcom_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Write 1 or more HISTORY keywords.  If the history string is too
 /// long to fit on a single keyword (72 chars) then it will automatically
 /// be continued on multiple HISTORY keywords.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `history` — (I) history string
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffphis(
-    fptr: *mut fitsfile,    /* I - FITS file pointer  */
-    history: *const c_char, /* I - history string     */
-    status: *mut c_int,     /* IO - error status      */
+    fptr: *mut fitsfile,
+    history: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2908,15 +3361,16 @@ pub unsafe extern "C" fn ffphis(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Write 1 or more HISTORY keywords.  If the history string is too
 /// long to fit on a single keyword (72 chars) then it will automatically
 /// be continued on multiple HISTORY keywords.
-pub fn ffphis_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer  */
-    history: &[c_char],  /* I - history string     */
-    status: &mut c_int,  /* IO - error status      */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `history` — (I) history string
+/// * `status`  — (IO) error status
+pub fn ffphis_safe(fptr: &mut fitsfile, history: &[c_char], status: &mut c_int) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
 
     if *status > 0 {
@@ -2938,14 +3392,15 @@ pub fn ffphis_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Write the DATE keyword into the FITS header.  If the keyword already
 /// exists then the date will simply be updated in the existing keyword.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffpdat(
-    fptr: *mut fitsfile, /* I - FITS file pointer  */
-    status: *mut c_int,  /* IO - error status      */
-) -> c_int {
+pub unsafe extern "C" fn ffpdat(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -2955,13 +3410,14 @@ pub unsafe extern "C" fn ffpdat(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Write the DATE keyword into the FITS header.  If the keyword already
 /// exists then the date will simply be updated in the existing keyword.
-pub fn ffpdat_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer  */
-    status: &mut c_int,  /* IO - error status      */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffpdat_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut timeref = 0;
     let mut date: [c_char; 20] = [0; 20];
     let mut tmzone: [c_char; 10] = [0; 10];
@@ -2995,20 +3451,29 @@ pub fn ffpdat_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes string keywords.
 /// The value strings will be truncated at 68 characters, and the HEASARC
 /// long string keyword convention is not supported by this routine.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of pointers to keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkns(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                    */
-    keyroot: *const c_char,      /* I - root name of keywords to write       */
-    nstart: c_int,               /* I - starting index number                */
-    nkey: c_int,                 /* I - number of keywords to write          */
-    value: *const *const c_char, /* I - array of pointers to keyword values  */
-    comm: *const *const c_char,  /* I - array of pointers to keyword comment */
-    status: *mut c_int,          /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const *const c_char,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3029,19 +3494,28 @@ pub unsafe extern "C" fn ffpkns(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes string keywords.
 /// The value strings will be truncated at 68 characters, and the HEASARC
 /// long string keyword convention is not supported by this routine.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of pointers to keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkns_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                    */
-    keyroot: &[c_char],      /* I - root name of keywords to write       */
-    nstart: c_int,           /* I - starting index number                */
-    nkey: c_int,             /* I - number of keywords to write          */
-    value: &[*const c_char], /* I - array of pointers to keyword values  */
-    comm: &[*const c_char],  /* I - array of pointers to keyword comment */
-    status: &mut c_int,      /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[*const c_char],
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3104,20 +3578,29 @@ pub fn ffpkns_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes logical keywords
 /// Values equal to zero will be written as a False FITS keyword value; any
 /// other non-zero value will result in a True FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknl(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const c_int,        /* I - array of keyword values              */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const c_int,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3138,19 +3621,28 @@ pub unsafe extern "C" fn ffpknl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes logical keywords
 /// Values equal to zero will be written as a False FITS keyword value; any
 /// other non-zero value will result in a True FITS keyword.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpknl_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[c_int],        /* I - array of keyword values              */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[c_int],
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3210,18 +3702,27 @@ pub fn ffpknl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknj(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const c_long,       /* I - array of keyword values              */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const c_long,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3242,17 +3743,26 @@ pub unsafe extern "C" fn ffpknj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpknj_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[c_long],       /* I - array of keyword values              */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[c_long],
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3318,19 +3828,29 @@ pub fn ffpknj_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed float values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknf(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const f32,          /* I - array of keyword values              */
-    decim: c_int,               /* I - number of decimals to display        */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const f32,
+    decim: c_int,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3351,18 +3871,28 @@ pub unsafe extern "C" fn ffpknf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed float values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpknf_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[f32],          /* I - array of keyword values              */
-    decim: c_int,           /* I - number of decimals to display        */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[f32],
+    decim: c_int,
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3422,19 +3952,29 @@ pub fn ffpknf_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential float values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkne(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const f32,          /* I - array of keyword values              */
-    decim: c_int,               /* I - number of decimals to display        */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const f32,
+    decim: c_int,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3455,18 +3995,28 @@ pub unsafe extern "C" fn ffpkne(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential float values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkne_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[f32],          /* I - array of keyword values              */
-    decim: c_int,           /* I - number of decimals to display        */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[f32],
+    decim: c_int,
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3526,19 +4076,29 @@ pub fn ffpkne_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed double values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpkng(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const f64,          /* I - array of keyword values              */
-    decim: c_int,               /* I - number of decimals to display        */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const f64,
+    decim: c_int,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3559,18 +4119,28 @@ pub unsafe extern "C" fn ffpkng(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes fixed double values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpkng_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[f64],          /* I - array of keyword values              */
-    decim: c_int,           /* I - number of decimals to display        */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[f64],
+    decim: c_int,
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3630,19 +4200,29 @@ pub fn ffpkng_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential double values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknd(
-    fptr: *mut fitsfile,        /* I - FITS file pointer                    */
-    keyroot: *const c_char,     /* I - root name of keywords to write       */
-    nstart: c_int,              /* I - starting index number                */
-    nkey: c_int,                /* I - number of keywords to write          */
-    value: *const f64,          /* I - array of keyword values              */
-    decim: c_int,               /* I - number of decimals to display        */
-    comm: *const *const c_char, /* I - array of pointers to keyword comment */
-    status: *mut c_int,         /* IO - error status                        */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const f64,
+    decim: c_int,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3663,18 +4243,28 @@ pub unsafe extern "C" fn ffpknd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Writes exponential double values.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords to write
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `decim`   — (I) number of decimals to display
+/// * `comm`    — (I) array of pointers to keyword comment
+/// * `status`  — (IO) error status
 pub fn ffpknd_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                    */
-    keyroot: &[c_char],     /* I - root name of keywords to write       */
-    nstart: c_int,          /* I - starting index number                */
-    nkey: c_int,            /* I - number of keywords to write          */
-    value: &[f64],          /* I - array of keyword values              */
-    decim: c_int,           /* I - number of decimals to display        */
-    comm: &[*const c_char], /* I - array of pointers to keyword comment */
-    status: &mut c_int,     /* IO - error status                        */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[f64],
+    decim: c_int,
+    comm: &[*const c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -3735,17 +4325,24 @@ pub fn ffpknd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 // Write (put) the keyword, value and comment into the FITS header.
 // Writes a keyword value with the datatype specified by the 2nd argument.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `keyname`  — (I) name of keyword to write
+/// * `value`    — (I) keyword value
+/// * `comm`     — (I) keyword comment
+/// * `status`   — (IO) error status
 pub unsafe extern "C" fn ffpky(
-    fptr: *mut fitsfile,    /* I - FITS file pointer        */
-    datatype: c_int,        /* I - datatype of the value    */
-    keyname: *const c_char, /* I - name of keyword to write */
-    value: *const c_void,   /* I - keyword value            */
-    comm: *const c_char,    /* I - keyword comment          */
-    status: *mut c_int,     /* IO - error status            */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    keyname: *const c_char,
+    value: *const c_void,
+    comm: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3761,17 +4358,24 @@ pub unsafe extern "C" fn ffpky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) the keyword, value and comment into the FITS header.
 /// Writes a keyword value with the datatype specified by the 2nd argument.
 ///
 /// Heavily modified to use safe Rust types and idioms.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `keyname`  — (I) name of keyword to write
+/// * `comm`     — (I) keyword comment
+/// * `status`   — (IO) error status
 pub fn ffpky_safe(
-    fptr: &mut fitsfile,       /* I - FITS file pointer        */
-    datatype: KeywordDatatype, /* I - datatype of the value    */
-    keyname: &[c_char],        /* I - name of keyword to write */
-    comm: Option<&[c_char]>,   /* I - keyword comment          */
-    status: &mut c_int,        /* IO - error status            */
+    fptr: &mut fitsfile,
+    datatype: KeywordDatatype,
+    keyname: &[c_char],
+    comm: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
@@ -3844,13 +4448,18 @@ pub fn ffpky_safe(
     *status
 }
 
-/*-------------------------------------------------------------------------*/
-/// read keywords from template file and append to the FITS file
+/// Read keywords from template file and append to the FITS file
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filename` — (I) name of template file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpktp(
-    fptr: *mut fitsfile,     /* I - FITS file pointer       */
-    filename: *const c_char, /* I - name of template file   */
-    status: *mut c_int,      /* IO - error status           */
+    fptr: *mut fitsfile,
+    filename: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3862,13 +4471,14 @@ pub unsafe extern "C" fn ffpktp(
     }
 }
 
-/*-------------------------------------------------------------------------*/
-/// read keywords from template file and append to the FITS file
-pub fn ffpktp_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer       */
-    filename: &[c_char], /* I - name of template file   */
-    status: &mut c_int,  /* IO - error status           */
-) -> c_int {
+/// Read keywords from template file and append to the FITS file
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filename` — (I) name of template file
+/// * `status`   — (IO) error status
+pub fn ffpktp_safe(fptr: &mut fitsfile, filename: &[c_char], status: &mut c_int) -> c_int {
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut template: [c_char; 161] = [0; 161];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -3945,15 +4555,22 @@ pub fn ffpktp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// write the TDIMnnn keyword describing the dimensionality of a column
+/// Write the TDIMnnn keyword describing the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffptdm(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    colnum: c_int,        /* I - column number                            */
-    naxis: c_int,         /* I - number of axes in the data array         */
-    naxes: *const c_long, /* I - length of each data axis                 */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3965,14 +4582,21 @@ pub unsafe extern "C" fn ffptdm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the TDIMnnn keyword describing the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffptdm_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - column number                            */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[c_long],    /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -4072,15 +4696,22 @@ pub fn ffptdm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the TDIMnnn keyword describing the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffptdmll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                      */
-    colnum: c_int,          /* I - column number                            */
-    naxis: c_int,           /* I - number of axes in the data array         */
-    naxes: *const LONGLONG, /* I - length of each data axis               */
-    status: *mut c_int,     /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4093,14 +4724,21 @@ pub unsafe extern "C" fn ffptdmll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the TDIMnnn keyword describing the dimensionality of a column
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `naxis`  — (I) number of axes in the data array
+/// * `naxes`  — (I) length of each data axis
+/// * `status` — (IO) error status
 pub fn ffptdmll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    colnum: c_int,       /* I - column number                            */
-    naxis: c_int,        /* I - number of axes in the data array         */
-    naxes: &[LONGLONG],  /* I - length of each data axis                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tdimstr: [c_char; FLEN_VALUE] = [0; FLEN_VALUE];
@@ -4203,13 +4841,18 @@ pub fn ffptdmll_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Returns the current date and time in format 'yyyy-mm-ddThh:mm:ss'.
+///
+/// # Parameters
+///
+/// * `timestr` — (O) returned system date and time string
+/// * `timeref` — (O) GMT = 0, Local time = 1
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgstm(
-    timestr: *mut c_char, /* O  - returned system date and time string  */
-    timeref: *mut c_int,  /* O - GMT = 0, Local time = 1  */
-    status: *mut c_int,   /* IO - error status      */
+    timestr: *mut c_char,
+    timeref: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4223,12 +4866,17 @@ pub unsafe extern "C" fn ffgstm(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Returns the current date and time in format 'yyyy-mm-ddThh:mm:ss'.
+///
+/// # Parameters
+///
+/// * `timestr` — (O) returned system date and time string
+/// * `timeref` — (O) GMT = 0, Local time = 1
+/// * `status`  — (IO) error status
 pub fn ffgstm_safe(
-    timestr: &mut [c_char; 20], /* O  - returned system date and time string  */
-    timeref: Option<&mut c_int>, /* O - GMT = 0, Local time = 1  */
-    status: &mut c_int,         /* IO - error status      */
+    timestr: &mut [c_char; 20],
+    timeref: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -4249,15 +4897,22 @@ pub fn ffgstm_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Construct a date character string
+///
+/// # Parameters
+///
+/// * `year`    — (I) year (0 - 9999)
+/// * `month`   — (I) month (1 - 12)
+/// * `day`     — (I) day (1 - 31)
+/// * `datestr` — (O) date string: "YYYY-MM-DD"
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdt2s(
-    year: c_int,          /* I - year (0 - 9999)           */
-    month: c_int,         /* I - month (1 - 12)            */
-    day: c_int,           /* I - day (1 - 31)              */
-    datestr: *mut c_char, /* O - date string: "YYYY-MM-DD" */
-    status: *mut c_int,   /* IO - error status             */
+    year: c_int,
+    month: c_int,
+    day: c_int,
+    datestr: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4269,14 +4924,21 @@ pub unsafe extern "C" fn ffdt2s(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Construct a date character string
+///
+/// # Parameters
+///
+/// * `year`    — (I) year (0 - 9999)
+/// * `month`   — (I) month (1 - 12)
+/// * `day`     — (I) day (1 - 31)
+/// * `datestr` — (O) date string: "YYYY-MM-DD"
+/// * `status`  — (IO) error status
 pub fn ffdt2s_safe(
-    year: c_int,                /* I - year (0 - 9999)           */
-    month: c_int,               /* I - month (1 - 12)            */
-    day: c_int,                 /* I - day (1 - 31)              */
-    datestr: &mut [c_char; 11], /* O - date string: "YYYY-MM-DD" */
-    status: &mut c_int,         /* IO - error status             */
+    year: c_int,
+    month: c_int,
+    day: c_int,
+    datestr: &mut [c_char; 11],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
@@ -4301,15 +4963,22 @@ pub fn ffdt2s_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Parse a date character string into year, month, and day values
+///
+/// # Parameters
+///
+/// * `datestr` — (I) date string: "YYYY-MM-DD" or "dd/mm/yy"
+/// * `year`    — (O) year (0 - 9999)
+/// * `month`   — (O) month (1 - 12)
+/// * `day`     — (O) day (1 - 31)
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffs2dt(
-    datestr: *const c_char, /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
-    year: *mut c_int,       /* O - year (0 - 9999)                         */
-    month: *mut c_int,      /* O - month (1 - 12)                          */
-    day: *mut c_int,        /* O - day (1 - 31)                            */
-    status: *mut c_int,     /* IO - error status                           */
+    datestr: *const c_char,
+    year: *mut c_int,
+    month: *mut c_int,
+    day: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4323,14 +4992,21 @@ pub unsafe extern "C" fn ffs2dt(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Parse a date character string into year, month, and day values
+///
+/// # Parameters
+///
+/// * `datestr` — (I) date string: "YYYY-MM-DD" or "dd/mm/yy"
+/// * `year`    — (O) year (0 - 9999)
+/// * `month`   — (O) month (1 - 12)
+/// * `day`     — (O) day (1 - 31)
+/// * `status`  — (IO) error status
 pub fn ffs2dt_safe(
-    datestr: Option<&[c_char]>, /* I - date string: "YYYY-MM-DD" or "dd/mm/yy" */
-    mut year: Option<&mut c_int>, /* O - year (0 - 9999)                         */
-    mut month: Option<&mut c_int>, /* O - month (1 - 12)                          */
-    mut day: Option<&mut c_int>, /* O - day (1 - 31)                            */
-    status: &mut c_int,         /* IO - error status                           */
+    datestr: Option<&[c_char]>,
+    mut year: Option<&mut c_int>,
+    mut month: Option<&mut c_int>,
+    mut day: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let lyear: c_int;
     let lmonth: c_int;
@@ -4441,19 +5117,30 @@ pub fn ffs2dt_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Construct a date and time character string
+///
+/// # Parameters
+///
+/// * `year`     — (I) year (0 - 9999)
+/// * `month`    — (I) month (1 - 12)
+/// * `day`      — (I) day (1 - 31)
+/// * `hour`     — (I) hour (0 - 23)
+/// * `minute`   — (I) minute (0 - 59)
+/// * `second`   — (I) second (0. - 60.9999999)
+/// * `decimals` — (I) number of decimal points to write
+/// * `datestr`  — (O) date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftm2s(
-    year: c_int,          /* I - year (0 - 9999)           */
-    month: c_int,         /* I - month (1 - 12)            */
-    day: c_int,           /* I - day (1 - 31)              */
-    hour: c_int,          /* I - hour (0 - 23)             */
-    minute: c_int,        /* I - minute (0 - 59)           */
-    second: c_double,     /* I - second (0. - 60.9999999)  */
-    decimals: c_int,      /* I - number of decimal points to write      */
-    datestr: *mut c_char, /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
-    status: *mut c_int,   /* IO - error status             */
+    year: c_int,
+    month: c_int,
+    day: c_int,
+    hour: c_int,
+    minute: c_int,
+    second: c_double,
+    decimals: c_int,
+    datestr: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4468,18 +5155,29 @@ pub unsafe extern "C" fn fftm2s(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Construct a date and time character string
+///
+/// # Parameters
+///
+/// * `year`     — (I) year (0 - 9999)
+/// * `month`    — (I) month (1 - 12)
+/// * `day`      — (I) day (1 - 31)
+/// * `hour`     — (I) hour (0 - 23)
+/// * `minute`   — (I) minute (0 - 59)
+/// * `second`   — (I) second (0. - 60.9999999)
+/// * `decimals` — (I) number of decimal points to write
+/// * `datestr`  — (O) date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0
+/// * `status`   — (IO) error status
 pub fn fftm2s_safe(
-    year: c_int,            /* I - year (0 - 9999)           */
-    month: c_int,           /* I - month (1 - 12)            */
-    day: c_int,             /* I - day (1 - 31)              */
-    hour: c_int,            /* I - hour (0 - 23)             */
-    minute: c_int,          /* I - minute (0 - 59)           */
-    second: c_double,       /* I - second (0. - 60.9999999)  */
-    decimals: c_int,        /* I - number of decimal points to write      */
-    datestr: &mut [c_char], /* O - date string: "YYYY-MM-DDThh:mm:ss.ddd" or "hh:mm:ss.ddd" if year, month day = 0 */
-    status: &mut c_int,     /* IO - error status             */
+    year: c_int,
+    month: c_int,
+    day: c_int,
+    hour: c_int,
+    minute: c_int,
+    second: c_double,
+    decimals: c_int,
+    datestr: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let width: c_int;
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -4586,20 +5284,30 @@ pub fn fftm2s_safe(
     *status
 }
 
-/*-----------------------------------------------------------------*/
 /// Parse a date character string into date and time values
+///
+/// # Parameters
+///
+/// * `datestr` — (I) date string: "YYYY-MM-DD"
+/// * `year`    — (O) year (0 - 9999)
+/// * `month`   — (O) month (1 - 12)
+/// * `day`     — (O) day (1 - 31)
+/// * `hour`    — (O) hour (0 - 23)
+/// * `minute`  — (O) minute (0 - 59)
+/// * `second`  — (O) second (0. - 60.9999999)
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffs2tm(
-    datestr: *const c_char, /* I - date string: "YYYY-MM-DD"    */
+    datestr: *const c_char,
     /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
     /*     or "dd/mm/yy"                */
-    year: *mut c_int,      /* O - year (0 - 9999)              */
-    month: *mut c_int,     /* O - month (1 - 12)               */
-    day: *mut c_int,       /* O - day (1 - 31)                 */
-    hour: *mut c_int,      /* O - hour (0 - 23)                */
-    minute: *mut c_int,    /* O - minute (0 - 59)              */
-    second: *mut c_double, /* O - second (0. - 60.9999999)     */
-    status: *mut c_int,    /* IO - error status                */
+    year: *mut c_int,
+    month: *mut c_int,
+    day: *mut c_int,
+    hour: *mut c_int,
+    minute: *mut c_int,
+    second: *mut c_double,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4626,19 +5334,29 @@ pub unsafe extern "C" fn ffs2tm(
     }
 }
 
-/*-----------------------------------------------------------------*/
 /// Parse a date character string into date and time values
+///
+/// # Parameters
+///
+/// * `datestr` — (I) date string: "YYYY-MM-DD"
+/// * `year`    — (O) year (0 - 9999)
+/// * `month`   — (O) month (1 - 12)
+/// * `day`     — (O) day (1 - 31)
+/// * `hour`    — (O) hour (0 - 23)
+/// * `minute`  — (O) minute (0 - 59)
+/// * `second`  — (O) second (0. - 60.9999999)
+/// * `status`  — (IO) error status
 pub fn ffs2tm_safe(
-    datestr: Option<&[c_char]>, /* I - date string: "YYYY-MM-DD"    */
+    datestr: Option<&[c_char]>,
     /*     or "YYYY-MM-DDThh:mm:ss.ddd" */
     /*     or "dd/mm/yy"                */
-    mut year: Option<&mut c_int>,  /* O - year (0 - 9999)              */
-    mut month: Option<&mut c_int>, /* O - month (1 - 12)               */
-    mut day: Option<&mut c_int>,   /* O - day (1 - 31)                 */
-    mut hour: Option<&mut c_int>,  /* O - hour (0 - 23)                */
-    mut minute: Option<&mut c_int>, /* O - minute (0 - 59)              */
-    mut second: Option<&mut c_double>, /* O - second (0. - 60.9999999)     */
-    status: &mut c_int,            /* IO - error status                */
+    mut year: Option<&mut c_int>,
+    mut month: Option<&mut c_int>,
+    mut day: Option<&mut c_int>,
+    mut hour: Option<&mut c_int>,
+    mut minute: Option<&mut c_int>,
+    mut second: Option<&mut c_double>,
+    status: &mut c_int,
 ) -> c_int {
     let slen: usize;
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -4812,8 +5530,7 @@ pub fn ffs2tm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// his routine is included for backward compatibility with the Fortran FITSIO library.
+/// His routine is included for backward compatibility with the Fortran FITSIO library.
 /// Get current System DaTe (GMT if available)
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgsdt(
@@ -4833,7 +5550,6 @@ pub unsafe extern "C" fn ffgsdt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine is included for backward compatibility with the Fortran FITSIO library.
 /// Get current System DaTe (GMT if available)
 pub fn ffgsdt_safe(
@@ -4852,13 +5568,14 @@ pub fn ffgsdt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert value to a null-terminated formatted string.
-pub(crate) fn ffi2c(
-    ival: LONGLONG,      /* I - value to be converted to a string */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert value to a null-terminated formatted string.
+///
+/// # Parameters
+///
+/// * `ival`   — (I) value to be converted to a string
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffi2c(ival: LONGLONG, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -4872,13 +5589,14 @@ pub(crate) fn ffi2c(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert  value to a null-terminated formatted string.
-pub(crate) fn ffu2c(
-    ival: ULONGLONG,     /* I - value to be converted to a string */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert  value to a null-terminated formatted string.
+///
+/// # Parameters
+///
+/// * `ival`   — (I) value to be converted to a string
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffu2c(ival: ULONGLONG, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -4894,15 +5612,16 @@ pub(crate) fn ffu2c(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert logical value to a null-terminated formatted string.  If the
 /// input value == 0, then the output character is the letter F, else
 /// the output character is the letter T.  The output string is null terminated.
-pub(crate) fn ffl2c(
-    lval: c_int,         /* I - value to be converted to a string */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status ) */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `lval`   — (I) value to be converted to a string
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status )
+pub(crate) fn ffl2c(lval: c_int, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -4916,8 +5635,7 @@ pub(crate) fn ffl2c(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert an input string to a quoted string. Leading spaces
+/// Convert an input string to a quoted string. Leading spaces
 /// are significant.  FITS string keyword values must be at least
 /// 8 chars long so pad out string with spaces if necessary.
 /// (*** This 8 char requirement is now obsolete.  See ffs2c_nopad
@@ -4925,11 +5643,13 @@ pub(crate) fn ffl2c(
 /// Example:   km/s ==> 'km/s    '
 /// Single quote characters in the input string will be replace by
 /// two single quote characters. e.g., o'brian ==> 'o''brian'
-pub(crate) fn ffs2c(
-    instr: &[c_char],      /* I - null terminated input string  */
-    outstr: &mut [c_char], /* O - null terminated quoted output string */
-    status: &mut c_int,    /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `instr`  — (I) null terminated input string
+/// * `outstr` — (O) null terminated quoted output string
+/// * `status` — (IO) error status
+pub(crate) fn ffs2c(instr: &[c_char], outstr: &mut [c_char], status: &mut c_int) -> c_int {
     let mut len = 0;
 
     if *status > 0 {
@@ -4977,7 +5697,6 @@ pub(crate) fn ffs2c(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This performs identically to ffs2c except that it won't pad output
 /// strings to make them a minimum of 8 chars long.  The requirement
 /// that FITS keyword string values be 8 characters is now obsolete
@@ -4985,11 +5704,13 @@ pub(crate) fn ffs2c(
 /// keep ffs2c the way it is.  A better solution would be to add another
 /// argument to ffs2c for 'pad' or 'nopad', but it is called from many other
 /// places in Heasoft outside of CFITSIO.  
-pub(crate) fn ffs2c_nopad(
-    instr: &[c_char],      /* I - null terminated input string  */
-    outstr: &mut [c_char], /* O - null terminated quoted output string */
-    status: &mut c_int,    /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `instr`  — (I) null terminated input string
+/// * `outstr` — (O) null terminated quoted output string
+/// * `status` — (IO) error status
+pub(crate) fn ffs2c_nopad(instr: &[c_char], outstr: &mut [c_char], status: &mut c_int) -> c_int {
     //size_t len, ii, jj;
 
     if *status > 0 {
@@ -5033,14 +5754,15 @@ pub(crate) fn ffs2c_nopad(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert float value to a null-terminated F format string
-pub(crate) fn ffr2f(
-    fval: f32,           /* I - value to be converted to a string */
-    decim: c_int,        /* I - number of decimal places to display */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert float value to a null-terminated F format string
+///
+/// # Parameters
+///
+/// * `fval`   — (I) value to be converted to a string
+/// * `decim`  — (I) number of decimal places to display
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffr2f(fval: f32, decim: c_int, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -5074,14 +5796,15 @@ pub(crate) fn ffr2f(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert float value to a null-terminated exponential format string
-pub(crate) fn ffr2e(
-    fval: f32,           /* I - value to be converted to a string */
-    decim: c_int,        /* I - number of decimal places to display */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert float value to a null-terminated exponential format string
+///
+/// # Parameters
+///
+/// * `fval`   — (I) value to be converted to a string
+/// * `decim`  — (I) number of decimal places to display
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffr2e(fval: f32, decim: c_int, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -5163,14 +5886,15 @@ pub(crate) fn ffr2e(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert double value to a null-terminated F format string
-pub(crate) fn ffd2f(
-    dval: f64,           /* I - value to be converted to a string */
-    decim: c_int,        /* I - number of decimal places to display */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert double value to a null-terminated F format string
+///
+/// # Parameters
+///
+/// * `dval`   — (I) value to be converted to a string
+/// * `decim`  — (I) number of decimal places to display
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffd2f(dval: f64, decim: c_int, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -5203,14 +5927,15 @@ pub(crate) fn ffd2f(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// convert double value to a null-terminated exponential format string.
-pub(crate) fn ffd2e(
-    dval: f64,           /* I - value to be converted to a string */
-    decim: c_int,        /* I - number of decimal places to display */
-    cval: &mut [c_char], /* O - character string representation of the value */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+/// Convert double value to a null-terminated exponential format string.
+///
+/// # Parameters
+///
+/// * `dval`   — (I) value to be converted to a string
+/// * `decim`  — (I) number of decimal places to display
+/// * `cval`   — (O) character string representation of the value
+/// * `status` — (IO) error status
+pub(crate) fn ffd2e(dval: f64, decim: c_int, cval: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -5280,14 +6005,20 @@ pub(crate) fn ffd2e(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Verify that the specified date is valid
+///
+/// # Parameters
+///
+/// * `year`   — (I) year
+/// * `month`  — (I) month (1-12)
+/// * `day`    — (I) day (1-31)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffverifydate(
-    year: c_int,        /* I - year */
-    month: c_int,       /* I - month (1-12) */
-    day: c_int,         /* I - day (1-31) */
-    status: *mut c_int, /* IO - error status */
+    year: c_int,
+    month: c_int,
+    day: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5297,12 +6028,14 @@ pub unsafe extern "C" fn ffverifydate(
 }
 
 /// Verify that the specified date is valid (safe version)
-pub fn ffverifydate_safe(
-    year: c_int,        /* I - year */
-    month: c_int,       /* I - month (1-12) */
-    day: c_int,         /* I - day (1-31) */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `year`   — (I) year
+/// * `month`  — (I) month (1-12)
+/// * `day`    — (I) day (1-31)
+/// * `status` — (IO) error status
+pub fn ffverifydate_safe(year: c_int, month: c_int, day: c_int, status: &mut c_int) -> c_int {
     const NDAYS: [c_int; 13] = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
@@ -5387,18 +6120,27 @@ pub fn ffverifydate_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of keyword comments
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpknjj(
-    fptr: *mut fitsfile,        /* I - FITS file pointer */
-    keyroot: *const c_char,     /* I - root name of keywords */
-    nstart: c_int,              /* I - starting index number */
-    nkey: c_int,                /* I - number of keywords to write */
-    value: *const LONGLONG,     /* I - array of keyword values */
-    comm: *const *const c_char, /* I - array of keyword comments */
-    status: *mut c_int,         /* IO - error status */
+    fptr: *mut fitsfile,
+    keyroot: *const c_char,
+    nstart: c_int,
+    nkey: c_int,
+    value: *const LONGLONG,
+    comm: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5434,17 +6176,26 @@ pub unsafe extern "C" fn ffpknjj(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write (put) an indexed array of keywords with index numbers between
 /// NSTART and (NSTART + NKEY -1) inclusive.  Write integer keywords
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `keyroot` — (I) root name of keywords
+/// * `nstart`  — (I) starting index number
+/// * `nkey`    — (I) number of keywords to write
+/// * `value`   — (I) array of keyword values
+/// * `comm`    — (I) array of keyword comments
+/// * `status`  — (IO) error status
 pub fn ffpknjj_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer */
-    keyroot: &[c_char],         /* I - root name of keywords */
-    nstart: c_int,              /* I - starting index number */
-    nkey: c_int,                /* I - number of keywords to write */
-    value: &[LONGLONG],         /* I - array of keyword values */
-    comm: Option<&[&[c_char]]>, /* I - array of keyword comments */
-    status: &mut c_int,         /* IO - error status */
+    fptr: &mut fitsfile,
+    keyroot: &[c_char],
+    nstart: c_int,
+    nkey: c_int,
+    value: &[LONGLONG],
+    comm: Option<&[&[c_char]]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut tcomment: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
