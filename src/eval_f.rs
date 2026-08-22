@@ -2397,11 +2397,17 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                 /* Release any row buffer the node still owns. Allocate_Ptrs
                 mallocs these and the Do_* kernels free their children after
                 consuming them, so whatever is left here -- the result node
-                above all -- had nothing to free it and leaked. Only computed
-                nodes own their buffer: a column node's points into
+                above all -- had nothing to free it and leaked. Computed and
+                const nodes own their buffer; a column node's points into
                 varData, which it does not own. free_node_buffer marks the
-                value Empty, so the nodes already freed above are a no-op. */
-                if (lParse.Nodes[node as usize]).is_computed() {
+                value Empty, so the nodes already freed above are a no-op.
+
+                CONST_OP is -1000, so is_computed() alone excluded const nodes
+                and left the buffers Allocate_Ptrs makes for string and bit
+                constants leaking. */
+                if (lParse.Nodes[node as usize]).is_computed()
+                    || (lParse.Nodes[node as usize]).is_const()
+                {
                     free_node_buffer(&mut (lParse.Nodes[node as usize]));
                 }
             }

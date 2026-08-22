@@ -9077,6 +9077,12 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
 
 pub(crate) unsafe fn free_node_buffer(node: &mut Node) {
     unsafe {
+        /* Only a Buffer variant owns a heap allocation. A const node keeps its
+        value inline -- Text, Long, Double -- and asking those for a buffer
+        panics, so leave them alone. */
+        if !matches!(node.value.data, NodeValue::Buffer { .. }) {
+            return;
+        }
         if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
             if !node.value.data.str_buf().is_null() {
                 /* the row pointers all point into one block, allocated at [0] */
