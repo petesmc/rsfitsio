@@ -1,8 +1,14 @@
-/*  This file, drvrfile.rs contains driver routines for disk files.         */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! The driver for ordinary disk files.
+//!
+//! The default driver, and the one behind the `file://` prefix. It also handles
+//! the compressed variants: opening a `.gz`, `.Z` or `.zip` file decompresses
+//! it into a memory file and hands that to [`crate::drvrmem`] instead, which is
+//! why a compressed FITS file is readable but not writable in place.
+//!
+//! Ported from CFITSIO's `drvrfile.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use alloc::ffi::CString;
 use core::ffi::CStr;
@@ -45,7 +51,6 @@ pub(crate) struct diskdriver {
 /* allocate diskfile handle tables */
 pub(crate) static HANDLE_TABLE: Mutex<Vec<diskdriver>> = Mutex::new(Vec::new());
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_init() -> c_int {
     let mut h = HANDLE_TABLE.lock().unwrap();
 
@@ -61,30 +66,25 @@ pub(crate) fn file_init() -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_setoptions(_options: c_int) -> c_int {
     /* do something with the options argument, to stop compiler warning */
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_getoptions(options: &mut c_int) -> c_int {
     *options = 0;
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_getversion(version: &mut c_int) -> c_int {
     *version = 10;
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_shutdown() -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int {
     let mut copyhandle = 0;
     let mut ii = 0;
@@ -176,7 +176,6 @@ pub(crate) fn file_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_i
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// lowest level routine to physically open a disk file
 pub(crate) fn file_openfile(
     filename: &[c_char],
@@ -297,7 +296,6 @@ pub(crate) fn file_openfile(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
     let mut mode: [c_char; 4] = [0; 4]; /* make sure the CWD ends with slash */
     let mut status = 0;
@@ -466,7 +464,6 @@ pub(crate) fn file_create(filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// truncate the diskfile to a new smaller size
 pub(crate) fn file_truncate(handle: c_int, filesize: usize) -> c_int {
     if HAVE_FTRUNCATE {
@@ -488,7 +485,6 @@ pub(crate) fn file_truncate(handle: c_int, filesize: usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the size of the file in bytes
 pub(crate) fn file_size(handle: c_int, filesize: &mut usize) -> c_int {
     //let h = handleTable.lock().unwrap();
@@ -505,7 +501,6 @@ pub(crate) fn file_size(handle: c_int, filesize: &mut usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// close the file
 pub(crate) fn file_close(handle: c_int) -> c_int {
     //let mut h = handleTable.lock().unwrap();
@@ -523,7 +518,6 @@ pub(crate) fn file_close(handle: c_int) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete the file from disk
 pub(crate) fn file_remove(filename: &[c_char]) -> c_int {
     let filename = CStr::from_bytes_until_nul(cast_slice(filename)).unwrap();
@@ -534,7 +528,6 @@ pub(crate) fn file_remove(filename: &[c_char]) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// flush the file
 pub(crate) fn file_flush(handle: c_int) -> c_int {
     let mut h = HANDLE_TABLE.lock().unwrap();
@@ -557,7 +550,6 @@ pub(crate) fn file_flush(handle: c_int) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// seek to position relative to start of the file
 pub(crate) fn file_seek(handle: c_int, offset: LONGLONG) -> c_int {
     //let mut h = handleTable.lock().unwrap();
@@ -566,7 +558,6 @@ pub(crate) fn file_seek(handle: c_int, offset: LONGLONG) -> c_int {
     file_seek_internal(&mut h[handle as usize], offset as u64)
 }
 
-/*--------------------------------------------------------------------------*/
 /// seek to position relative to start of the file
 fn file_seek_internal(handle: &mut diskdriver, offset: u64) -> c_int {
     //let mut h = handleTable.lock().unwrap();
@@ -582,7 +573,6 @@ fn file_seek_internal(handle: &mut diskdriver, offset: u64) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// read bytes from the current position in the file
 // clippy points ErrorKind at core::io, but that re-export is still behind the
 // unstable `core_io` feature, so the std path has to stay.
@@ -634,7 +624,6 @@ pub(crate) fn file_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// write bytes at the current position in the file
 pub(crate) fn file_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     //let h = handleTable.lock().unwrap();
@@ -659,7 +648,6 @@ pub(crate) fn file_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine opens the compressed diskfile by creating a new uncompressed
 /// file then opening it.  The input file name (the name of the compressed
 /// file) gets replaced with the name of the uncompressed file, which is
@@ -760,7 +748,6 @@ pub(crate) fn file_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &m
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test if the disk file is compressed.  Returns 1 if compressed, 0 if not.
 /// This may modify the filename string by appending a compression suffix.
 /// WARNING: Need to hope that enough memory was allocated for extending the filename
@@ -832,7 +819,6 @@ pub(crate) fn file_is_compressed(filename: &mut [c_char; FLEN_FILENAME]) -> c_in
     }
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn file_checkfile(
     urltype: &mut [c_char; MAX_PREFIX_LEN],
     infile: &mut [c_char; FLEN_FILENAME],
@@ -881,13 +867,6 @@ pub(crate) fn file_checkfile(
     0
 }
 
-/**********************************************************************/
-/**********************************************************************/
-/**********************************************************************/
-
-/****  driver routines for stream//: device (stdin or stdout)  ********/
-
-/*--------------------------------------------------------------------------*/
 /// read from stdin
 pub(crate) fn fits_stream_open(
     _filename: &mut [c_char],
@@ -899,7 +878,6 @@ pub(crate) fn fits_stream_open(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 ///  write to stdout
 pub(crate) fn fits_stream_create(
     _filename: &mut [c_char; FLEN_FILENAME],
@@ -910,7 +888,6 @@ pub(crate) fn fits_stream_create(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the size of the file in bytes
 pub(crate) fn fits_stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
     /* this operation is not supported in a stream; return large value */
@@ -918,13 +895,11 @@ pub(crate) fn fits_stream_size(_handle: c_int, filesize: &mut usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// don't have to close stdin or stdout
 pub(crate) fn fits_stream_close(_handle: c_int) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// flush the file
 pub(crate) fn fits_stream_flush(handle: c_int) -> c_int {
     if handle == 2 && std::io::stdout().flush().is_err() {
@@ -935,13 +910,11 @@ pub(crate) fn fits_stream_flush(handle: c_int) -> c_int {
 
     0
 }
-/*--------------------------------------------------------------------------*/
 /// seeking is not allowed in a stream
 pub(crate) fn fits_stream_seek(_handle: c_int, _offset: LONGLONG) -> c_int {
     1
 }
 
-/*--------------------------------------------------------------------------*/
 /// reading from stdin stream
 // clippy points ErrorKind at core::io, but that re-export is still behind the
 // unstable `core_io` feature, so the std path has to stay.
@@ -960,7 +933,6 @@ pub(crate) fn fits_stream_read(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> 
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  write bytes at the current position in the file
 pub(crate) fn fits_stream_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     if hdl != 2 {
