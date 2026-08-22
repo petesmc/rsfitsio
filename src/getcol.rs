@@ -1,9 +1,21 @@
-/*  This file, getcol.rs, contains routines that read data elements from    */
-/*  a FITS image or table.  There are generic datatype routines.           */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Generic-datatype routines that read data elements from a FITS image or
+//! table.
+//!
+//! These take a `datatype` code at run time and dispatch to the corresponding
+//! typed module -- `getcolb` for [`TBYTE`], `getcold` for [`TDOUBLE`], and so
+//! on. The typed routines do the real work; this is the layer the `fits_read_*`
+//! entry points sit on.
+//!
+//! Reading converts: the value handed back is
+//! `(the value in the file) * TSCALn + TZEROn`, cast to the requested type, so
+//! a column stored as 16-bit integers can be read as doubles. A value equal to
+//! the column's null value is reported through `anynul` and either left alone
+//! or replaced by the caller's `nulval`, depending on which form is called.
+//!
+//! Ported from CFITSIO's `getcol.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::mem;
 use core::slice;
@@ -42,7 +54,6 @@ use crate::int_snprintf;
 use crate::{NullCheckType, fitsio::*};
 use crate::{buffers::*, calculate_subsection_length};
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -50,16 +61,27 @@ use crate::{buffers::*, calculate_subsection_length};
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to read (1s based)
+/// * `nelem`    — (I) number of values to read
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpxv(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    datatype: c_int,         /* I - datatype of the value                   */
-    firstpix: *const c_long, /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,         /* I - number of values to read                */
-    nulval: *const c_void,   /* I - value for undefined pixels              */
-    array: *mut c_void,      /* O - array of values that are returned       */
-    anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const c_long,
+    nelem: LONGLONG,
+    nulval: *const c_void,
+    array: *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -83,7 +105,6 @@ pub unsafe extern "C" fn ffgpxv(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -91,15 +112,26 @@ pub unsafe extern "C" fn ffgpxv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to read (1s based)
+/// * `nelem`    — (I) number of values to read
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 pub fn ffgpxv_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstpix: &[c_long],        /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: Option<NullValue>,  /* I - value for undefined pixels              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[c_long],
+    nelem: LONGLONG,
+    nulval: Option<NullValue>,
+    array: &mut [u8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tfirstpix: [LONGLONG; 99] = [0; 99];
     let mut naxis = 0;
@@ -123,7 +155,6 @@ pub fn ffgpxv_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -136,16 +167,27 @@ pub fn ffgpxv_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to read (1s based)
+/// * `nelem`    — (I) number of values to read
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpxvll(
-    fptr: *mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: *const LONGLONG, /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,           /* I - number of values to read                */
-    nulval: *const c_void,     /* I - value for undefined pixels              */
-    array: *mut c_void,        /* O - array of values that are returned       */
-    anynul: *mut c_int,        /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,        /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const LONGLONG,
+    nelem: LONGLONG,
+    nulval: *const c_void,
+    array: *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -179,7 +221,6 @@ pub unsafe extern "C" fn ffgpxvll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -192,15 +233,26 @@ pub unsafe extern "C" fn ffgpxvll(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `firstpix` — (I) coord of first pixel to read (1s based)
+/// * `nelem`    — (I) number of values to read
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 pub fn ffgpxvll_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstpix: &[LONGLONG],      /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: Option<NullValue>,  /* I - value for undefined pixels              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[LONGLONG],
+    nelem: LONGLONG,
+    nulval: Option<NullValue>,
+    array: &mut [u8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis = 0;
 
@@ -767,23 +819,33 @@ pub fn ffgpxvll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
 /// The nullarray values will = 1 if the corresponding array value is null.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstpix`  — (I) coord of first pixel to read (1s based)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) returned array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpxf(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    datatype: c_int,         /* I - datatype of the value                   */
-    firstpix: *const c_long, /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,         /* I - number of values to read            */
-    array: *mut c_void,      /* O - array of values that are returned       */
-    nullarray: *mut c_char,  /* O - returned array of null value flags      */
-    anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const c_long,
+    nelem: LONGLONG,
+    array: *mut c_void,
+    nullarray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -813,22 +875,32 @@ pub unsafe extern "C" fn ffgpxf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
 /// The nullarray values will = 1 if the corresponding array value is null.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstpix`  — (I) coord of first pixel to read (1s based)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) returned array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpxf_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstpix: &[c_long],        /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,            /* I - number of values to read            */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    nullarray: &mut [c_char],   /* O - returned array of null value flags      */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[c_long],
+    nelem: LONGLONG,
+    array: &mut [u8],
+    nullarray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tfirstpix: [LONGLONG; 99] = [0; 99];
     let mut naxis = 0;
@@ -852,7 +924,6 @@ pub fn ffgpxf_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -864,16 +935,27 @@ pub fn ffgpxf_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstpix`  — (I) coord of first pixel to read (1s based)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) returned array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpxfll(
-    fptr: *mut fitsfile,       /* I - FITS file pointer                       */
-    datatype: c_int,           /* I - datatype of the value                   */
-    firstpix: *const LONGLONG, /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,           /* I - number of values to read              */
-    array: *mut c_void,        /* O - array of values that are returned       */
-    nullarray: *mut c_char,    /* O - returned array of null value flags      */
-    anynul: *mut c_int,        /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,        /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstpix: *const LONGLONG,
+    nelem: LONGLONG,
+    array: *mut c_void,
+    nullarray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -903,7 +985,6 @@ pub unsafe extern "C" fn ffgpxfll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -915,15 +996,26 @@ pub unsafe extern "C" fn ffgpxfll(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstpix`  — (I) coord of first pixel to read (1s based)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) returned array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpxfll_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstpix: &[LONGLONG],      /* I - coord of first pixel to read (1s based) */
-    nelem: LONGLONG,            /* I - number of values to read              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    nullarray: &mut [c_char],   /* O - returned array of null value flags      */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstpix: &[LONGLONG],
+    nelem: LONGLONG,
+    array: &mut [u8],
+    nullarray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis = 0;
     let nullcheck = NullCheckType::SetNullArray;
@@ -1176,7 +1268,6 @@ pub fn ffgpxfll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an section of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1184,17 +1275,29 @@ pub fn ffgpxfll_safe(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `blc`      — (I) 'bottom left corner' of the subsection
+/// * `trc`      — (I) 'top right corner' of the subsection
+/// * `inc`      — (I) increment to be applied in each dim.
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgsv(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    blc: *const c_long,    /* I - 'bottom left corner' of the subsection  */
-    trc: *const c_long,    /* I - 'top right corner' of the subsection    */
-    inc: *const c_long,    /* I - increment to be applied in each dim.    */
-    nulval: *const c_void, /* I - value for undefined pixels              */
-    array: *mut c_void,    /* O - array of values that are returned       */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    blc: *const c_long,
+    trc: *const c_long,
+    inc: *const c_long,
+    nulval: *const c_void,
+    array: *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1220,7 +1323,6 @@ pub unsafe extern "C" fn ffgsv(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an section of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1228,16 +1330,28 @@ pub unsafe extern "C" fn ffgsv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of .true. if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `datatype` — (I) datatype of the value
+/// * `blc`      — (I) 'bottom left corner' of the subsection
+/// * `trc`      — (I) 'top right corner' of the subsection
+/// * `inc`      — (I) increment to be applied in each dim.
+/// * `nulval`   — (I) value for undefined pixels
+/// * `array`    — (O) array of values that are returned
+/// * `anynul`   — (O) set to 1 if any values are null; else 0
+/// * `status`   — (IO) error status
 pub fn ffgsv_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    blc: &[c_long],             /* I - 'bottom left corner' of the subsection  */
-    trc: &[c_long],             /* I - 'top right corner' of the subsection    */
-    inc: &[c_long],             /* I - increment to be applied in each dim.    */
-    nulval: Option<NullValue>,  /* I - value for undefined pixels              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    blc: &[c_long],
+    trc: &[c_long],
+    inc: &[c_long],
+    nulval: Option<NullValue>,
+    array: &mut [u8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis = 0;
     let mut naxes: [c_long; 9] = [0; 9];
@@ -1615,7 +1729,6 @@ pub fn ffgsv_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1630,16 +1743,27 @@ pub fn ffgsv_safe(
 /// and the second column contains the image itself.
 ///
 /// anynul can be a null pointer
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpv(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    nulval: *const c_void, /* I - value for undefined pixels              */
-    array: *mut c_void,    /* O - array of values that are returned       */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: *const c_void,
+    array: *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1658,7 +1782,6 @@ pub unsafe extern "C" fn ffgpv(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1673,15 +1796,26 @@ pub unsafe extern "C" fn ffgpv(
 /// and the second column contains the image itself.
 ///
 /// anynul can be a null pointer
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpv_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: Option<NullValue>,  /* I - value for undefined pixels              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: Option<NullValue>,
+    array: &mut [u8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 || nelem == 0 {
         /* inherit input status value if > 0 */
@@ -1971,7 +2105,6 @@ pub fn ffgpv_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -1983,16 +2116,27 @@ pub fn ffgpv_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpf(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                       */
-    datatype: c_int,        /* I - datatype of the value                   */
-    firstelem: LONGLONG,    /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,        /* I - number of values to read                */
-    array: *mut c_void,     /* O - array of values that are returned       */
-    nullarray: *mut c_char, /* O - array of null value flags               */
-    anynul: *mut c_int,     /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,     /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut c_void,
+    nullarray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2011,7 +2155,6 @@ pub unsafe extern "C" fn ffgpf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -2023,15 +2166,26 @@ pub unsafe extern "C" fn ffgpf(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpf_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    nullarray: &mut [c_char],   /* O - array of null value flags               */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [u8],
+    nullarray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 || nelem == 0 {
         /* inherit input status value if > 0 */
@@ -2093,7 +2247,6 @@ pub fn ffgpf_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a table column. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -2101,18 +2254,31 @@ pub fn ffgpf_safe(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of true if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcv(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    datatype: c_int,       /* I - datatype of the value                   */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col) */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)        */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    nulval: *const c_void, /* I - value for undefined pixels              */
-    array: *mut c_void,    /* O - array of values that are returned       */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: *const c_void,
+    array: *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2139,7 +2305,6 @@ pub unsafe extern "C" fn ffgcv(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a table column. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
@@ -2147,17 +2312,30 @@ pub unsafe extern "C" fn ffgcv(
 /// Undefined elements will be set equal to NULVAL, unless NULVAL=0
 /// in which case no checking for undefined values will be performed.
 /// ANYNUL is returned with a value of true if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcv_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    colnum: c_int,              /* I - number of column to read (1 = 1st col) */
-    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)        */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: Option<NullValue>,  /* I - value for undefined pixels              */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: Option<NullValue>,
+    array: &mut [u8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut cdummy: [c_char; 2] = [0; 2];
 
@@ -2874,27 +3052,39 @@ pub fn ffgcv_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read arrays of values from NCOLS table columns. This is an optimization
 /// to read all columns in one pass through the table.  The datatypes of the
 /// input arrays are defined by the 3rd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
-/// Undefined elements for column i will be set equal to *(nulval[i]), unless nulval[i]=0
+/// Undefined elements for column `i` will be set equal to `*(nulval[i])`, unless `nulval[i]=0`
 /// in which case no checking for undefined values will be performed.
-/// anynul[i] is returned with a value of true if any pixels in column i are undefined.
+/// `anynul[i]` is returned with a value of true if any pixels in column `i` are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `ncols`    — (I) number of columns to read
+/// * `datatype` — (I) datatypes of the values
+/// * `colnum`   — (I) columns numbers to read (1 = 1st col)
+/// * `firstrow` — (I) first row to read (1 = 1st row)
+/// * `nrows`    — (I) number of rows to read
+/// * `nulval`   — (I) array of pointers to values for undefined pixels
+/// * `array`    — (O) array of pointers to values that are returned
+/// * `anynul`   — (O) `anynul[i]` set to 1 if any values in column i are null; else 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcvn(
-    fptr: *mut fitsfile,          /* I - FITS file pointer                       */
-    ncols: c_int,                 /* I - number of columns to read               */
-    datatype: *const c_int,       /* I - datatypes of the values                 */
-    colnum: *const c_int,         /* I - columns numbers to read (1 = 1st col)   */
-    firstrow: LONGLONG,           /* I - first row to read (1 = 1st row)     */
-    nrows: LONGLONG,              /* I - number of rows to read              */
-    nulval: *const *const c_void, /* I - array of pointers to values for undefined pixels */
-    array: *mut *mut c_void,      /* O - array of pointers to values that are returned    */
-    anynul: *mut c_int, /* O - anynul[i] set to 1 if any values in column i are null; else 0 */
-    status: *mut c_int, /* IO - error status                           */
+    fptr: *mut fitsfile,
+    ncols: c_int,
+    datatype: *const c_int,
+    colnum: *const c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    nulval: *const *const c_void,
+    array: *mut *mut c_void,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2924,26 +3114,38 @@ pub unsafe extern "C" fn ffgcvn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read arrays of values from NCOLS table columns. This is an optimization
 /// to read all columns in one pass through the table.  The datatypes of the
 /// input arrays are defined by the 3rd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
-/// Undefined elements for column i will be set equal to *(nulval[i]), unless nulval[i]=0
+/// Undefined elements for column `i` will be set equal to `*(nulval[i])`, unless `nulval[i]=0`
 /// in which case no checking for undefined values will be performed.
-/// anynul[i] is returned with a value of true if any pixels in column i are undefined.
+/// `anynul[i]` is returned with a value of true if any pixels in column `i` are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `ncols`    — (I) number of columns to read
+/// * `datatype` — (I) datatypes of the values
+/// * `colnum`   — (I) columns numbers to read (1 = 1st col)
+/// * `firstrow` — (I) first row to read (1 = 1st row)
+/// * `nrows`    — (I) number of rows to read
+/// * `nulval`   — (I) array of pointers to values for undefined pixels
+/// * `array`    — (O) array of pointers to values that are returned
+/// * `anynul`   — (O) `anynul[i]` set to 1 if any values in column i are null; else 0
+/// * `status`   — (IO) error status
 pub fn ffgcvn_safe(
-    fptr: &mut fitsfile,          /* I - FITS file pointer                       */
-    ncols: c_int,                 /* I - number of columns to read               */
-    datatype: &[c_int],           /* I - datatypes of the values                 */
-    colnum: &[c_int],             /* I - columns numbers to read (1 = 1st col)   */
-    firstrow: LONGLONG,           /* I - first row to read (1 = 1st row)     */
-    nrows: LONGLONG,              /* I - number of rows to read              */
-    nulval: &[Option<NullValue>], /* I - array of pointers to values for undefined pixels */
-    array: &mut [*mut c_void],    /* O - array of pointers to values that are returned    */
-    mut anynul: Option<&mut [c_int]>, /* O - anynul[i] set to 1 if any values in column i are null; else 0 */
-    status: &mut c_int,               /* IO - error status                           */
+    fptr: &mut fitsfile,
+    ncols: c_int,
+    datatype: &[c_int],
+    colnum: &[c_int],
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    nulval: &[Option<NullValue>],
+    array: &mut [*mut c_void],
+    mut anynul: Option<&mut [c_int]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ntotrows: LONGLONG = 0;
     let mut ndone: LONGLONG = 0;
@@ -3117,24 +3319,36 @@ pub fn ffgcvn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a table column. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
 /// ANYNUL is returned with a value of true if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcf(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                       */
-    datatype: c_int,        /* I - datatype of the value                   */
-    colnum: c_int,          /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,     /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,    /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,        /* I - number of values to read                */
-    array: *mut c_void,     /* O - array of values that are returned       */
-    nullarray: *mut c_char, /* O - array of null value flags               */
-    anynul: *mut c_int,     /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,     /* IO - error status                           */
+    fptr: *mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut c_void,
+    nullarray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3170,23 +3384,35 @@ pub unsafe extern "C" fn ffgcf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a table column. The datatype of the
 /// input array is defined by the 2nd argument.  Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
 /// ANYNUL is returned with a value of true if any pixels are undefined.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `datatype`  — (I) datatype of the value
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nullarray` — (O) array of null value flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcf_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    datatype: c_int,            /* I - datatype of the value                   */
-    colnum: c_int,              /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,         /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    array: &mut [u8],           /* O - array of values that are returned       */
-    nullarray: &mut [c_char],   /* O - array of null value flags               */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    datatype: c_int,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [u8],
+    nullarray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let nulval: f64 = 0.0;
     let cnulval: [c_char; 2] = [0; 2];
