@@ -1,3 +1,21 @@
+//! The low-level I/O buffering layer.
+//!
+//! Every read and write of a FITS file goes through a pool of
+//! [`NIOBUF`] buffers of
+//! [`IOBUFLEN`] bytes -- one FITS block each. Large
+//! transfers bypass the pool and go straight to disk; smaller ones are
+//! accumulated in a buffer first, which is what makes reading a table one
+//! element at a time tolerable.
+//!
+//! Buffers are evicted least-recently-used, tracked by the `ageindex` field of
+//! [`FITSfile`], and a buffer marked `dirty` is
+//! written back before it is reused.
+//!
+//! Ported from CFITSIO's `buffers.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
+
 use core::cmp;
 use core::slice;
 
@@ -17,19 +35,25 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uchar};
 
-/*--------------------------------------------------------------------------*/
 /// Move to the input byte location in the file.
 ///
 /// When writing to a file, a move
 /// may sometimes be made to a position beyond the current EOF.  The err_mode
 /// parameter determines whether such conditions should be returned as an error
 /// or simply ignored.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `bytepos`  — (I) byte position in file to move to
+/// * `err_mode` — (I) 1=ignore error, 0 = return error
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffmbyt(
-    fptr: *mut fitsfile, /* I - FITS file pointer                */
-    bytepos: LONGLONG,   /* I - byte position in file to move to */
-    err_mode: c_int,     /* I - 1=ignore error, 0 = return error */
-    status: *mut c_int,  /* IO - error status                    */
+    fptr: *mut fitsfile,
+    bytepos: LONGLONG,
+    err_mode: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -40,16 +64,22 @@ pub unsafe extern "C" fn ffmbyt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move to the input byte location in the file.  When writing to a file, a move
 /// may sometimes be made to a position beyond the current EOF.  The err_mode
 /// parameter determines whether such conditions should be returned as an error
 /// or simply ignored.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `bytepos`  — (I) byte position in file to move to
+/// * `err_mode` — (I) 1=ignore error, 0 = return error
+/// * `status`   — (IO) error status
 pub fn ffmbyt_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                */
-    bytepos: LONGLONG,   /* I - byte position in file to move to */
-    err_mode: c_int,     /* I - 1=ignore error, 0 = return error */
-    status: &mut c_int,  /* IO - error status                    */
+    fptr: &mut fitsfile,
+    bytepos: LONGLONG,
+    err_mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -78,15 +108,21 @@ pub fn ffmbyt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// put (write) the buffer of bytes to the output FITS file, starting at
+/// Put (write) the buffer of bytes to the output FITS file, starting at
 /// the current file position.  Write large blocks of data directly to disk;
 /// write smaller segments to intermediate IO buffers to improve efficiency.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to write
+/// * `buffer` — (I) buffer containing the bytes to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpbyt(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    nbytes: LONGLONG,    /* I - number of bytes to write             */
-    buffer: &[u8],       /* I - buffer containing the bytes to write */
-    status: &mut c_int,  /* IO - error status                        */
+    fptr: &mut fitsfile,
+    nbytes: LONGLONG,
+    buffer: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let nbuff;
     let mut filepos: LONGLONG;
@@ -245,17 +281,25 @@ pub(crate) fn ffpbyt(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// put (write) the buffer of bytes to the output FITS file, with an offset
+/// Put (write) the buffer of bytes to the output FITS file, with an offset
 /// between each group of bytes.  This function combines ffmbyt and ffpbyt
 /// for increased efficiency.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `gsize`   — (I) size of each group of bytes
+/// * `ngroups` — (I) number of groups to write
+/// * `offset`  — (I) size of gap between groups
+/// * `buffer`  — (I) buffer to be written
+/// * `status`  — (IO) error status
 pub(crate) fn ffpbytoff(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    gsize: c_long,       /* I - size of each group of bytes         */
-    ngroups: c_long,     /* I - number of groups to write           */
-    offset: c_long,      /* I - size of gap between groups          */
-    buffer: &[u8],       /* I - buffer to be written                */
-    status: &mut c_int,  /* IO - error status                       */
+    fptr: &mut fitsfile,
+    gsize: c_long,
+    ngroups: c_long,
+    offset: c_long,
+    buffer: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut bcurrent: c_int;
     let mut bufpos: LONGLONG;
@@ -374,15 +418,21 @@ pub(crate) fn ffpbytoff(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// get (read) the requested number of bytes from the file, starting at
+/// Get (read) the requested number of bytes from the file, starting at
 /// the current file position.  Read large blocks of data directly from disk;
 /// read smaller segments via intermediate IO buffers to improve efficiency.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nbytes` — (I) number of bytes to read
+/// * `buffer` — (O) buffer to read into
+/// * `status` — (IO) error status
 pub(crate) fn ffgbyt(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    nbytes: LONGLONG,    /* I - number of bytes to read       */
-    buffer: &mut [u8],   /* O - buffer to read into           */
-    status: &mut c_int,  /* IO - error status                 */
+    fptr: &mut fitsfile,
+    nbytes: LONGLONG,
+    buffer: &mut [u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let filepos: LONGLONG;
@@ -484,17 +534,25 @@ pub(crate) fn ffgbyt(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get (read) the requested number of bytes from the file, starting at
 /// the current file position.  This function combines ffmbyt and ffgbyt
 /// for increased efficiency.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `gsize`   — (I) size of each group of bytes
+/// * `ngroups` — (I) number of groups to read
+/// * `offset`  — (I) size of gap between groups (may be < 0)
+/// * `buffer`  — (I) buffer to be filled
+/// * `status`  — (IO) error status
 pub(crate) fn ffgbytoff(
-    fptr: &mut fitsfile, /* I - FITS file pointer                   */
-    gsize: c_long,       /* I - size of each group of bytes         */
-    ngroups: c_long,     /* I - number of groups to read            */
-    offset: c_long,      /* I - size of gap between groups (may be < 0) */
-    buffer: &mut [u8],   /* I - buffer to be filled                 */
-    status: &mut c_int,  /* IO - error status                       */
+    fptr: &mut fitsfile,
+    gsize: c_long,
+    ngroups: c_long,
+    offset: c_long,
+    buffer: &mut [u8],
+    status: &mut c_int,
 ) -> c_int {
     let mut bcurrent: c_int;
     let mut bufpos: c_long;
@@ -608,16 +666,22 @@ pub(crate) fn ffgbytoff(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// low-level routine to load a specified record from a file into
+/// Low-level routine to load a specified record from a file into
 /// a physical buffer, if it is not already loaded.  Reset all
 /// pointers to make this the new current record for that file.
 /// Update ages of all the physical buffers.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `record`   — (I) record number to be loaded
+/// * `err_mode` — (I) 1=ignore EOF, 0 = return EOF error
+/// * `status`   — (IO) error status
 pub(crate) fn ffldrc(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    record: c_long,      /* I - record number to be loaded    */
-    err_mode: c_int,     /* I - 1=ignore EOF, 0 = return EOF error */
-    status: &mut c_int,  /* IO - error status                 */
+    fptr: &mut fitsfile,
+    record: c_long,
+    err_mode: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut updatebuf = false;
     let mut ibuff: c_int;
@@ -713,24 +777,26 @@ pub(crate) fn ffldrc(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// decide which buffer to (re)use to hold a new file record
-pub(crate) fn ffwhbf(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    nbuff: &mut c_int,   /* O - which buffer to use           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`  — (I) FITS file pointer
+/// * `nbuff` — (O) which buffer to use
+pub(crate) fn ffwhbf(fptr: &mut fitsfile, nbuff: &mut c_int) -> c_int {
     *nbuff = fptr.Fptr.ageindex[0]; /* return oldest buffer */
     *nbuff
 }
 
-/*--------------------------------------------------------------------------*/
 /// Flush all the data in the current FITS file to disk. This ensures that if
 /// the program subsequently dies, the disk FITS file will be closed correctly.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffflus(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    status: *mut c_int,  /* IO - error status                           */
-) -> c_int {
+pub unsafe extern "C" fn ffflus(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -740,13 +806,14 @@ pub unsafe extern "C" fn ffflus(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Flush all the data in the current FITS file to disk. This ensures that if
 /// the program subsequently dies, the disk FITS file will be closed correctly.
-pub fn ffflus_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffflus_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut hdunum: c_int = 0;
     let mut hdutype: c_int = 0;
 
@@ -770,14 +837,15 @@ pub fn ffflus_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// flush all dirty IO buffers associated with the file to disk
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `clearbuf` — (I) also clear buffer contents?
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffflsh(
-    fptr: *mut fitsfile, /* I - FITS file pointer           */
-    clearbuf: c_int,     /* I - also clear buffer contents? */
-    status: *mut c_int,  /* IO - error status               */
-) -> c_int {
+pub unsafe extern "C" fn ffflsh(fptr: *mut fitsfile, clearbuf: c_int, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -787,13 +855,14 @@ pub unsafe extern "C" fn ffflsh(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// flush all dirty IO buffers associated with the file to disk
-pub fn ffflsh_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    clearbuf: bool,      /* I - also clear buffer contents? */
-    status: &mut c_int,  /* IO - error status               */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `clearbuf` — (I) also clear buffer contents?
+/// * `status`   — (IO) error status
+pub fn ffflsh_safe(fptr: &mut fitsfile, clearbuf: bool, status: &mut c_int) -> c_int {
     /*
        no need to move to a different HDU
 
@@ -818,12 +887,13 @@ pub fn ffflsh_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// clear any buffers beyond the end of file
-pub(crate) fn ffbfeof(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    status: &mut c_int,  /* IO - error status               */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffbfeof(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     for ii in 0..(NIOBUF as usize) {
         if (fptr.Fptr.bufrecnum[ii] as LONGLONG) * IOBUFLEN >= fptr.Fptr.filesize {
             fptr.Fptr.bufrecnum[ii] = -1; /* set contents of buffer as undefined */
@@ -832,16 +902,17 @@ pub(crate) fn ffbfeof(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// write contents of buffer to file;  If the position of the buffer
 /// is beyond the current EOF, then the file may need to be extended
 /// with fill values, and/or with the contents of some of the other
 /// i/o buffers.
-pub(crate) fn ffbfwt(
-    Fptr: &mut FITSfile, /* I - FITS file pointer           */
-    nbuff: c_int,        /* I - which buffer to write          */
-    status: &mut c_int,  /* IO - error status                  */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `Fptr`   — (I) FITS file pointer
+/// * `nbuff`  — (I) which buffer to write
+/// * `status` — (IO) error status
+pub(crate) fn ffbfwt(Fptr: &mut FITSfile, nbuff: c_int, status: &mut c_int) -> c_int {
     let mut ibuff: usize;
     let mut jj: c_long;
     let mut irec: c_long;
@@ -937,16 +1008,21 @@ pub(crate) fn ffbfwt(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Returns an optimal value for the number of rows in a binary table
 /// or the number of pixels in an image that should be read or written
 /// at one time for maximum efficiency. Accessing more data than this
 /// may cause excessive flushing and rereading of buffers to/from disk.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pionter
+/// * `ndata`  — (O) optimal amount of data to access
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgrsz(
-    fptr: *mut fitsfile, /* I - FITS file pionter                        */
-    ndata: *mut c_long,  /* O - optimal amount of data to access         */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    ndata: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -958,16 +1034,17 @@ pub unsafe extern "C" fn ffgrsz(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Returns an optimal value for the number of rows in a binary table
 /// or the number of pixels in an image that should be read or written
 /// at one time for maximum efficiency. Accessing more data than this
 /// may cause excessive flushing and rereading of buffers to/from disk.
-pub fn ffgrsz_safe(
-    fptr: &mut fitsfile, /* I - FITS file pionter                        */
-    ndata: &mut c_long,  /* O - optimal amount of data to access         */
-    status: &mut c_int,  /* IO - error status                            */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pionter
+/// * `ndata`  — (O) optimal amount of data to access
+/// * `status` — (IO) error status
+pub fn ffgrsz_safe(fptr: &mut fitsfile, ndata: &mut c_long, status: &mut c_int) -> c_int {
     let mut typecode = 0;
     let bytesperpixel;
 
@@ -999,18 +1076,26 @@ pub fn ffgrsz_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read a consecutive string of bytes from an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstrow`  — (I) starting row (1 = first row)
+/// * `firstchar` — (I) starting byte in row (1=first)
+/// * `nchars`    — (I) number of bytes to read
+/// * `values`    — (I) array of bytes to read
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtbb(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                 */
-    firstrow: LONGLONG,   /* I - starting row (1 = first row)      */
-    firstchar: LONGLONG,  /* I - starting byte in row (1=first)    */
-    nchars: LONGLONG,     /* I - number of bytes to read           */
-    values: *mut c_uchar, /* I - array of bytes to read            */
-    status: *mut c_int,   /* IO - error status                     */
+    fptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    firstchar: LONGLONG,
+    nchars: LONGLONG,
+    values: *mut c_uchar,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1022,17 +1107,25 @@ pub unsafe extern "C" fn ffgtbb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// read a consecutive string of bytes from an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstrow`  — (I) starting row (1 = first row)
+/// * `firstchar` — (I) starting byte in row (1=first)
+/// * `nchars`    — (I) number of bytes to read
+/// * `values`    — (I) array of bytes to read
+/// * `status`    — (IO) error status
 pub fn ffgtbb_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                 */
-    firstrow: LONGLONG,     /* I - starting row (1 = first row)      */
-    firstchar: LONGLONG,    /* I - starting byte in row (1=first)    */
-    nchars: LONGLONG,       /* I - number of bytes to read           */
-    values: &mut [c_uchar], /* I - array of bytes to read            */
-    status: &mut c_int,     /* IO - error status                     */
+    fptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    firstchar: LONGLONG,
+    nchars: LONGLONG,
+    values: &mut [c_uchar],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 || nchars <= 0 {
         return *status;
@@ -1066,16 +1159,24 @@ pub fn ffgtbb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgi1b(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                         */
-    byteloc: LONGLONG,      /* I - position within file to start reading     */
-    nvals: c_long,          /* I - number of pixels to read                  */
-    incre: c_long,          /* I - byte increment between pixels             */
-    values: &mut [c_uchar], /* O - returned array of values           */
-    status: &mut c_int,     /* IO - error status                             */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [c_uchar],
+    status: &mut c_int,
 ) -> c_int {
     let postemp: LONGLONG;
 
@@ -1104,16 +1205,24 @@ pub(crate) fn ffgi1b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgi2b(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                        */
-    byteloc: LONGLONG,      /* I - position within file to start reading    */
-    nvals: c_long,          /* I - number of pixels to read                 */
-    incre: c_long,          /* I - byte increment between pixels            */
-    values: &mut [c_short], /* O - returned array of values                 */
-    status: &mut c_int,     /* IO - error status                            */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [c_short],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 2 {
         /* read all the values at once (contiguous bytes) */
@@ -1145,16 +1254,24 @@ pub(crate) fn ffgi2b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgi4b(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                        */
-    byteloc: LONGLONG,       /* I - position within file to start reading    */
-    nvals: c_long,           /* I - number of pixels to read                 */
-    incre: c_long,           /* I - byte increment between pixels            */
-    values: &mut [INT32BIT], /* O - returned array of values                */
-    status: &mut c_int,      /* IO - error status                            */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [INT32BIT],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 4 {
         /* read all the values at once (contiguous bytes) */
@@ -1185,7 +1302,6 @@ pub(crate) fn ffgi4b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
 ///
@@ -1195,13 +1311,22 @@ pub(crate) fn ffgi4b(
 /// as long as 'values' has been allocated to large enough to hold
 /// 8 * nvals bytes of data.
 /// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgi8b(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                        */
-    byteloc: LONGLONG,     /* I - position within file to start reading    */
-    nvals: c_long,         /* I - number of pixels to read                 */
-    incre: c_long,         /* I - byte increment between pixels            */
-    values: &mut [c_long], /* O - returned array of values                 */
-    status: &mut c_int,    /* IO - error status                            */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 8 {
         /* read all the values at once (contiguous bytes) */
@@ -1233,16 +1358,24 @@ pub(crate) fn ffgi8b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgr4b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    byteloc: LONGLONG,   /* I - position within file to start reading    */
-    nvals: c_long,       /* I - number of pixels to read                 */
-    incre: c_long,       /* I - byte increment between pixels            */
-    values: &mut [f32],  /* O - returned array of values                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [f32],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 4 {
         /* read all the values at once (contiguous bytes) */
@@ -1274,16 +1407,24 @@ pub(crate) fn ffgr4b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the array of values from the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `byteloc` — (I) position within file to start reading
+/// * `nvals`   — (I) number of pixels to read
+/// * `incre`   — (I) byte increment between pixels
+/// * `values`  — (O) returned array of values
+/// * `status`  — (IO) error status
 pub(crate) fn ffgr8b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    byteloc: LONGLONG,   /* I - position within file to start reading    */
-    nvals: c_long,       /* I - number of pixels to read                 */
-    incre: c_long,       /* I - byte increment between pixels            */
-    values: &mut [f64],  /* O - returned array of values                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    byteloc: LONGLONG,
+    nvals: c_long,
+    incre: c_long,
+    values: &mut [f64],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 8 {
         /* read all the values at once (contiguous bytes) */
@@ -1315,18 +1456,26 @@ pub(crate) fn ffgr8b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// write a consecutive string of bytes to an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstrow`  — (I) starting row (1 = first row)
+/// * `firstchar` — (I) starting byte in row (1=first)
+/// * `nchars`    — (I) number of bytes to write
+/// * `values`    — (I) array of bytes to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffptbb(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                 */
-    firstrow: LONGLONG,     /* I - starting row (1 = first row)      */
-    firstchar: LONGLONG,    /* I - starting byte in row (1=first)    */
-    nchars: LONGLONG,       /* I - number of bytes to write          */
-    values: *const c_uchar, /* I - array of bytes to write           */
-    status: *mut c_int,     /* IO - error status                     */
+    fptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    firstchar: LONGLONG,
+    nchars: LONGLONG,
+    values: *const c_uchar,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1338,17 +1487,25 @@ pub unsafe extern "C" fn ffptbb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// write a consecutive string of bytes to an ascii or binary table.
 /// This will span multiple rows of the table if nchars + firstchar is
 /// greater than the length of a row.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstrow`  — (I) starting row (1 = first row)
+/// * `firstchar` — (I) starting byte in row (1=first)
+/// * `nchars`    — (I) number of bytes to write
+/// * `values`    — (I) array of bytes to write
+/// * `status`    — (IO) error status
 pub fn ffptbb_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                 */
-    firstrow: LONGLONG,  /* I - starting row (1 = first row)      */
-    firstchar: LONGLONG, /* I - starting byte in row (1=first)    */
-    nchars: LONGLONG,    /* I - number of bytes to write          */
-    values: &[c_uchar],  /* I - array of bytes to write           */
-    status: &mut c_int,  /* IO - error status                     */
+    fptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    firstchar: LONGLONG,
+    nchars: LONGLONG,
+    values: &[c_uchar],
+    status: &mut c_int,
 ) -> c_int {
     let nrows: LONGLONG;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -1409,15 +1566,22 @@ pub fn ffptbb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpi1b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[u8],       /* I - array of values to write           */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[u8],
+    status: &mut c_int,
 ) -> c_int {
     if incre == 1 {
         /* write all the values at once (contiguous bytes) */
@@ -1430,15 +1594,22 @@ pub(crate) fn ffpi1b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpi2b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[c_short],  /* I - array of values to write                  */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[c_short],
+    status: &mut c_int,
 ) -> c_int {
     // Copy slice so that we don't change the original values
     let mut v: Vec<c_short> = values.to_vec();
@@ -1457,15 +1628,22 @@ pub(crate) fn ffpi2b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpi4b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[INT32BIT], /* I - array of values to write                */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[INT32BIT],
+    status: &mut c_int,
 ) -> c_int {
     // Copy slice so that we don't change the original values
     let mut v: Vec<INT32BIT> = values.to_vec();
@@ -1486,7 +1664,6 @@ pub(crate) fn ffpi4b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
 ///
@@ -1496,12 +1673,20 @@ pub(crate) fn ffpi4b(
 /// as long as 'values' has been allocated to large enough to hold
 /// 8 * nvals bytes of data.
 /// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpi8b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[c_long],   /* I - array of values to write                */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     // Copy slice so that we don't change the original values
     let mut v: Vec<c_long> = values.to_vec();
@@ -1520,15 +1705,22 @@ pub(crate) fn ffpi8b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpr4b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[f32],      /* I - array of values to write                  */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[f32],
+    status: &mut c_int,
 ) -> c_int {
     // Copy slice so that we don't change the original values
     let mut v: Vec<f32> = values.to_vec();
@@ -1548,15 +1740,22 @@ pub(crate) fn ffpr4b(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// put (write) the array of values to the FITS file, doing machine dependent
 /// format conversion (e.g. byte-swapping) if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nvals`  — (I) number of pixels in the values array
+/// * `incre`  — (I) byte increment between pixels
+/// * `values` — (I) array of values to write
+/// * `status` — (IO) error status
 pub(crate) fn ffpr8b(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    nvals: c_long,       /* I - number of pixels in the values array      */
-    incre: c_long,       /* I - byte increment between pixels             */
-    values: &[f64],      /* I - array of values to write                  */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    nvals: c_long,
+    incre: c_long,
+    values: &[f64],
+    status: &mut c_int,
 ) -> c_int {
     // Copy slice so that we don't change the original values
     let mut v: Vec<f64> = values.to_vec();
