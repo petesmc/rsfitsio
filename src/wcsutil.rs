@@ -1,3 +1,14 @@
+//! Self-contained world coordinate transformations.
+//!
+//! Converts between pixel positions and celestial coordinates for nine
+//! projections -- `-CAR`, `-SIN`, `-TAN`, `-ARC`, `-NCP`, `-GLS`, `-MER`,
+//! `-AIT` and `-STG`. Self-contained in the sense that they need no external
+//! WCS library; for anything beyond these, use WCSLIB through
+//! [`crate::wcssub`].
+//!
+//! Based on the classic AIPS WCS routines.
+#![warn(missing_docs)]
+
 use crate::c_types::*;
 
 use crate::bb;
@@ -8,7 +19,6 @@ const D2R: f64 = 0.01745329252;
 #[allow(clippy::approx_constant)]
 const TWOPI: f64 = 6.28318530717959; // Could use f64::consts::TAU
 
-/*--------------------------------------------------------------------------*/
 ///This routine is based on the classic AIPS WCS routine.
 ///
 /// It converts from pixel location to RA,Dec for 9 projective geometries:
@@ -62,7 +72,6 @@ pub unsafe extern "C" fn ffwldp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///This routine is based on the classic AIPS WCS routine.
 ///
 /// It converts from pixel location to RA,Dec for 9 projective geometries:
@@ -425,7 +434,6 @@ pub fn ffwldp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine is based on the classic AIPS WCS routine.
 ///
 /// It converts from RA,Dec to pixel location to for 9 projective geometries:
@@ -480,7 +488,6 @@ pub unsafe extern "C" fn ffxypx(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine is based on the classic AIPS WCS routine.
 ///
 /// It converts from RA,Dec to pixel location to for 9 projective geometries:
