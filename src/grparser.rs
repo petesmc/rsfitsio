@@ -1,3 +1,18 @@
+//! The header template parser.
+//!
+//! Reads a template file describing a set of HDUs -- their keywords, and for
+//! tables their columns -- and creates them in a FITS file. This is what
+//! `fits_create_template` and the `filename(template)` form of the extended
+//! filename syntax use.
+//!
+//! The template syntax has its own error codes, the `NGP_*` constants in
+//! [`crate::fitsio`], chosen so as not to collide with the library's own.
+//!
+//! Ported from CFITSIO's `grparser.c`, by Jerzy Borkowski of the Integral
+//! Science Data Centre. See the "Template File Format" chapter of the CFITSIO
+//! User's Reference Guide.
+#![warn(missing_docs)]
+
 use core::ffi::CStr;
 use core::ptr;
 use core::slice;
@@ -77,44 +92,69 @@ fn ngp_alloc_boxed(size: usize) -> Result<Box<[c_char]>, c_int> {
     Ok(vec.into_boxed_slice())
 }
 
-/* type definitions */
-
+/// One line of a template, split into its parts.
+///
+/// The indices are offsets into `line`, so the parts borrow the line rather
+/// than copying out of it.
 #[repr(C)]
 #[derive(Clone, Default)]
 pub struct NgpRawLine {
+    /// The line as read, NUL-terminated.
     pub line: Box<[c_char]>,
+    /// Offset of the keyword name within `line`, if there is one.
     pub name_idx: Option<usize>,
+    /// Offset of the value within `line`, if there is one.
     pub value_idx: Option<usize>,
+    /// Token type of the line.
     pub type_: c_int,
+    /// Offset of the comment within `line`, if there is one.
     pub comment_idx: Option<usize>,
+    /// Format code of the value.
     pub format: c_int,
+    /// Flags recording which parts were present.
     pub flags: c_int,
 }
 
+/// A complex value in a template.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct NgpComplex {
+    /// Real part.
     pub re: f64,
+    /// Imaginary part.
     pub im: f64,
 }
 
+/// The value of a template token, whose type is given by the enclosing
+/// [`NgpToken`]'s `type_`.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union NgpTokval {
+    /// String value.
     pub s: *mut c_char,
+    /// Logical value.
     pub b: c_char,
+    /// Integer value.
     pub i: c_int,
+    /// Long integer value.
     pub l: c_long,
+    /// Floating point value.
     pub d: f64,
+    /// Complex value.
     pub c: NgpComplex,
 }
 
+/// One keyword parsed out of a template: its name, value and comment.
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct NgpToken {
+    /// Which arm of `value` is live.
     pub type_: c_int,
+    /// Keyword name.
     pub name: [c_char; NGP_MAX_NAME],
+    /// Keyword value.
     pub value: NgpTokval,
+    /// Keyword comment.
     pub comment: [c_char; NGP_MAX_COMMENT],
 }
 
@@ -129,21 +169,31 @@ impl Default for NgpToken {
     }
 }
 
+/// The keywords of one HDU described by a template.
 #[repr(C)]
 pub struct NgpHdu {
+    /// Number of tokens in `tok`.
     pub tokcnt: c_int,
+    /// The keywords, in the order the template gave them.
     pub tok: Vec<NgpToken>,
 }
 
+/// One entry of the table of recognized template directives.
 #[repr(C)]
 pub struct NgpTkdef {
+    /// The directive as it appears in a template, e.g. `\\INCLUDE`.
     pub name: &'static CStr,
+    /// The token code it maps to.
     pub code: c_int,
 }
 
+/// Tracks the highest `EXTVER` seen for an `EXTNAME`, so that auto-numbered
+/// extensions get successive versions.
 #[repr(C)]
 pub struct NgpExtverTab {
+    /// The extension name.
     pub extname: Box<[c_char]>,
+    /// The highest version number used for it so far.
     pub version: c_int,
 }
 
@@ -321,7 +371,7 @@ fn ngp_delete_extver_tab(parser_state: &mut GRParseState) -> c_int {
     NGP_OK
 }
 
-/// read one line from file
+/// Read one line from file
 fn ngp_line_from_file(reader: &mut BufReader<File>, line_out: &mut Box<[c_char]>) -> c_int {
     let mut r = NGP_OK; /* initialize stuff, reset err code */
     let mut llen: usize = 0; /* 0 characters read so far */
@@ -400,7 +450,7 @@ fn ngp_line_from_file(reader: &mut BufReader<File>, line_out: &mut Box<[c_char]>
     r /* return  status code */
 }
 
-/// free current line structure
+/// Free current line structure
 fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
     if !parser_state.NGP_CURLINE.line.is_empty() {
         parser_state.NGP_CURLINE.line = Box::default();
@@ -414,7 +464,7 @@ fn ngp_free_line(parser_state: &mut GRParseState) -> c_int {
     NGP_OK
 }
 
-/// free cached line structure
+/// Free cached line structure
 fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
     if !parser_state.NGP_PREVLINE.line.is_empty() {
         parser_state.NGP_PREVLINE.line = Box::default();
@@ -428,7 +478,7 @@ fn ngp_free_prevline(parser_state: &mut GRParseState) -> c_int {
     NGP_OK
 }
 
-/// read one line
+/// Read one line
 fn ngp_read_line_buffered(parser_state: &mut GRParseState, reader: &mut BufReader<File>) -> c_int {
     ngp_free_line(parser_state); /* first free current line (if any) */
 
@@ -445,7 +495,7 @@ fn ngp_read_line_buffered(parser_state: &mut GRParseState, reader: &mut BufReade
     ngp_line_from_file(reader, &mut parser_state.NGP_CURLINE.line)
 }
 
-/// unread line
+/// Unread line
 fn ngp_unread_line(parser_state: &mut GRParseState) -> c_int {
     if parser_state.NGP_CURLINE.line.is_empty() {
         /* nothing to unread */
@@ -462,7 +512,7 @@ fn ngp_unread_line(parser_state: &mut GRParseState) -> c_int {
     NGP_OK
 }
 
-/// a first guess line decomposition
+/// A first guess line decomposition
 fn ngp_extract_tokens(cl: &mut NgpRawLine) -> c_int {
     let mut p_idx: usize; // Index into line buffer
     let mut s_idx: usize;
@@ -830,7 +880,7 @@ fn find_include_file(fname: &[c_char], master_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// try to open include file.
+/// Try to open include file.
 /// If open fails and fname
 /// does not specify absolute pathname, try to open fname
 /// in any directory specified in CFITSIO_INCLUDE_FILES
@@ -864,7 +914,7 @@ fn ngp_include_file(parser_state: &mut GRParseState, fname: &[c_char]) -> c_int 
     NGP_OK
 }
 
-/// read line in the intelligent way.
+/// Read line in the intelligent way.
 /// All \INCLUDE directives are handled,
 /// empty and comment line skipped. If this function returns NGP_OK, than
 /// decomposed line (name, type, value in proper type and comment) are
@@ -1173,7 +1223,7 @@ fn ngp_read_line(parser_state: &mut GRParseState, ignore_blank_lines: c_int) -> 
     }
 }
 
-/// check whether keyword can be written as is
+/// Check whether keyword can be written as is
 fn ngp_keyword_is_write(ngp_tok: &NgpToken) -> c_int {
     /* indexed variables not to write */
     let nm: [&[c_char]; 3] = [cs!(c"NAXIS"), cs!(c"TFORM"), cs!(c"TTYPE")];
@@ -1243,7 +1293,7 @@ fn ngp_keyword_is_write(ngp_tok: &NgpToken) -> c_int {
     NGP_BAD_ARG
 }
 
-/// write (almost) all keywords from given HDU to disk
+/// Write (almost) all keywords from given HDU to disk
 fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_int) -> c_int {
     let mut ib: c_int;
     let mut buf: [c_char; 200] = [0; 200];
@@ -1368,14 +1418,14 @@ fn ngp_keyword_all_write(ngph: &mut NgpHdu, ffp: &mut fitsfile, mode: c_int) -> 
     r
 }
 
-/// init HDU structure
+/// Init HDU structure
 fn ngp_hdu_init(ngph: &mut NgpHdu) -> c_int {
     ngph.tok = Vec::new();
     ngph.tokcnt = 0;
     NGP_OK
 }
 
-/// clear HDU structure
+/// Clear HDU structure
 fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
     for i in 0..ngph.tokcnt {
         let token = &mut ngph.tok[i as usize];
@@ -1401,7 +1451,7 @@ fn ngp_hdu_clear(ngph: &mut NgpHdu) -> c_int {
     NGP_OK
 }
 
-/// insert new token to HDU structure
+/// Insert new token to HDU structure
 fn ngp_hdu_insert_token(ngph: &mut NgpHdu, newtok: &mut NgpToken) -> c_int {
     unsafe {
         ngph.tok.push(*newtok);
@@ -1502,7 +1552,7 @@ fn ngp_append_columns(ff: &mut fitsfile, ngph: &mut NgpHdu, aftercol: c_int) -> 
     }
 }
 
-/// read complete HDU
+/// Read complete HDU
 fn ngp_read_xtension(
     parser_state: &mut GRParseState,
     ff: &mut fitsfile,
@@ -1789,7 +1839,7 @@ fn ngp_read_xtension(
     }
 }
 
-/// read complete GROUP
+/// Read complete GROUP
 fn ngp_read_group(
     parser_state: &mut GRParseState,
     ff: &mut fitsfile,
@@ -1937,14 +1987,19 @@ fn ngp_read_group(
 
 /* top level API functions */
 
-/*--------------------------------------------------------------------------*/
 /// Read whole template
 /// ff should point to the opened empty fits file.
+///
+/// # Parameters
+///
+/// * `ff`           — (I) FITS file pointer
+/// * `ngp_template` — (I) template string
+/// * `status`       — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_execute_template(
-    ff: *mut fitsfile,           /* I - FITS file pointer */
-    ngp_template: *const c_char, /* I - template string */
-    status: *mut c_int,          /* IO - error status */
+    ff: *mut fitsfile,
+    ngp_template: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1970,13 +2025,18 @@ pub unsafe extern "C" fn fits_execute_template(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read whole template
 /// ff should point to the opened empty fits file.
+///
+/// # Parameters
+///
+/// * `ff`           — (I) FITS file pointer
+/// * `ngp_template` — (I) template string
+/// * `status`       — (IO) error status
 pub fn fits_execute_template_safe(
-    ff: &mut fitsfile,       /* I - FITS file pointer */
-    ngp_template: &[c_char], /* I - template string */
-    status: &mut c_int,      /* IO - error status */
+    ff: &mut fitsfile,
+    ngp_template: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut r: c_int = 0;
     let mut exit_flg: c_int = 0;
