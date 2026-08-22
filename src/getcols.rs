@@ -1,9 +1,14 @@
-/*  This file, getcols.rs, contains routines that read data elements from   */
-/*  a FITS image or table, with a character string datatype.               */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that read data elements from a FITS image or table, with
+//! character string datatype.
+//!
+//! The [`TSTRING`] arm of the typed column I/O family. [`crate::getcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::putcols`].
+//!
+//! Ported from CFITSIO's `getcols.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -31,22 +36,33 @@ use crate::wrappers::*;
 use crate::{NullCheckType, fitsio::*};
 use crate::{bb, cs, parse_c_int};
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 ///
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = null in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `nulval`    — (I) string for null pixels
+/// * `array`     — (O) array of values that are read
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcvs(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,     /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,         /* I - number of strings to read               */
-    nulval: *const c_char,   /* I - string for null pixels                  */
-    array: *mut *mut c_char, /* O - array of values that are read           */
-    anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: *const c_char,
+    array: *mut *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -83,20 +99,31 @@ pub unsafe extern "C" fn ffgcvs(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = null in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `nulval`    — (I) string for null pixels
+/// * `array`     — (O) array of values that are read
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcvs_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                       */
-    colnum: c_int,               /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,          /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,         /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,             /* I - number of strings to read               */
-    nulval: Option<&[c_char]>,   /* I - string for null pixels                  */
-    array: &mut [&mut [c_char]], /* O - array of values that are read           */
-    anynul: Option<&mut c_int>,  /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,          /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: Option<&[c_char]>,
+    array: &mut [&mut [c_char]],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut cdummy: [c_char; 2] = [0; 2];
 
@@ -117,21 +144,32 @@ pub fn ffgcvs_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 /// Nularray will be set = 1 if the corresponding array pixel is undefined,
 /// otherwise nularray will = 0.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcfs(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,     /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,         /* I - number of strings to read               */
-    array: *mut *mut c_char, /* O - array of values that are read           */
-    nularray: *mut c_char,   /* O - array of flags = 1 if nultyp = 2        */
-    anynul: *mut c_int,      /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut *mut c_char,
+    nularray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -161,20 +199,31 @@ pub unsafe extern "C" fn ffgcfs(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 /// Nularray will be set = 1 if the corresponding array pixel is undefined,
 /// otherwise nularray will = 0.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcfs_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    colnum: c_int,                  /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,             /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,            /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,                /* I - number of strings to read               */
-    array: &mut Vec<&mut [c_char]>, /* O - array of values that are read           */
-    nularray: &mut [c_char],        /* O - array of flags = 1 if nultyp = 2        */
-    anynul: Option<&mut c_int>,     /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut Vec<&mut [c_char]>,
+    nularray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let cdummy: [c_char; 2] = [0; 2];
 
@@ -194,23 +243,36 @@ pub fn ffgcfs_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 /// Returns a formatted string value, regardless of the datatype of the column
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `nultyp`    — (I) null value handling code:
+/// * `nulval`    — (I) value for null pixels if nultyp = 1
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn ffgcls(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col) */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)        */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st) */
-    nelem: LONGLONG,       /* I - number of strings to read              */
-    nultyp: NullCheckType, /* I - null value handling code:               */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nultyp: NullCheckType,
     /*     1: set undefined pixels = nulval        */
     /*     2: set nularray=1 for undefined pixels  */
-    nulval: Option<&[c_char]>, /* I - value for null pixels if nultyp = 1     */
-    array: &mut [&mut [c_char]], /* O - array of values that are read           */
-    nularray: &mut [c_char],   /* O - array of flags = 1 if nultyp = 2        */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,        /* IO - error status                           */
+    nulval: Option<&[c_char]>,
+    array: &mut [&mut [c_char]],
+    nularray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int = 0;
     let mut hdutype: c_int = 0;
@@ -787,14 +849,20 @@ pub(crate) fn ffgcls(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Column Display Width.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column (1 = 1st col)
+/// * `width`  — (O) display width
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcdw(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column (1 = 1st col)      */
-    width: *mut c_int,   /* O - display width                       */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    width: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -806,13 +874,19 @@ pub unsafe extern "C" fn ffgcdw(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Column Display Width.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column (1 = 1st col)
+/// * `width`  — (O) display width
+/// * `status` — (IO) error status
 pub fn ffgcdw_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column (1 = 1st col)      */
-    width: &mut c_int,   /* O - display width                       */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    width: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -1002,24 +1076,36 @@ pub fn ffgcdw_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of string values from a column in the current FITS HDU.
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of strings to read
+/// * `nultyp`    — (I) null value handling code:
+/// * `nulval`    — (I) value for null pixels if nultyp = 1
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn ffgcls2(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col) */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)        */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st) */
-    nelem: LONGLONG,       /* I - number of strings to read              */
-    nultyp: NullCheckType, /* I - null value handling code:               */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nultyp: NullCheckType,
     /*     1: set undefined pixels = nulval        */
     /*     2: set nularray=1 for undefined pixels  */
-    nulval: Option<&[c_char]>, /* I - value for null pixels if nultyp = 1     */
-    array: &mut [&mut [c_char]], /* O - array of values that are read           */
-    nularray: &mut [c_char],   /* O - array of flags = 1 if nultyp = 2        */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,        /* IO - error status                           */
+    nulval: Option<&[c_char]>,
+    array: &mut [&mut [c_char]],
+    nularray: &mut [c_char],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let dtemp: f64;
     let mut nullen: c_long;
@@ -1066,9 +1152,7 @@ pub(crate) fn ffgcls2(
     if nultyp == NullCheckType::SetNullArray {
         nularray.fill(0); /* initialize nullarray */
     }
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if colnum < 1 || colnum > fptr.Fptr.tfield {
         int_snprintf!(
             &mut message,
@@ -1163,9 +1247,7 @@ pub(crate) fn ffgcls2(
     if nullen == 0 {
         nullen = 1;
     }
-    /*------------------------------------------------------------------*/
     /*  Decide whether to check for null values in the input FITS file: */
-    /*------------------------------------------------------------------*/
     nulcheck = nultyp; /* by default check for null values in the FITS file */
 
     if nultyp == NullCheckType::SetPixel && nulval.is_none() {
@@ -1178,9 +1260,7 @@ pub(crate) fn ffgcls2(
         nulcheck = NullCheckType::None; /* null value string is longer than width of column  */
         /* thus impossible for any column elements to = null */
     }
-    /*---------------------------------------------------------------------*/
     /*  Now read the strings one at a time from the FITS column.           */
-    /*---------------------------------------------------------------------*/
     next = 0; /* next element in array to be read  */
     rownum = 0; /* row number, relative to firstrow     */
 
@@ -1287,9 +1367,7 @@ pub(crate) fn ffgcls2(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         next += ntodo as LONGLONG;
         remain -= ntodo as LONGLONG;
         if remain > 0 {
