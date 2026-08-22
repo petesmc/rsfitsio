@@ -1,9 +1,14 @@
-/*  This file, putcolu.rs, contains routines that write data elements to    */
-/*  a FITS image or table.  Writes null values.                            */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that write null values to a FITS image or table.
+//!
+//! Unlike the rest of the typed column I/O family, these write no data of their
+//! own: they mark elements as undefined. How that is done depends on the
+//! column: an integer column stores its `TNULLn` value, a floating point column
+//! stores an IEEE NaN, and an ASCII table column stores its null string.
+//!
+//! Ported from CFITSIO's `putcolu.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::cmp;
 
@@ -20,20 +25,27 @@ use crate::fitsio2::*;
 use crate::wrappers::*;
 use crate::{buffers::*, int_snprintf, slice_to_str};
 
-/*--------------------------------------------------------------------------*/
 /// Write null values to the primary array.
 ///
 /// The primary array is represented as a binary table:
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppru(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)          */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write              */
-    status: *mut c_int,  /* IO - error status                          */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -44,19 +56,26 @@ pub unsafe extern "C" fn ffppru(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write null values to the primary array.
 ///
 /// The primary array is represented as a binary table:
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `status`    — (IO) error status
 pub fn ffppru_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)          */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write              */
-    status: &mut c_int,  /* IO - error status                          */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     if fits_is_compressed_image_safe(fptr, status) > 0 {
         /* this is a compressed image in a binary table */
@@ -79,19 +98,25 @@ pub fn ffppru_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write null values to the primary array. (Doesn't support groups).
 ///
 /// The primary array is represented as a binary table:
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpprn(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write              */
-    status: *mut c_int,  /* IO - error status                          */
+    fptr: *mut fitsfile,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -102,18 +127,24 @@ pub unsafe extern "C" fn ffpprn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write null values to the primary array. (Doesn't support groups).
 ///
 /// The primary array is represented as a binary table:
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `status`    — (IO) error status
 pub fn ffpprn_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write              */
-    status: &mut c_int,  /* IO - error status                          */
+    fptr: &mut fitsfile,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let row: c_long = 1;
 
@@ -137,7 +168,6 @@ pub fn ffpprn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Set elements of a table column to the appropriate null value for the column
 /// The column number may refer to a real column in an ASCII or binary table,
 /// or it may refer to a virtual column in a 1 or more grouped FITS primary
@@ -149,14 +179,23 @@ pub fn ffpprn_safe(
 ///
 /// This routine support COMPLEX and DOUBLE COMPLEX binary table columns, and
 /// sets both the real and imaginary components of the element to a NaN.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelempar`  — (I) number of values to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpclu(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelempar: LONGLONG,  /* I - number of values to write               */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelempar: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -167,7 +206,6 @@ pub unsafe extern "C" fn ffpclu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Set elements of a table column to the appropriate null value for the column
 /// The column number may refer to a real column in an ASCII or binary table,
 /// or it may refer to a virtual column in a 1 or more grouped FITS primary
@@ -179,13 +217,22 @@ pub unsafe extern "C" fn ffpclu(
 ///
 /// This routine support COMPLEX and DOUBLE COMPLEX binary table columns, and
 /// sets both the real and imaginary components of the element to a NaN.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelempar`  — (I) number of values to write
+/// * `status`    — (IO) error status
 pub fn ffpclu_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelempar: LONGLONG,  /* I - number of values to write               */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelempar: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int = 0;
     let mut maxelem: c_int = 0;
@@ -230,9 +277,7 @@ pub fn ffpclu_safe(
 
     largeelem = firstelem;
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
 
     /* note that writemode = 2 by default (not 1), so that the returned */
     /* repeat and incre values will be the actual values for this column. */
@@ -326,9 +371,7 @@ pub fn ffpclu_safe(
         }
     }
 
-    /*---------------------------------------------------------------------*/
     /*  Now write the pixels to the FITS column.                           */
-    /*---------------------------------------------------------------------*/
     remain = nelem; /* remaining number of values to write  */
     next = 0; /* next element in array to be written  */
     rownum = 0; /* row number, relative to firstrow     */
@@ -399,9 +442,7 @@ pub fn ffpclu_safe(
             }
         } /* End of switch block */
 
-        /*-------------------------*/
         /*  Check for fatal error  */
-        /*-------------------------*/
         if *status > 0 {
             /* test for error during previous write operation */
 
@@ -417,9 +458,7 @@ pub fn ffpclu_safe(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= ntodo as LONGLONG;
         if remain > 0 {
             next += ntodo as LONGLONG;
@@ -437,7 +476,6 @@ pub fn ffpclu_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Set elements of a table column to the appropriate null value for the column
 /// The column number may refer to a real column in an ASCII or binary table,
 /// or it may refer to a virtual column in a 1 or more grouped FITS primary
@@ -451,13 +489,22 @@ pub fn ffpclu_safe(
 /// (unlike the similar ffpclu routine).  This routine is mainly for use by
 /// ffpcne which already compensates for the effective doubling of the number of
 /// elements in a complex column.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `status`    — (IO) error status
 pub(crate) fn ffpcluc(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int = 0;
     let mut maxelem: c_int = 0;
@@ -497,9 +544,7 @@ pub(crate) fn ffpcluc(
         return *status;
     }
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
 
     /* note that writemode = 2 by default (not 1), so that the returned */
     /* repeat and incre values will be the actual values for this column. */
@@ -589,9 +634,7 @@ pub(crate) fn ffpcluc(
         }
     }
 
-    /*---------------------------------------------------------------------*/
     /*  Now write the pixels to the FITS column.                           */
-    /*---------------------------------------------------------------------*/
     remain = nelem; /* remaining number of values to write  */
     next = 0; /* next element in array to be written  */
     rownum = 0; /* row number, relative to firstrow     */
@@ -667,9 +710,7 @@ pub(crate) fn ffpcluc(
             }
         } /* End of switch block */
 
-        /*-------------------------*/
         /*  Check for fatal error  */
-        /*-------------------------*/
         if *status > 0 {
             /* test for error during previous write operation */
 
@@ -685,9 +726,7 @@ pub(crate) fn ffpcluc(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= ntodo as LONGLONG;
         if remain > 0 {
             next += ntodo as LONGLONG;
@@ -705,8 +744,7 @@ pub(crate) fn ffpcluc(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// fits_write_nullrows / ffprwu - write TNULLs to all columns in one or more rows
+/// Fits_write_nullrows / ffprwu - write TNULLs to all columns in one or more rows
 ///
 /// fitsfile *fptr - pointer to FITS HDU opened for read/write
 /// long int firstrow - first table row to set to null. (firstrow >= 1)
@@ -732,8 +770,7 @@ pub unsafe extern "C" fn ffprwu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// fits_write_nullrows / ffprwu - write TNULLs to all columns in one or more rows
+/// Fits_write_nullrows / ffprwu - write TNULLs to all columns in one or more rows
 ///
 /// fitsfile *fptr - pointer to FITS HDU opened for read/write
 /// long int firstrow - first table row to set to null. (firstrow >= 1)
