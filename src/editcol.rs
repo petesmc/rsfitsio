@@ -1,9 +1,15 @@
-/*  This file, editcol.rs, contains the set of FITSIO routines that    */
-/*  insert or delete rows or columns in a table or resize an image    */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that insert or delete rows or columns in a table, or resize an
+//! image.
+//!
+//! Editing a table's shape means moving the data that follows it in the file,
+//! rewriting the affected `NAXISn`, `TFORMn` and `TBCOLn` keywords, and
+//! shifting the heap of any variable length array columns. Row and column
+//! numbers are one-based throughout, as in the FITS standard.
+//!
+//! Ported from CFITSIO's `editcol.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -47,15 +53,22 @@ use crate::wrappers::*;
 use crate::{bb, cs};
 use crate::{buffers::*, raw_to_slice};
 
-/*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrsim(
-    fptr: *mut fitsfile,  /* I - FITS file pointer           */
-    bitpix: c_int,        /* I - bits per pixel              */
-    naxis: c_int,         /* I - number of axes in the array */
-    naxes: *const c_long, /* I - size of each axis           */
-    status: *mut c_int,   /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -68,14 +81,21 @@ pub unsafe extern "C" fn ffrsim(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffrsim_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[c_long],    /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut tnaxes: [LONGLONG; 99] = [0; 99];
 
@@ -96,15 +116,22 @@ pub fn ffrsim_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrsimll(
-    fptr: *mut fitsfile,    /* I - FITS file pointer           */
-    bitpix: c_int,          /* I - bits per pixel              */
-    naxis: c_int,           /* I - number of axes in the array */
-    naxes: *const LONGLONG, /* I - size of each axis           */
-    status: *mut c_int,     /* IO - error status               */
+    fptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -117,14 +144,21 @@ pub unsafe extern "C" fn ffrsimll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// resize an existing primary array or IMAGE extension.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `bitpix` — (I) bits per pixel
+/// * `naxis`  — (I) number of axes in the array
+/// * `naxes`  — (I) size of each axis
+/// * `status` — (IO) error status
 pub fn ffrsimll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    bitpix: c_int,       /* I - bits per pixel              */
-    naxis: c_int,        /* I - number of axes in the array */
-    naxes: &[LONGLONG],  /* I - size of each axis           */
-    status: &mut c_int,  /* IO - error status               */
+    fptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut simple: c_int = 0;
     let mut obitpix: c_int = 0;
@@ -378,15 +412,21 @@ pub fn ffrsimll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// insert NROWS blank rows immediated after row firstrow (1 = first row).
 /// Set firstrow = 0 to insert space at the beginning of the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `firstrow` — (I) insert space AFTER this row, 0 = insert space at beginning of table
+/// * `nrows`    — (I) number of rows to insert
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffirow(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    firstrow: LONGLONG, /* I - insert space AFTER this row, 0 = insert space at beginning of table              */
-    nrows: LONGLONG,    /* I - number of rows to insert                 */
-    status: *mut c_int, /* IO - error status                            */
+    fptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -397,14 +437,20 @@ pub unsafe extern "C" fn ffirow(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// insert NROWS blank rows immediated after row firstrow (1 = first row).
 /// Set firstrow = 0 to insert space at the beginning of the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `firstrow` — (I) insert space AFTER this row, 0 = insert space at beginning of table
+/// * `nrows`    — (I) number of rows to insert
+/// * `status`   — (IO) error status
 pub fn ffirow_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    firstrow: LONGLONG, /* I - insert space AFTER this row, 0 = insert space at beginning of table              */
-    nrows: LONGLONG,    /* I - number of rows to insert                 */
-    status: &mut c_int, /* IO - error status                            */
+    fptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis1: LONGLONG = 0;
     let mut naxis2: LONGLONG = 0;
@@ -504,14 +550,20 @@ pub fn ffirow_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete NROWS rows from table starting with firstrow (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `firstrow` — (I) first row to delete (1 = first)
+/// * `nrows`    — (I) number of rows to delete
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdrow(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    firstrow: LONGLONG,  /* I - first row to delete (1 = first)          */
-    nrows: LONGLONG,     /* I - number of rows to delete                 */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -522,13 +574,19 @@ pub unsafe extern "C" fn ffdrow(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete NROWS rows from table starting with firstrow (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `firstrow` — (I) first row to delete (1 = first)
+/// * `nrows`    — (I) number of rows to delete
+/// * `status`   — (IO) error status
 pub fn ffdrow_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    firstrow: LONGLONG,  /* I - first row to delete (1 = first)          */
-    nrows: LONGLONG,     /* I - number of rows to delete                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis1: LONGLONG = 0;
     let mut naxis2: LONGLONG = 0;
@@ -635,17 +693,22 @@ pub fn ffdrow_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the ranges of rows from the table (1 = first row of table).
 ///
 /// The 'ranges' parameter typically looks like:
 /// '10-20, 30 - 40, 55' or '50-'
 /// and gives a list of rows or row ranges separated by commas.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer to table
+/// * `ranges` — (I) ranges of rows to delete (1 = first)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdrrg(
-    fptr: *mut fitsfile,   /* I - FITS file pointer to table               */
-    ranges: *const c_char, /* I - ranges of rows to delete (1 = first)     */
-    status: *mut c_int,    /* IO - error status                            */
+    fptr: *mut fitsfile,
+    ranges: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -658,17 +721,18 @@ pub unsafe extern "C" fn ffdrrg(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the ranges of rows from the table (1 = first row of table).
 ///
 /// The 'ranges' parameter typically looks like:
 /// '10-20, 30 - 40, 55' or '50-'
 /// and gives a list of rows or row ranges separated by commas.
-pub fn ffdrrg_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer to table               */
-    ranges: &[c_char],   /* I - ranges of rows to delete (1 = first)     */
-    status: &mut c_int,  /* IO - error status                            */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer to table
+/// * `ranges` — (I) ranges of rows to delete (1 = first)
+/// * `status` — (IO) error status
+pub fn ffdrrg_safe(fptr: &mut fitsfile, ranges: &[c_char], status: &mut c_int) -> c_int {
     let mut nranges2: c_int = 0;
     let mut nrows: c_long = 0;
     let mut naxis2: LONGLONG = 0;
@@ -762,14 +826,20 @@ pub fn ffdrrg_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `rownum` — (I) list of rows to delete (1 = first)
+/// * `nrows`  — (I) number of rows to delete
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdrws(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                        */
-    rownum: *const c_long, /* I - list of rows to delete (1 = first)       */
-    nrows: c_long,         /* I - number of rows to delete                 */
-    status: *mut c_int,    /* IO - error status                            */
+    fptr: *mut fitsfile,
+    rownum: *const c_long,
+    nrows: c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -782,13 +852,19 @@ pub unsafe extern "C" fn ffdrws(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `rownum` — (I) list of rows to delete (1 = first)
+/// * `nrows`  — (I) number of rows to delete
+/// * `status` — (IO) error status
 pub fn ffdrws_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    rownum: &[c_long],   /* I - list of rows to delete (1 = first)       */
-    nrows: c_long,       /* I - number of rows to delete                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    rownum: &[c_long],
+    nrows: c_long,
+    status: &mut c_int,
 ) -> c_int {
     let mut naxis1: LONGLONG = 0;
     let mut naxis2: LONGLONG = 0;
@@ -919,14 +995,20 @@ pub fn ffdrws_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `rownum` — (I) list of rows to delete (1 = first)
+/// * `nrows`  — (I) number of rows to delete
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdrwsll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                        */
-    rownum: *const LONGLONG, /* I - list of rows to delete (1 = first)       */
-    nrows: LONGLONG,         /* I - number of rows to delete                 */
-    status: *mut c_int,      /* IO - error status                            */
+    fptr: *mut fitsfile,
+    rownum: *const LONGLONG,
+    nrows: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -939,13 +1021,19 @@ pub unsafe extern "C" fn ffdrwsll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete the list of rows from the table (1 = first row of table).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `rownum` — (I) list of rows to delete (1 = first)
+/// * `nrows`  — (I) number of rows to delete
+/// * `status` — (IO) error status
 pub fn ffdrwsll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    rownum: &[LONGLONG], /* I - list of rows to delete (1 = first)       */
-    nrows: LONGLONG,     /* I - number of rows to delete                 */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    rownum: &[LONGLONG],
+    nrows: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut insertpos: LONGLONG = 0;
     let mut nextrowpos: LONGLONG = 0;
@@ -1070,7 +1158,6 @@ pub fn ffdrwsll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the input list of row ranges, returning the number of ranges,
 /// and the min and max row value in each range.
 ///
@@ -1085,15 +1172,25 @@ pub fn ffdrwsll_safe(
 ///
 /// error is returned if min value of range is > max value of range or if the
 /// ranges are not monotonically increasing.
+///
+/// # Parameters
+///
+/// * `rowlist`   — (I) list of rows and row ranges
+/// * `maxrows`   — (I) number of rows in the table
+/// * `maxranges` — (I) max number of ranges to be returned
+/// * `numranges` — (O) number ranges returned
+/// * `minrow`    — (O) first row in each range
+/// * `maxrow`    — (O) last row in each range
+/// * `status`    — (IO) status value
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrwrg(
-    rowlist: *const c_char, /* I - list of rows and row ranges */
-    maxrows: LONGLONG,      /* I - number of rows in the table */
-    maxranges: c_int,       /* I - max number of ranges to be returned */
-    numranges: *mut c_int,  /* O - number ranges returned */
-    minrow: *mut c_long,    /* O - first row in each range */
-    maxrow: *mut c_long,    /* O - last row in each range */
-    status: *mut c_int,     /* IO - status value */
+    rowlist: *const c_char,
+    maxrows: LONGLONG,
+    maxranges: c_int,
+    numranges: *mut c_int,
+    minrow: *mut c_long,
+    maxrow: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1110,7 +1207,6 @@ pub unsafe extern "C" fn ffrwrg(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the input list of row ranges, returning the number of ranges,
 /// and the min and max row value in each range.
 ///
@@ -1125,14 +1221,24 @@ pub unsafe extern "C" fn ffrwrg(
 ///
 /// error is returned if min value of range is > max value of range or if the
 /// ranges are not monotonically increasing.
+///
+/// # Parameters
+///
+/// * `rowlist`   — (I) list of rows and row ranges
+/// * `maxrows`   — (I) number of rows in the table
+/// * `maxranges` — (I) max number of ranges to be returned
+/// * `numranges` — (O) number ranges returned
+/// * `minrow`    — (O) first row in each range
+/// * `maxrow`    — (O) last row in each range
+/// * `status`    — (IO) status value
 pub fn ffrwrg_safe(
-    rowlist: &[c_char],    /* I - list of rows and row ranges */
-    maxrows: LONGLONG,     /* I - number of rows in the table */
-    maxranges: c_int,      /* I - max number of ranges to be returned */
-    numranges: &mut c_int, /* O - number ranges returned */
-    minrow: &mut [c_long], /* O - first row in each range */
-    maxrow: &mut [c_long], /* O - last row in each range */
-    status: &mut c_int,    /* IO - status value */
+    rowlist: &[c_char],
+    maxrows: LONGLONG,
+    maxranges: c_int,
+    numranges: &mut c_int,
+    minrow: &mut [c_long],
+    maxrow: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut minval: c_long = 0;
     let mut maxval: c_long = 0;
@@ -1266,7 +1372,6 @@ pub fn ffrwrg_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 // parse the input list of row ranges, returning the number of ranges,
 // and the min and max row value in each range.
 //
@@ -1282,14 +1387,23 @@ pub fn ffrwrg_safe(
 // error is returned if min value of range is > max value of range or if the
 // ranges are not monotonically increasing.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `rowlist`   — (I) list of rows and row ranges
+/// * `maxrows`   — (I) number of rows in the list
+/// * `maxranges` — (I) max number of ranges to be returned
+/// * `numranges` — (O) number ranges returned
+/// * `minrow`    — (O) first row in each range
+/// * `maxrow`    — (O) last row in each range
+/// * `status`    — (IO) status value
 pub unsafe extern "C" fn ffrwrgll(
-    rowlist: *const c_char, /* I - list of rows and row ranges */
-    maxrows: LONGLONG,      /* I - number of rows in the list */
-    maxranges: c_int,       /* I - max number of ranges to be returned */
-    numranges: *mut c_int,  /* O - number ranges returned */
-    minrow: *mut LONGLONG,  /* O - first row in each range */
-    maxrow: *mut LONGLONG,  /* O - last row in each range */
-    status: *mut c_int,     /* IO - status value */
+    rowlist: *const c_char,
+    maxrows: LONGLONG,
+    maxranges: c_int,
+    numranges: *mut c_int,
+    minrow: *mut LONGLONG,
+    maxrow: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1306,7 +1420,6 @@ pub unsafe extern "C" fn ffrwrgll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 // parse the input list of row ranges, returning the number of ranges,
 // and the min and max row value in each range.
 //
@@ -1321,14 +1434,23 @@ pub unsafe extern "C" fn ffrwrgll(
 //
 // error is returned if min value of range is > max value of range or if the
 // ranges are not monotonically increasing.
+/// # Parameters
+///
+/// * `rowlist`   — (I) list of rows and row ranges
+/// * `maxrows`   — (I) number of rows in the list
+/// * `maxranges` — (I) max number of ranges to be returned
+/// * `numranges` — (O) number ranges returned
+/// * `minrow`    — (O) first row in each range
+/// * `maxrow`    — (O) last row in each range
+/// * `status`    — (IO) status value
 pub fn ffrwrgll_safe(
-    rowlist: &[c_char],      /* I - list of rows and row ranges */
-    maxrows: LONGLONG,       /* I - number of rows in the list */
-    maxranges: c_int,        /* I - max number of ranges to be returned */
-    numranges: &mut c_int,   /* O - number ranges returned */
-    minrow: &mut [LONGLONG], /* O - first row in each range */
-    maxrow: &mut [LONGLONG], /* O - last row in each range */
-    status: &mut c_int,      /* IO - status value */
+    rowlist: &[c_char],
+    maxrows: LONGLONG,
+    maxranges: c_int,
+    numranges: &mut c_int,
+    minrow: &mut [LONGLONG],
+    maxrow: &mut [LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     let mut minval: LONGLONG = 0;
     let mut maxval: LONGLONG = 0;
@@ -1468,17 +1590,24 @@ pub fn ffrwrgll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert a new column into an existing table at position numcol.  If
 /// numcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `numcol` — (I) position for new col. (1 = 1st)
+/// * `ttype`  — (I) name of column (TTYPE keyword)
+/// * `tform`  — (I) format of column (TFORM keyword)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fficol(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                        */
-    numcol: c_int,        /* I - position for new col. (1 = 1st)          */
-    ttype: *const c_char, /* I - name of column (TTYPE keyword)           */
-    tform: *const c_char, /* I - format of column (TFORM keyword)         */
-    status: *mut c_int,   /* IO - error status                            */
+    fptr: *mut fitsfile,
+    numcol: c_int,
+    ttype: *const c_char,
+    tform: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1492,16 +1621,23 @@ pub unsafe extern "C" fn fficol(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert a new column into an existing table at position numcol.  If
 /// numcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `numcol` — (I) position for new col. (1 = 1st)
+/// * `ttype`  — (I) name of column (TTYPE keyword)
+/// * `tform`  — (I) format of column (TFORM keyword)
+/// * `status` — (IO) error status
 pub fn fficol_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    numcol: c_int,       /* I - position for new col. (1 = 1st)          */
-    ttype: &[c_char],    /* I - name of column (TTYPE keyword)           */
-    tform: &[c_char],    /* I - format of column (TFORM keyword)         */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    numcol: c_int,
+    ttype: &[c_char],
+    tform: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let name = ttype;
     let format = tform;
@@ -1510,18 +1646,26 @@ pub fn fficol_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert 1 or more new columns into an existing table at position numcol.  If
 /// fstcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `fstcol` — (I) position for first new col. (1 = 1st)
+/// * `ncols`  — (I) number of columns to insert
+/// * `ttype`  — (I) array of column names(TTYPE keywords)
+/// * `tform`  — (I) array of formats of column (TFORM)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fficls(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                        */
-    fstcol: c_int,               /* I - position for first new col. (1 = 1st)    */
-    ncols: c_int,                /* I - number of columns to insert              */
-    ttype: *const *const c_char, /* I - array of column names(TTYPE keywords)    */
-    tform: *const *const c_char, /* I - array of formats of column (TFORM)       */
-    status: *mut c_int,          /* IO - error status                            */
+    fptr: *mut fitsfile,
+    fstcol: c_int,
+    ncols: c_int,
+    ttype: *const *const c_char,
+    tform: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1549,17 +1693,25 @@ pub unsafe extern "C" fn fficls(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert 1 or more new columns into an existing table at position numcol.  If
 /// fstcol is greater than the number of existing columns in the table
 /// then the new column will be appended as the last column in the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `fstcol` — (I) position for first new col. (1 = 1st)
+/// * `ncols`  — (I) number of columns to insert
+/// * `ttype`  — (I) array of column names(TTYPE keywords)
+/// * `tform`  — (I) array of formats of column (TFORM)
+/// * `status` — (IO) error status
 pub fn fficls_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    fstcol: c_int,       /* I - position for first new col. (1 = 1st)    */
-    ncols: c_int,        /* I - number of columns to insert              */
-    ttype: &[&[c_char]], /* I - array of column names(TTYPE keywords)    */
-    tform: &[&[c_char]], /* I - array of formats of column (TFORM)       */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    fstcol: c_int,
+    ncols: c_int,
+    ttype: &[&[c_char]],
+    tform: &[&[c_char]],
+    status: &mut c_int,
 ) -> c_int {
     let mut colnum: c_int = 0;
     let mut datacode: c_int = 0;
@@ -1890,15 +2042,21 @@ pub fn fficls_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Modify the vector length of a column in a binary table, larger or smaller.
 /// E.g., change a column from TFORMn = '1E' to '20E'.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) position of col to be modified
+/// * `newveclen` — (I) new vector length of column (TFORM)
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffmvec(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - position of col to be modified           */
-    newveclen: LONGLONG, /* I - new vector length of column (TFORM)       */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    newveclen: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1909,14 +2067,20 @@ pub unsafe extern "C" fn ffmvec(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Modify the vector length of a column in a binary table, larger or smaller.
 /// E.g., change a column from TFORMn = '1E' to '20E'.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) position of col to be modified
+/// * `newveclen` — (I) new vector length of column (TFORM)
+/// * `status`    — (IO) error status
 pub fn ffmvec_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - position of col to be modified           */
-    newveclen: LONGLONG, /* I - new vector length of column (TFORM)       */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    newveclen: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut datacode: c_int = 0;
     let mut tfields: c_int = 0;
@@ -2143,16 +2307,24 @@ pub fn ffmvec_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy a column from infptr and insert it in the outfptr table.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `incol`      — (I) number of input column
+/// * `outcol`     — (I) number for output column
+/// * `create_col` — (I) create new col if TRUE, else overwrite
+/// * `status`     — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpcl(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    incol: c_int,           /* I - number of input column   */
-    outcol: c_int,          /* I - number for output column  */
-    create_col: c_int,      /* I - create new col if TRUE, else overwrite */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    create_col: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2183,17 +2355,23 @@ pub unsafe extern "C" fn ffcpcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy a column from infptr and insert it in the outfptr table.
-/// NOTE: [`ffcpcl_inplace_safe`] is a copy of this body for the case where the
-/// caller passes one file as both input and output.  Any fix here belongs there too.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `incol`      — (I) number of input column
+/// * `outcol`     — (I) number for output column
+/// * `create_col` — (I) create new col if TRUE, else overwrite
+/// * `status`     — (IO) error status
 pub fn ffcpcl_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    incol: c_int,           /* I - number of input column   */
-    outcol: c_int,          /* I - number for output column  */
-    create_col: c_int,      /* I - create new col if TRUE, else overwrite */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    create_col: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int = 0;
     let mut colnum: c_int = 0;
@@ -2740,7 +2918,6 @@ pub fn ffcpcl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// In-place twin of [`ffcpcl_safe`]: copy a column within one file.
 ///
 /// This is the C's `fits_copy_col(fptr, fptr, ...)` case.  The C API allows the
@@ -2750,12 +2927,20 @@ pub fn ffcpcl_safe(
 ///
 /// NOTE: this body is a copy of [`ffcpcl_safe`] with `infptr`/`outfptr`
 /// collapsed to one handle.  Any fix to one belongs in the other.
+///
+/// # Parameters
+///
+/// * `fptr`       — I/O - FITS file, used as both input and output
+/// * `incol`      — (I) number of input column
+/// * `outcol`     — (I) number for output column
+/// * `create_col` — (I) create new col if TRUE, else overwrite
+/// * `status`     — (IO) error status
 pub fn ffcpcl_inplace_safe(
-    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
-    incol: c_int,        /* I - number of input column   */
-    outcol: c_int,       /* I - number for output column  */
-    create_col: c_int,   /* I - create new col if TRUE, else overwrite */
-    status: &mut c_int,  /* IO - error status     */
+    fptr: &mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    create_col: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int = 0;
     let mut colnum: c_int = 0;
@@ -3295,20 +3480,29 @@ pub fn ffcpcl_inplace_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy multiple columns from infptr and insert them in the outfptr
 /// table.  Optimized for multiple-column case since it only expands the
 /// output file once using fits_insert_cols() instead of calling
 /// fits_insert_col() multiple times.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `incol`      — (I) number of first input column
+/// * `outcol`     — (I) number for first output column
+/// * `ncols`      — (I) number of columns to copy from input to output
+/// * `create_col` — (I) create new col if TRUE, else overwrite
+/// * `status`     — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffccls(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    incol: c_int,           /* I - number of first input column   */
-    outcol: c_int,          /* I - number for first output column  */
-    ncols: c_int,           /* I - number of columns to copy from input to output */
-    create_col: c_int,      /* I - create new col if TRUE, else overwrite */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    ncols: c_int,
+    create_col: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3320,19 +3514,28 @@ pub unsafe extern "C" fn ffccls(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy multiple columns from infptr and insert them in the outfptr
 /// table.  Optimized for multiple-column case since it only expands the
 /// output file once using fits_insert_cols() instead of calling
 /// fits_insert_col() multiple times.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `incol`      — (I) number of first input column
+/// * `outcol`     — (I) number for first output column
+/// * `ncols`      — (I) number of columns to copy from input to output
+/// * `create_col` — (I) create new col if TRUE, else overwrite
+/// * `status`     — (IO) error status
 pub fn ffccls_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    incol: c_int,           /* I - number of first input column   */
-    outcol: c_int,          /* I - number for first output column  */
-    ncols: c_int,           /* I - number of columns to copy from input to output */
-    create_col: c_int,      /* I - create new col if TRUE, else overwrite */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    ncols: c_int,
+    create_col: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int;
 
@@ -3564,15 +3767,22 @@ pub fn ffccls_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `firstrow` — (I) number of first row to copy (1 based)
+/// * `nrows`    — (I) number of rows to copy
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcprw(
-    infptr: *mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile, /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,        /* I - number of rows to copy  */
-    status: *mut c_int,     /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3584,14 +3794,21 @@ pub unsafe extern "C" fn ffcprw(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `firstrow` — (I) number of first row to copy (1 based)
+/// * `nrows`    — (I) number of rows to copy
+/// * `status`   — (IO) error status
 pub fn ffcprw_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,     /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,        /* I - number of rows to copy  */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut innaxis1: LONGLONG = 0;
     let mut innaxis2: LONGLONG = 0;
@@ -3837,16 +4054,24 @@ pub fn ffcprw_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `firstrow`   — (I) number of first row to copy (1 based)
+/// * `nrows`      — (I) number of rows to copy
+/// * `row_status` — (I) quality list of rows to keep (1) or not keep (0)
+/// * `status`     — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpsr(
-    infptr: *mut fitsfile,     /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile,    /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,        /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,           /* I - number of rows to copy  */
-    row_status: *const c_char, /* I - quality list of rows to keep (1) or not keep (0) */
-    status: *mut c_int,        /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    row_status: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3863,15 +4088,23 @@ pub unsafe extern "C" fn ffcpsr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy consecutive set of rows from infptr and append it in the outfptr table.
+///
+/// # Parameters
+///
+/// * `infptr`     — (I) FITS file pointer to input file
+/// * `outfptr`    — (I) FITS file pointer to output file
+/// * `firstrow`   — (I) number of first row to copy (1 based)
+/// * `nrows`      — (I) number of rows to copy
+/// * `row_status` — (I) quality list of rows to keep (1) or not keep (0)
+/// * `status`     — (IO) error status
 pub fn ffcpsr_safe(
-    infptr: &mut fitsfile,         /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile,        /* I - FITS file pointer to output file */
-    firstrow: LONGLONG,            /* I - number of first row to copy (1 based)  */
-    nrows: LONGLONG,               /* I - number of rows to copy  */
-    row_status: Option<&[c_char]>, /* I - quality list of rows to keep (1) or not keep (0) */
-    status: &mut c_int,            /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    row_status: Option<&[c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut innaxis1: LONGLONG = 0;
     let mut innaxis2: LONGLONG = 0;
@@ -4149,16 +4382,24 @@ pub fn ffcpsr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy an indexed keyword from infptr to outfptr.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `incol`    — (I) input index number
+/// * `outcol`   — (I) output index number
+/// * `rootname` — (I) root name of the keyword to be copied
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcpky(
-    infptr: *mut fitsfile,   /* I - FITS file pointer to input file  */
-    outfptr: *mut fitsfile,  /* I - FITS file pointer to output file */
-    incol: c_int,            /* I - input index number   */
-    outcol: c_int,           /* I - output index number  */
-    rootname: *const c_char, /* I - root name of the keyword to be copied */
-    status: *mut c_int,      /* IO - error status     */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    rootname: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4172,15 +4413,23 @@ pub unsafe extern "C" fn ffcpky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy an indexed keyword from infptr to outfptr.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) FITS file pointer to input file
+/// * `outfptr`  — (I) FITS file pointer to output file
+/// * `incol`    — (I) input index number
+/// * `outcol`   — (I) output index number
+/// * `rootname` — (I) root name of the keyword to be copied
+/// * `status`   — (IO) error status
 pub fn ffcpky_safe(
-    infptr: &mut fitsfile,  /* I - FITS file pointer to input file  */
-    outfptr: &mut fitsfile, /* I - FITS file pointer to output file */
-    incol: c_int,           /* I - input index number   */
-    outcol: c_int,          /* I - output index number  */
-    rootname: &[c_char],    /* I - root name of the keyword to be copied */
-    status: &mut c_int,     /* IO - error status     */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    rootname: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int = 0;
 
@@ -4205,16 +4454,23 @@ pub fn ffcpky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// In-place twin of [`ffcpky_safe`]: copy an indexed keyword within one file.
 ///
 /// The read and the write are separate statements, so one handle serves both.
+///
+/// # Parameters
+///
+/// * `fptr`     — I/O - FITS file, used as both input and output
+/// * `incol`    — (I) input index number
+/// * `outcol`   — (I) output index number
+/// * `rootname` — (I) root name of the keyword to be copied
+/// * `status`   — (IO) error status
 pub fn ffcpky_inplace_safe(
-    fptr: &mut fitsfile, /* I/O - FITS file, used as both input and output */
-    incol: c_int,        /* I - input index number   */
-    outcol: c_int,       /* I - output index number  */
-    rootname: &[c_char], /* I - root name of the keyword to be copied */
-    status: &mut c_int,  /* IO - error status     */
+    fptr: &mut fitsfile,
+    incol: c_int,
+    outcol: c_int,
+    rootname: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int = 0;
 
@@ -4232,14 +4488,15 @@ pub fn ffcpky_inplace_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete a column from a table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column to delete (1 = 1st)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffdcol(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - column to delete (1 = 1st)               */
-    status: *mut c_int,  /* IO - error status                            */
-) -> c_int {
+pub unsafe extern "C" fn ffdcol(fptr: *mut fitsfile, colnum: c_int, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -4249,13 +4506,14 @@ pub unsafe extern "C" fn ffdcol(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete a column from a table.
-pub fn ffdcol_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - column to delete (1 = 1st)               */
-    status: &mut c_int,  /* IO - error status                            */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column to delete (1 = 1st)
+/// * `status` — (IO) error status
+pub fn ffdcol_safe(fptr: &mut fitsfile, colnum: c_int, status: &mut c_int) -> c_int {
     let mut tstatus: c_int = 0;
 
     let nbytes: LONGLONG;
@@ -4411,16 +4669,24 @@ pub fn ffdcol_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert 'ninsert' bytes into each row of the table at position 'bytepos'.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of the table, in bytes
+/// * `naxis2`  — (I) number of rows in the table
+/// * `ninsert` — (I) number of bytes to insert in each row
+/// * `bytepos` — (I) rel. position in row to insert bytes
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcins(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    naxis1: LONGLONG,    /* I - width of the table, in bytes             */
-    naxis2: LONGLONG,    /* I - number of rows in the table              */
-    ninsert: LONGLONG,   /* I - number of bytes to insert in each row    */
-    bytepos: LONGLONG,   /* I - rel. position in row to insert bytes     */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    ninsert: LONGLONG,
+    bytepos: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4431,15 +4697,23 @@ pub unsafe extern "C" fn ffcins(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert 'ninsert' bytes into each row of the table at position 'bytepos'.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of the table, in bytes
+/// * `naxis2`  — (I) number of rows in the table
+/// * `ninsert` — (I) number of bytes to insert in each row
+/// * `bytepos` — (I) rel. position in row to insert bytes
+/// * `status`  — (IO) error status
 pub fn ffcins_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    naxis1: LONGLONG,    /* I - width of the table, in bytes             */
-    naxis2: LONGLONG,    /* I - number of rows in the table              */
-    ninsert: LONGLONG,   /* I - number of bytes to insert in each row    */
-    bytepos: LONGLONG,   /* I - rel. position in row to insert bytes     */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    ninsert: LONGLONG,
+    bytepos: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut buffer: [u8; 10000] = [0; 10000];
     let mut cfill: u8 = 0;
@@ -4590,16 +4864,24 @@ pub fn ffcins_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete 'ndelete' bytes from each row of the table at position 'bytepos'.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of the table, in bytes
+/// * `naxis2`  — (I) number of rows in the table
+/// * `ndelete` — (I) number of bytes to delete in each row
+/// * `bytepos` — (I) rel. position in row to delete bytes
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcdel(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    naxis1: LONGLONG,    /* I - width of the table, in bytes             */
-    naxis2: LONGLONG,    /* I - number of rows in the table              */
-    ndelete: LONGLONG,   /* I - number of bytes to delete in each row    */
-    bytepos: LONGLONG,   /* I - rel. position in row to delete bytes     */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    ndelete: LONGLONG,
+    bytepos: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4610,15 +4892,23 @@ pub unsafe extern "C" fn ffcdel(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// delete 'ndelete' bytes from each row of the table at position 'bytepos'.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `naxis1`  — (I) width of the table, in bytes
+/// * `naxis2`  — (I) number of rows in the table
+/// * `ndelete` — (I) number of bytes to delete in each row
+/// * `bytepos` — (I) rel. position in row to delete bytes
+/// * `status`  — (IO) error status
 pub fn ffcdel_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    naxis1: LONGLONG,    /* I - width of the table, in bytes             */
-    naxis2: LONGLONG,    /* I - number of rows in the table              */
-    ndelete: LONGLONG,   /* I - number of bytes to delete in each row    */
-    bytepos: LONGLONG,   /* I - rel. position in row to delete bytes     */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    ndelete: LONGLONG,
+    bytepos: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut buffer: [u8; 10000] = [0; 10000];
     let mut i1: LONGLONG = 0;
@@ -4711,7 +5001,6 @@ pub fn ffcdel_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// shift the index value on any existing column keywords
 /// This routine will modify the name of any keyword that begins with 'T'
 /// and has an index number in the range COLMIN - COLMAX, inclusive.
@@ -4720,13 +5009,21 @@ pub fn ffcdel_safe(
 /// if incre is negative, then the kewords with index = COLMIN
 /// will be deleted and the index of higher numbered keywords will
 /// be decremented.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colmin` — (I) starting col. to be incremented; 1 = 1st
+/// * `colmax` — (I) last column to be incremented
+/// * `incre`  — (I) shift index number by this amount
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffkshf(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    colmin: c_int,       /* I - starting col. to be incremented; 1 = 1st */
-    colmax: c_int,       /* I - last column to be incremented            */
-    incre: c_int,        /* I - shift index number by this amount        */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    colmin: c_int,
+    colmax: c_int,
+    incre: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4737,7 +5034,6 @@ pub unsafe extern "C" fn ffkshf(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// shift the index value on any existing column keywords
 /// This routine will modify the name of any keyword that begins with 'T'
 /// and has an index number in the range COLMIN - COLMAX, inclusive.
@@ -4746,12 +5042,20 @@ pub unsafe extern "C" fn ffkshf(
 /// if incre is negative, then the kewords with index = COLMIN
 /// will be deleted and the index of higher numbered keywords will
 /// be decremented.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colmin` — (I) starting col. to be incremented; 1 = 1st
+/// * `colmax` — (I) last column to be incremented
+/// * `incre`  — (I) shift index number by this amount
+/// * `status` — (IO) error status
 pub fn ffkshf_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    colmin: c_int,       /* I - starting col. to be incremented; 1 = 1st */
-    colmax: c_int,       /* I - last column to be incremented            */
-    incre: c_int,        /* I - shift index number by this amount        */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    colmin: c_int,
+    colmax: c_int,
+    incre: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nmore: c_int = 0;
@@ -4832,19 +5136,25 @@ pub fn ffkshf_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Internal function to identify which columns in a binary table are variable length.
 ///
 /// The colnums array will be filled with nvarcols elements - the 1-based numbers
 /// of all variable length columns in the table.  This ASSUMES calling function
 /// has passed in a colnums array large enough to hold these (colnums==NULL also
 /// allowed).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nvarcols` — (O) Number of variable length columns found
+/// * `colnums`  — (O) 1-based variable column positions
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fffvcl(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    nvarcols: *mut c_int, /* O - Number of variable length columns found */
-    colnums: *mut c_int,  /* O - 1-based variable column positions       */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    nvarcols: *mut c_int,
+    colnums: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4867,17 +5177,23 @@ pub unsafe extern "C" fn fffvcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Internal function to identify which columns in a binary table are variable length.
 /// The colnums array will be filled with nvarcols elements - the 1-based numbers
 /// of all variable length columns in the table.  This ASSUMES calling function
 /// has passed in a colnums array large enough to hold these (colnums==NULL also
 /// allowed).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nvarcols` — (O) Number of variable length columns found
+/// * `colnums`  — (O) 1-based variable column positions
+/// * `status`   — (IO) error status
 pub fn fffvcl_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    nvarcols: &mut c_int, /* O - Number of variable length columns found */
-    mut colnums: Option<&mut [c_int]>, /* O - 1-based variable column positions       */
-    status: &mut c_int,   /* IO - error status                           */
+    fptr: &mut fitsfile,
+    nvarcols: &mut c_int,
+    mut colnums: Option<&mut [c_int]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut tfields: c_int = 0;
 
@@ -4911,18 +5227,25 @@ pub fn fffvcl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Shift block of bytes by nshift bytes (positive or negative).
 ///
 /// A positive nshift value moves the block down further in the file, while a
 /// negative value shifts the block towards the beginning of the file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstbyte` — (I) position of first byte in block to shift
+/// * `nbytes`    — (I) size of block of bytes to shift
+/// * `nshift`    — (I) size of shift in bytes (+ or -)
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffshft(
-    fptr: *mut fitsfile, /* I - FITS file pointer                        */
-    firstbyte: LONGLONG, /* I - position of first byte in block to shift */
-    nbytes: LONGLONG,    /* I - size of block of bytes to shift          */
-    nshift: LONGLONG,    /* I - size of shift in bytes (+ or -)          */
-    status: *mut c_int,  /* IO - error status                            */
+    fptr: *mut fitsfile,
+    firstbyte: LONGLONG,
+    nbytes: LONGLONG,
+    nshift: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4933,17 +5256,24 @@ pub unsafe extern "C" fn ffshft(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Shift block of bytes by nshift bytes (positive or negative).
 ///
 /// A positive nshift value moves the block down further in the file, while a
 /// negative value shifts the block towards the beginning of the file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `firstbyte` — (I) position of first byte in block to shift
+/// * `nbytes`    — (I) size of block of bytes to shift
+/// * `nshift`    — (I) size of shift in bytes (+ or -)
+/// * `status`    — (IO) error status
 pub fn ffshft_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    firstbyte: LONGLONG, /* I - position of first byte in block to shift */
-    nbytes: LONGLONG,    /* I - size of block of bytes to shift          */
-    nshift: LONGLONG,    /* I - size of shift in bytes (+ or -)          */
-    status: &mut c_int,  /* IO - error status                            */
+    fptr: &mut fitsfile,
+    firstbyte: LONGLONG,
+    nbytes: LONGLONG,
+    nshift: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     const SHFTBUFFSIZE: usize = 100000;
     let mut ntomov: LONGLONG = 0;
