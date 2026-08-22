@@ -1,3 +1,16 @@
+//! Reading and subsetting World Coordinate System keywords.
+//!
+//! Extracts the WCS keywords describing a coordinate axis from a header, and
+//! copies them across when an image is subsetted, so that the new image's
+//! coordinates still describe the same sky.
+//!
+//! `fits_read_wcstab` here is the interface to Mark Calabretta's WCSLIB, via
+//! the [`wtbarr`] struct.
+//!
+//! See the "World Coordinate System Routines" chapter of the CFITSIO User's
+//! Reference Guide.
+#![warn(missing_docs)]
+
 use core::ptr;
 use core::slice;
 
@@ -21,23 +34,26 @@ use crate::putkey::{ffcrim_safe, ffi2c};
 use crate::wrappers::*;
 use crate::{bb, cs};
 
-/*--------------------------------------------------------------------------*/
 ///  Author: Mark Calabretta, Australia Telescope National Facility
-///  http://www.atnf.csiro.au/~mcalabre/index.html
+///  <http://www.atnf.csiro.au/~mcalabre/index.html>
 ///
 ///  fits_read_wcstab() extracts arrays from a binary table required in
 ///  constructing -TAB coordinates.  This helper routine is intended for
 ///  use by routines in the WCSLIB library when dealing with the -TAB table
 ///  look up WCS convention.
+///
+/// # Parameters
+///
+/// * `fptr` — (I) FITS file pointer
+/// * `nwtb` — Number of arrays to be read from the binary table(s)
+/// * `wtb`  — Address of the first element of an array of wtbarr typedefs. This wtbarr
+///           typedef is defined below to match the wtbarr struct defined in WCSLIB. An
+///           array of such structs returned by the WCSLIB function wcstab().
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_read_wcstab(
-    fptr: *mut fitsfile, /* I - FITS file pointer           */
-    nwtb: c_int,         /* Number of arrays to be read from the binary table(s) */
-    wtb: *const wtbarr,  /* Address of the first element of an array of wtbarr
-                         typedefs.  This wtbarr typedef is defined below to
-                         match the wtbarr struct defined in WCSLIB.  An array
-                         of such structs returned by the WCSLIB function
-                         wcstab(). */
+    fptr: *mut fitsfile,
+    nwtb: c_int,
+    wtb: *const wtbarr,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -68,17 +84,21 @@ pub unsafe extern "C" fn fits_read_wcstab(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  Author: Mark Calabretta, Australia Telescope National Facility
-///  http://www.atnf.csiro.au/~mcalabre/index.html
+///  <http://www.atnf.csiro.au/~mcalabre/index.html>
 ///
 ///  fits_read_wcstab() extracts arrays from a binary table required in
 ///  constructing -TAB coordinates.  This helper routine is intended for
 ///  use by routines in the WCSLIB library when dealing with the -TAB table
 ///  look up WCS convention.
+///
+/// # Parameters
+///
+/// * `fptr` — (I) FITS file pointer
+/// * `nwtb` — Number of arrays to be read from the binary table(s)
 pub fn fits_read_wcstab_safer(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    nwtb: c_int,         /* Number of arrays to be read from the binary table(s) */
+    fptr: &mut fitsfile,
+    nwtb: c_int,
     wtb: &[wtbarr],
     status: &mut c_int,
 ) -> c_int {
@@ -265,17 +285,22 @@ pub fn fits_read_wcstab_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// int fits_get_image_wcs_keys
+/// Int fits_get_image_wcs_keys
 /// return a string containing all the image WCS header keywords.
 /// This string is then used as input to the wcsinit WCSlib routine.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `header` — (O) pointer to the WCS related keywords
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgiwcs(
-    fptr: *mut fitsfile,      /* I - FITS file pointer                    */
-    header: *mut *mut c_char, /* O - pointer to the WCS related keywords  */
-    status: *mut c_int,       /* IO - error status                        */
+    fptr: *mut fitsfile,
+    header: *mut *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -291,17 +316,18 @@ pub unsafe extern "C" fn ffgiwcs(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// int fits_get_image_wcs_keys
+/// Int fits_get_image_wcs_keys
 /// return a string containing all the image WCS header keywords.
 /// This string is then used as input to the wcsinit WCSlib routine.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
-pub fn ffgiwcs_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer                    */
-    header: &mut *mut c_char, /* O - pointer to the WCS related keywords  */
-    status: &mut c_int,       /* IO - error status                        */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `header` — (O) pointer to the WCS related keywords
+/// * `status` — (IO) error status
+pub fn ffgiwcs_safe(fptr: &mut fitsfile, header: &mut *mut c_char, status: &mut c_int) -> c_int {
     let mut hdutype = 0;
 
     if *status > 0 {
@@ -324,8 +350,7 @@ pub fn ffgiwcs_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-/// read the values of the celestial coordinate system keywords.
+/// Read the values of the celestial coordinate system keywords.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
 ///
@@ -333,18 +358,31 @@ pub fn ffgiwcs_safe(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xrval`  — (O) X reference value
+/// * `yrval`  — (O) Y reference value
+/// * `xrpix`  — (O) X reference pixel
+/// * `yrpix`  — (O) Y reference pixel
+/// * `xinc`   — (O) X increment per pixel
+/// * `yinc`   — (O) Y increment per pixel
+/// * `rot`    — (O) rotation angle (degrees)
+/// * `ptype`  — (O) type of projection ('-tan')
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgics(
-    fptr: *mut fitsfile,     /* I - FITS file pointer           */
-    xrval: *mut f64,         /* O - X reference value           */
-    yrval: *mut f64,         /* O - Y reference value           */
-    xrpix: *mut f64,         /* O - X reference pixel           */
-    yrpix: *mut f64,         /* O - Y reference pixel           */
-    xinc: *mut f64,          /* O - X increment per pixel       */
-    yinc: *mut f64,          /* O - Y increment per pixel       */
-    rot: *mut f64,           /* O - rotation angle (degrees)    */
-    ptype: *mut [c_char; 5], /* O - type of projection ('-tan') */
-    status: *mut c_int,      /* IO - error status               */
+    fptr: *mut fitsfile,
+    xrval: *mut f64,
+    yrval: *mut f64,
+    xrpix: *mut f64,
+    yrpix: *mut f64,
+    xinc: *mut f64,
+    yinc: *mut f64,
+    rot: *mut f64,
+    ptype: *mut [c_char; 5],
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -365,8 +403,7 @@ pub unsafe extern "C" fn ffgics(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// read the values of the celestial coordinate system keywords.
+/// Read the values of the celestial coordinate system keywords.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
 ///
@@ -374,17 +411,30 @@ pub unsafe extern "C" fn ffgics(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xrval`  — (O) X reference value
+/// * `yrval`  — (O) Y reference value
+/// * `xrpix`  — (O) X reference pixel
+/// * `yrpix`  — (O) Y reference pixel
+/// * `xinc`   — (O) X increment per pixel
+/// * `yinc`   — (O) Y increment per pixel
+/// * `rot`    — (O) rotation angle (degrees)
+/// * `ptype`  — (O) type of projection ('-tan')
+/// * `status` — (IO) error status
 pub fn ffgics_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer           */
-    xrval: &mut f64,         /* O - X reference value           */
-    yrval: &mut f64,         /* O - Y reference value           */
-    xrpix: &mut f64,         /* O - X reference pixel           */
-    yrpix: &mut f64,         /* O - Y reference pixel           */
-    xinc: &mut f64,          /* O - X increment per pixel       */
-    yinc: &mut f64,          /* O - Y increment per pixel       */
-    rot: &mut f64,           /* O - rotation angle (degrees)    */
-    ptype: &mut [c_char; 5], /* O - type of projection ('-tan') */
-    status: &mut c_int,      /* IO - error status               */
+    fptr: &mut fitsfile,
+    xrval: &mut f64,
+    yrval: &mut f64,
+    xrpix: &mut f64,
+    yrpix: &mut f64,
+    xinc: &mut f64,
+    yinc: &mut f64,
+    rot: &mut f64,
+    ptype: &mut [c_char; 5],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstat: c_int = 0;
     let mut cd_exists: bool = false;
@@ -623,7 +673,6 @@ pub fn ffgics_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read the values of the celestial coordinate system keywords.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
@@ -632,20 +681,34 @@ pub fn ffgics_safe(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `version` — (I) character code of desired version
+/// * `xrval`   — (O) X reference value
+/// * `yrval`   — (O) Y reference value
+/// * `xrpix`   — (O) X reference pixel
+/// * `yrpix`   — (O) Y reference pixel
+/// * `xinc`    — (O) X increment per pixel
+/// * `yinc`    — (O) Y increment per pixel
+/// * `rot`     — (O) rotation angle (degrees)
+/// * `ptype`   — (O) type of projection ('-tan')
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgicsa(
-    fptr: *mut fitsfile, /* I - FITS file pointer           */
-    version: c_char,     /* I - character code of desired version */
+    fptr: *mut fitsfile,
+    version: c_char,
     /*     A - Z or blank */
-    xrval: *mut f64,         /* O - X reference value           */
-    yrval: *mut f64,         /* O - Y reference value           */
-    xrpix: *mut f64,         /* O - X reference pixel           */
-    yrpix: *mut f64,         /* O - Y reference pixel           */
-    xinc: *mut f64,          /* O - X increment per pixel       */
-    yinc: *mut f64,          /* O - Y increment per pixel       */
-    rot: *mut f64,           /* O - rotation angle (degrees)    */
-    ptype: *mut [c_char; 5], /* O - type of projection ('-tan') */
-    status: *mut c_int,      /* IO - error status               */
+    xrval: *mut f64,
+    yrval: *mut f64,
+    xrpix: *mut f64,
+    yrpix: *mut f64,
+    xinc: *mut f64,
+    yinc: *mut f64,
+    rot: *mut f64,
+    ptype: *mut [c_char; 5],
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -666,7 +729,6 @@ pub unsafe extern "C" fn ffgicsa(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read the values of the celestial coordinate system keywords.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
@@ -675,19 +737,33 @@ pub unsafe extern "C" fn ffgicsa(
 /// to the old CDELTn form, and to swap the axes if the dec-like
 /// axis is given first, and to assume default values if any of the
 /// keywords are not present.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `version` — (I) character code of desired version
+/// * `xrval`   — (O) X reference value
+/// * `yrval`   — (O) Y reference value
+/// * `xrpix`   — (O) X reference pixel
+/// * `yrpix`   — (O) Y reference pixel
+/// * `xinc`    — (O) X increment per pixel
+/// * `yinc`    — (O) Y increment per pixel
+/// * `rot`     — (O) rotation angle (degrees)
+/// * `ptype`   — (O) type of projection ('-tan')
+/// * `status`  — (IO) error status
 pub fn ffgicsa_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer           */
-    version: c_char,     /* I - character code of desired version */
+    fptr: &mut fitsfile,
+    version: c_char,
     /*     A - Z or blank */
-    xrval: &mut f64,         /* O - X reference value           */
-    yrval: &mut f64,         /* O - Y reference value           */
-    xrpix: &mut f64,         /* O - X reference pixel           */
-    yrpix: &mut f64,         /* O - Y reference pixel           */
-    xinc: &mut f64,          /* O - X increment per pixel       */
-    yinc: &mut f64,          /* O - Y increment per pixel       */
-    rot: &mut f64,           /* O - rotation angle (degrees)    */
-    ptype: &mut [c_char; 5], /* O - type of projection ('-tan') */
-    status: &mut c_int,      /* IO - error status               */
+    xrval: &mut f64,
+    yrval: &mut f64,
+    xrpix: &mut f64,
+    yrpix: &mut f64,
+    xinc: &mut f64,
+    yinc: &mut f64,
+    rot: &mut f64,
+    ptype: &mut [c_char; 5],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstat: c_int = 0;
     let mut cd_exists: bool = false;
@@ -975,7 +1051,6 @@ pub fn ffgicsa_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read the values of the celestial coordinate system keywords
 /// from a FITS table where the X and Y or RA and DEC coordinates
 /// are stored in separate column.  Do this by converting the
@@ -983,20 +1058,35 @@ pub fn ffgicsa_safe(
 /// from the image file.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xcol`   — (I) column containing the RA coordinate
+/// * `ycol`   — (I) column containing the DEC coordinate
+/// * `xrval`  — (O) X reference value
+/// * `yrval`  — (O) Y reference value
+/// * `xrpix`  — (O) X reference pixel
+/// * `yrpix`  — (O) Y reference pixel
+/// * `xinc`   — (O) X increment per pixel
+/// * `yinc`   — (O) Y increment per pixel
+/// * `rot`    — (O) rotation angle (degrees)
+/// * `ptype`  — (O) type of projection ('-sin')
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtcs(
-    fptr: *mut fitsfile,     /* I - FITS file pointer           */
-    xcol: c_int,             /* I - column containing the RA coordinate  */
-    ycol: c_int,             /* I - column containing the DEC coordinate */
-    xrval: *mut f64,         /* O - X reference value           */
-    yrval: *mut f64,         /* O - Y reference value           */
-    xrpix: *mut f64,         /* O - X reference pixel           */
-    yrpix: *mut f64,         /* O - Y reference pixel           */
-    xinc: *mut f64,          /* O - X increment per pixel       */
-    yinc: *mut f64,          /* O - Y increment per pixel       */
-    rot: *mut f64,           /* O - rotation angle (degrees)    */
-    ptype: *mut [c_char; 5], /* O - type of projection ('-sin') */
-    status: *mut c_int,      /* IO - error status               */
+    fptr: *mut fitsfile,
+    xcol: c_int,
+    ycol: c_int,
+    xrval: *mut f64,
+    yrval: *mut f64,
+    xrpix: *mut f64,
+    yrpix: *mut f64,
+    xinc: *mut f64,
+    yinc: *mut f64,
+    rot: *mut f64,
+    ptype: *mut [c_char; 5],
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1016,7 +1106,6 @@ pub unsafe extern "C" fn ffgtcs(
         )
     }
 }
-/*--------------------------------------------------------------------------*/
 /// Read the values of the celestial coordinate system keywords
 /// from a FITS table where the X and Y or RA and DEC coordinates
 /// are stored in separate column.  Do this by converting the
@@ -1024,19 +1113,34 @@ pub unsafe extern "C" fn ffgtcs(
 /// from the image file.
 /// These values may be used as input to the subroutines that
 /// calculate celestial coordinates. (ffxypx, ffwldp)
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xcol`   — (I) column containing the RA coordinate
+/// * `ycol`   — (I) column containing the DEC coordinate
+/// * `xrval`  — (O) X reference value
+/// * `yrval`  — (O) Y reference value
+/// * `xrpix`  — (O) X reference pixel
+/// * `yrpix`  — (O) Y reference pixel
+/// * `xinc`   — (O) X increment per pixel
+/// * `yinc`   — (O) Y increment per pixel
+/// * `rot`    — (O) rotation angle (degrees)
+/// * `ptype`  — (O) type of projection ('-sin')
+/// * `status` — (IO) error status
 pub fn ffgtcs_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer           */
-    xcol: c_int,             /* I - column containing the RA coordinate  */
-    ycol: c_int,             /* I - column containing the DEC coordinate */
-    xrval: &mut f64,         /* O - X reference value           */
-    yrval: &mut f64,         /* O - Y reference value           */
-    xrpix: &mut f64,         /* O - X reference pixel           */
-    yrpix: &mut f64,         /* O - Y reference pixel           */
-    xinc: &mut f64,          /* O - X increment per pixel       */
-    yinc: &mut f64,          /* O - Y increment per pixel       */
-    rot: &mut f64,           /* O - rotation angle (degrees)    */
-    ptype: &mut [c_char; 5], /* O - type of projection ('-sin') */
-    status: &mut c_int,      /* IO - error status               */
+    fptr: &mut fitsfile,
+    xcol: c_int,
+    ycol: c_int,
+    xrval: &mut f64,
+    yrval: &mut f64,
+    xrpix: &mut f64,
+    yrpix: &mut f64,
+    xinc: &mut f64,
+    yinc: &mut f64,
+    rot: &mut f64,
+    ptype: &mut [c_char; 5],
+    status: &mut c_int,
 ) -> c_int {
     let mut colnum: [c_int; 2] = [0; 2];
     let mut naxes: [c_long; 2] = [0; 2];
@@ -1087,7 +1191,6 @@ pub fn ffgtcs_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return string containing all the WCS keywords appropriate for the
 /// pair of X and Y columns containing the coordinate
 /// of each event in an event list table.  This string may then be passed
@@ -1096,13 +1199,21 @@ pub fn ffgtcs_safe(
 /// when it is no longer needed.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xcol`   — (I) column number for the X column
+/// * `ycol`   — (I) column number for the Y column
+/// * `header` — (O) string of all the WCS keywords
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtwcs(
-    fptr: *mut fitsfile,      /* I - FITS file pointer              */
-    xcol: c_int,              /* I - column number for the X column  */
-    ycol: c_int,              /* I - column number for the Y column  */
-    header: *mut *mut c_char, /* O - string of all the WCS keywords  */
-    status: *mut c_int,       /* IO - error status                   */
+    fptr: *mut fitsfile,
+    xcol: c_int,
+    ycol: c_int,
+    header: *mut *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1114,7 +1225,6 @@ pub unsafe extern "C" fn ffgtwcs(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return string containing all the WCS keywords appropriate for the
 /// pair of X and Y columns containing the coordinate
 /// of each event in an event list table.  This string may then be passed
@@ -1123,12 +1233,20 @@ pub unsafe extern "C" fn ffgtwcs(
 /// when it is no longer needed.
 ///
 /// THIS ROUTINE IS DEPRECATED. USE fits_hdr2str INSTEAD
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `xcol`   — (I) column number for the X column
+/// * `ycol`   — (I) column number for the Y column
+/// * `header` — (O) string of all the WCS keywords
+/// * `status` — (IO) error status
 pub fn ffgtwcs_safe(
-    fptr: &mut fitsfile,      /* I - FITS file pointer              */
-    xcol: c_int,              /* I - column number for the X column  */
-    ycol: c_int,              /* I - column number for the Y column  */
-    header: &mut *mut c_char, /* O - string of all the WCS keywords  */
-    status: &mut c_int,       /* IO - error status                   */
+    fptr: &mut fitsfile,
+    xcol: c_int,
+    ycol: c_int,
+    header: &mut *mut c_char,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype: c_int = 0;
     let mut ncols: c_int = 0;
