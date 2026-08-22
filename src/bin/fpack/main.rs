@@ -1,11 +1,9 @@
-/* Transpiled from cfitsio/utilities/fpack.c
- *
- * FPACK
- * R. Seaman, NOAO, with a few enhancements by W. Pence, HEASARC
- *
- * Calls fits_img_compress in the CFITSIO library by W. Pence, HEASARC
- */
-
+//! Transpiled from cfitsio/utilities/fpack.c
+//!
+//! FPACK, by R. Seaman, NOAO, with a few enhancements by W. Pence, HEASARC.
+//!
+//! Calls fits_img_compress in the CFITSIO library by W. Pence, HEASARC
+#![warn(missing_docs)]
 // The C's names, its dead stores, and the items only the *other* binary uses
 // out of the two shared modules.
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
@@ -34,6 +32,7 @@ use crate::fpackutil::{
 };
 
 /* ================================================================== */
+/// Entry point: parses the command line and compresses each named file.
 pub fn main() -> ExitCode {
     /* C: `exit (n)'; see fpack_h.rs.  exit(-1) and ExitCode::from(255) are
     the same 255 to the shell. */

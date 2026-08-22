@@ -1,3 +1,7 @@
+//! Transpiled from cfitsio/utilities/fitscopy.c: copies a FITS file, applying
+//! any filters given in the input file's extended name.
+#![warn(missing_docs)]
+
 use std::ffi::CString;
 use std::process::ExitCode;
 
@@ -13,6 +17,7 @@ use rsfitsio::{
     fitsio::fitsfile,
 };
 
+/// Entry point: copies the input file to the output file.
 pub fn main() -> ExitCode {
     /* FITS file pointers defined in fitsio.h */
     let mut infptr: Option<Box<fitsfile>> = None;

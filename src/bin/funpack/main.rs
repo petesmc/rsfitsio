@@ -1,10 +1,7 @@
-/* Transpiled from cfitsio/utilities/funpack.c
- *
- * FUNPACK
- * R. Seaman, NOAO
- * uses fits_img_compress by W. Pence, HEASARC
- */
-
+//! Transpiled from cfitsio/utilities/funpack.c
+//!
+//! FUNPACK, by R. Seaman, NOAO. Uses fits_img_compress by W. Pence, HEASARC.
+#![warn(missing_docs)]
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(unused_assignments)]
 // items only the *other* binary uses out of the two shared modules
@@ -33,6 +30,7 @@ use crate::fpackutil::{
     Argv, c_argv, fp_init, fp_list, fp_loop, fp_msg, fp_msg_str, fp_preflight, fp_version,
 };
 
+/// Entry point: parses the command line and uncompresses each named file.
 pub fn main() -> ExitCode {
     /* C: `exit (n)'; see fpack_h.rs. */
     match run() {

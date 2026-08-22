@@ -1,3 +1,6 @@
+//! Transpiled from cfitsio/utilities/imcopy.c: copies an image HDU, optionally
+//! compressing or uncompressing it on the way.
+#![warn(missing_docs)]
 // C: `for (; !status; hdupos++)` -- hdupos is only read before the loop, so
 // the increment is dead there too. Kept for fidelity with imcopy.c.
 #![allow(unused_assignments)]
@@ -26,6 +29,7 @@ use rsfitsio::{
     fitsio::fitsfile,
 };
 
+/// Entry point: copies the input image to the output file.
 pub fn main() -> ExitCode {
     /* FITS file pointers defined in fitsio.h */
     let mut infptr: Option<Box<fitsfile>> = None;

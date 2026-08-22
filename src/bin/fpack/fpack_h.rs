@@ -1,17 +1,15 @@
-/* Transpiled from cfitsio/utilities/fpack.h
- *
- * used by FPACK and FUNPACK
- * R. Seaman, NOAO
- * W. Pence, NASA/GSFC
- *
- * The C header is just constants, two structs and the prototypes; the
- * prototypes are carried by Rust's module system instead.
- *
- * DEVIATION: each `exit(n)' becomes `return Err(FpExit(n))', propagated to
- * main().  This keeps every error path reachable from a unit test instead of
- * killing the test runner, and is the only structural change to the control
- * flow.
- */
+//! Transpiled from cfitsio/utilities/fpack.h
+//!
+//! used by FPACK and FUNPACK R. Seaman, NOAO W. Pence, NASA/GSFC
+//!
+//! The C header is just constants, two structs and the prototypes; the
+//! prototypes are carried by Rust's module system instead.
+//!
+//! DEVIATION: each `exit(n)' becomes `return Err(FpExit(n))', propagated to
+//! main().  This keeps every error path reachable from a unit test instead of
+//! killing the test runner, and is the only structural change to the
+//! control flow.
+#![warn(missing_docs)]
 
 use rsfitsio::c_types::{c_char, c_float, c_int, c_long};
 use rsfitsio::fitsio::MAX_COMPRESS_DIM;

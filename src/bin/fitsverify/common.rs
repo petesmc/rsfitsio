@@ -1,11 +1,14 @@
-/* Transpiled from cfitsio/utilities/fverify.h, plus the small amount of
-infrastructure that C gets for free from <stdio.h>/<ctype.h>/<stdlib.h>.
-
-The C globals declared here (errmes, comm, prhead, testdata, ...) are file
-statics / externs in the C.  Buffers that are only ever "printf into it, then
-immediately consume it" (errmes, comm, temp) become locals at each use site,
-which is semantically identical and avoids global mutable state.  The truly
-persistent globals (the flags and counters) live in `flags` below.  */
+//! Transpiled from cfitsio/utilities/fverify.h, plus the small amount of
+//! infrastructure that C gets for free from <stdio.h>/<ctype.h>/<stdlib.h>.
+//!
+//! The C globals declared here (errmes, comm, prhead, testdata, ...) are
+//! file
+//! statics / externs in the C.  Buffers that are only ever "printf into it, then
+//! immediately consume it" (errmes, comm, temp) become locals at each use
+//! site,
+//! which is semantically identical and avoids global mutable state.  The truly
+//! persistent globals (the flags and counters) live in `flags` below.
+#![warn(missing_docs)]
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -410,6 +413,7 @@ fn pad(v: &mut Vec<u8>, b: &[u8], width: i32) {
 /* Formats the arguments and stores the result NUL-terminated in `dst'.
 C's sprintf() would run off the end of these fixed buffers; we truncate. */
 #[macro_export]
+/// `sprintf` into a `[c_char]` buffer, as the C does.
 macro_rules! spf {
     ($dst:expr; $($x:expr),* $(,)?) => {{
         let mut __v: Vec<u8> = Vec::new();
@@ -420,6 +424,7 @@ macro_rules! spf {
 
 /* Formats the arguments and appends them, NUL-terminated, to `dst' (strcat). */
 #[macro_export]
+/// `sprintf` appended to what is already in a `[c_char]` buffer.
 macro_rules! scat {
     ($dst:expr; $($x:expr),* $(,)?) => {{
         let mut __v: Vec<u8> = Vec::new();
@@ -430,6 +435,7 @@ macro_rules! scat {
 
 /* printf() */
 #[macro_export]
+/// `printf` to the report output stream.
 macro_rules! pf {
     ($out:expr; $($x:expr),* $(,)?) => {{
         let mut __v: Vec<u8> = Vec::new();

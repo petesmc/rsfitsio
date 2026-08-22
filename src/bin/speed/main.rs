@@ -1,5 +1,8 @@
-// TODO: still on the C ABI; convert to the _safe/alias API (see plan Phase 6).
+//! Transpiled from cfitsio/utilities/speed.c: a benchmark that times reading
+//! and writing images and tables through the library.
+#![warn(missing_docs)]
 #![allow(deprecated)]
+// TODO: still on the C ABI; convert to the _safe/alias API (see plan Phase 6).
 
 // Purposed keep using the C API so that we can switch out the linked library to test speed
 
@@ -32,6 +35,7 @@ const BROWS: usize = 2500000;
 /* no. of rows in ASCII table */
 const AROWS: usize = 400000;
 
+/// Entry point: runs the read and write benchmarks and prints the timings.
 pub fn main() -> ExitCode {
     /*************************************************************************
     This program tests the speed of writing/reading FITS files with cfitsio
@@ -189,7 +193,6 @@ pub fn main() -> ExitCode {
     ExitCode::from(0)
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the primary array containing a 2-D image
 fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_int {
     let mut ii: c_long;
@@ -248,7 +251,6 @@ fn writeimage(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_i
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the primary array containing a 2-D image
 fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> c_int {
     let mut elapcpu: f32 = 0.0;
@@ -298,7 +300,6 @@ fn writesimage(fptr: &mut fitsfile, ssarray: &[c_short], status: &mut c_int) -> 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create a binary table extension containing 3 columns
 fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_int {
     let tfields: c_int = 2;
@@ -390,7 +391,6 @@ fn writebintable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create an ASCII table extension containing 2 columns
 fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> c_int {
     let tfields: c_int = 2;
@@ -482,7 +482,6 @@ fn writeasctable(fptr: &mut fitsfile, sarray: &[c_long], status: &mut c_int) -> 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a FITS image
 fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> c_int {
     let mut anynull: c_int = 0;
@@ -531,7 +530,6 @@ fn readimage(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> 
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read and print data values from the binary table
 fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> c_int {
     let mut hdutype: c_int = 0;
@@ -602,7 +600,6 @@ fn readbtable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read and print data values from an ASCII or binary table
 fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) -> c_int {
     let mut hdutype: c_int = 0;
@@ -673,7 +670,6 @@ fn readatable(fptr: &mut fitsfile, sarray: &mut [c_long], status: &mut c_int) ->
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Print out cfitsio error messages and exit program
 fn printerror(status: c_int) {
     let mut status_str = [0u8; FLEN_STATUS];

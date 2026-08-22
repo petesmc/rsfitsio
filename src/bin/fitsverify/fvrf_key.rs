@@ -1,8 +1,9 @@
-/* Transpiled from cfitsio/utilities/fvrf_key.c
-
-The C walks the card with `char *' cursors; here every cursor is an index
-into the card slice, and the `char **pt' in/out cursor parameters become
-`pt: &mut usize'.  */
+//! Transpiled from cfitsio/utilities/fvrf_key.c
+//!
+//! The C walks the card with `char *' cursors; here every cursor is an
+//! index into the card slice, and the `char **pt' in/out cursor parameters
+//! become `pt: &mut usize'.
+#![warn(missing_docs)]
 
 use rsfitsio::c_types::{c_char, c_int, c_ulong};
 use rsfitsio::fitsio::{FLEN_CARD, FLEN_COMMENT, FLEN_KEYWORD, FLEN_VALUE};
@@ -14,14 +15,23 @@ use crate::{scat, spf};
 /* Ref: Defininition of the Flexible Image Transport System(FITS),
     Sec. 5.1 and 5.2.
 */
+/// # Parameters
+///
+/// * `out`    — output file pointer
+/// * `kpos`   — keyposition starting from 1
+/// * `card`   — key card
+/// * `kname`  — key name
+/// * `ktype`  — key type
+/// * `kvalue` — key value
+/// * `kcomm`  — comment
 pub(crate) fn fits_parse_card(
-    out: Out,                           /* output file pointer */
-    kpos: c_int,                        /* keyposition starting from 1 */
-    card: &mut [c_char],                /* key card */
-    kname: &mut [c_char; FLEN_KEYWORD], /* key name */
-    ktype: &mut kwdtyp,                 /* key type */
-    kvalue: &mut [c_char; FLEN_VALUE],  /* key value */
-    kcomm: &mut [c_char],               /* comment */
+    out: Out,
+    kpos: c_int,
+    card: &mut [c_char],
+    kname: &mut [c_char; FLEN_KEYWORD],
+    ktype: &mut kwdtyp,
+    kvalue: &mut [c_char; FLEN_VALUE],
+    kcomm: &mut [c_char],
 ) -> c_int {
     let mut vind: [c_char; 3] = [0; 3];
     let mut p: usize;
@@ -229,12 +239,13 @@ pub(crate) fn fits_parse_card(
 }
 
 /* parse And test the string keys */
-pub(crate) fn get_str(
-    card: &[c_char],       /* card string from character 11*/
-    pt: &mut usize,        /* cursor into card */
-    kvalue: &mut [c_char], /* key value string */
-    stat: &mut c_ulong,    /* error number */
-) {
+/// # Parameters
+///
+/// * `card`   — card string from character 11
+/// * `pt`     — cursor into card
+/// * `kvalue` — key value string
+/// * `stat`   — error number
+pub(crate) fn get_str(card: &[c_char], pt: &mut usize, kvalue: &mut [c_char], stat: &mut c_ulong) {
     let mut pi: usize;
     let mut prev: u8; /* previous char */
     let mut nchar: isize;
@@ -285,12 +296,13 @@ pub(crate) fn get_str(
 }
 
 /* parse and test the logical keys */
-pub(crate) fn get_log(
-    card: &[c_char],       /* card string */
-    pt: &mut usize,        /* cursor into card */
-    kvalue: &mut [c_char], /* key value string */
-    stat: &mut c_ulong,    /* error number */
-) {
+/// # Parameters
+///
+/// * `card`   — card string
+/// * `pt`     — cursor into card
+/// * `kvalue` — key value string
+/// * `stat`   — error number
+pub(crate) fn get_log(card: &[c_char], pt: &mut usize, kvalue: &mut [c_char], stat: &mut c_ulong) {
     let mut p: usize;
 
     p = *pt;
@@ -307,12 +319,18 @@ pub(crate) fn get_log(
 }
 
 /* parse and test the numerical keys */
+/// # Parameters
+///
+/// * `card`   — card string
+/// * `pt`     — cursor into card
+/// * `kvalue` — comment string
+/// * `stat`   — error number
 pub(crate) fn get_num(
-    card: &[c_char],       /* card string */
-    pt: &mut usize,        /* cursor into card */
-    kvalue: &mut [c_char], /* comment string */
+    card: &[c_char],
+    pt: &mut usize,
+    kvalue: &mut [c_char],
     ktype: &mut kwdtyp,
-    stat: &mut c_ulong, /* error number */
+    stat: &mut c_ulong,
 ) {
     let pi: usize;
     let mut set_deci = 0;
@@ -379,12 +397,18 @@ pub(crate) fn get_num(
 }
 
 /* parse and test the complex keys */
+/// # Parameters
+///
+/// * `incard` — card string
+/// * `pt`     — cursor into card
+/// * `kvalue` — comment string
+/// * `stat`   — error number
 pub(crate) fn get_cmp(
-    incard: &[c_char],     /* card string */
-    pt: &mut usize,        /* cursor into card */
-    kvalue: &mut [c_char], /* comment string */
+    incard: &[c_char],
+    pt: &mut usize,
+    kvalue: &mut [c_char],
     ktype: &mut kwdtyp,
-    stat: &mut c_ulong, /* error number */
+    stat: &mut c_ulong,
 ) {
     let mut p: usize;
     let mut pr_beg: usize;
@@ -486,12 +510,13 @@ pub(crate) fn get_cmp(
 }
 
 /* parse and test the comment keys */
-fn get_comm(
-    card: &[c_char],      /* card string */
-    pt: &mut usize,       /* cursor into card */
-    kcomm: &mut [c_char], /* comment string */
-    stat: &mut c_ulong,   /* error number */
-) {
+/// # Parameters
+///
+/// * `card`  — card string
+/// * `pt`    — cursor into card
+/// * `kcomm` — comment string
+/// * `stat`  — error number
+fn get_comm(card: &[c_char], pt: &mut usize, kcomm: &mut [c_char], stat: &mut c_ulong) {
     let pi: usize;
     let nchar: usize;
     let mut p: usize;
@@ -514,12 +539,18 @@ fn get_comm(
 }
 
 /* parsing the unknown keyword */
+/// # Parameters
+///
+/// * `card`   — card string
+/// * `pt`     — cursor into card
+/// * `kvalue` — comment string
+/// * `stat`   — error number
 pub(crate) fn get_unknown(
-    card: &[c_char],       /* card string */
-    pt: &mut usize,        /* cursor into card */
-    kvalue: &mut [c_char], /* comment string */
+    card: &[c_char],
+    pt: &mut usize,
+    kvalue: &mut [c_char],
     ktype: &mut kwdtyp,
-    stat: &mut c_ulong, /* error number */
+    stat: &mut c_ulong,
 ) {
     let mut p: usize;
     let mut p1: usize;
@@ -541,12 +572,19 @@ pub(crate) fn get_unknown(
 }
 
 /* routine to print out the error of keyword value/comment */
+/// # Parameters
+///
+/// * `out`    — output FILE
+/// * `kpos`   — keyposition starting from 1
+/// * `kname`  — keyword name
+/// * `kval`   — keyword value
+/// * `errnum` — error number
 pub(crate) fn pr_kval_err(
-    out: Out,         /* output  FILE */
-    kpos: c_int,      /* keyposition starting from 1 */
-    kname: &[c_char], /* keyword name */
-    kval: &[c_char],  /* keyword value */
-    errnum: c_ulong,  /* error number */
+    out: Out,
+    kpos: c_int,
+    kname: &[c_char],
+    kval: &[c_char],
+    errnum: c_ulong,
 ) {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 

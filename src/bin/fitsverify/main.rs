@@ -1,9 +1,9 @@
-/* Transpiled from cfitsio/utilities/ftverify.c and fitsverify.c.
-
-ftverify.c #includes fitsverify.c for the STANDALONE build, so both live
-here: `main_ftverify' holds ftverify_work()/update_parfile() and the PIL
-stubs, and main() below is fitsverify.c's main().  */
-
+//! Transpiled from cfitsio/utilities/ftverify.c and fitsverify.c.
+//!
+//! ftverify.c #includes fitsverify.c for the STANDALONE build, so both live
+//! here: `main_ftverify' holds ftverify_work()/update_parfile() and the PIL
+//! stubs, and main() below is fitsverify.c's main().
+#![warn(missing_docs)]
 // kwdtyp, FitsHdu and friends keep their fitsverify C spellings.
 #![allow(non_camel_case_types, non_snake_case, non_upper_case_globals)]
 #![allow(clippy::upper_case_acronyms)]
@@ -43,9 +43,7 @@ use rsfitsio::fitsio::FLEN_FILENAME;
 
 use crate::common::*;
 
-/*---------------------------------------------------------------------------*/
 /*  ftverify.c                                                               */
-/*---------------------------------------------------------------------------*/
 pub(crate) mod main_ftverify {
     use std::io::BufRead;
 
@@ -63,13 +61,16 @@ pub(crate) mod main_ftverify {
 
     const PIL_LINESIZE: usize = 1024;
 
-    /*---------------------------------------------------------------------------*/
     /* call work function to verify that infile conforms to the FITS
     standard and write report to the output file */
     #[allow(clippy::too_many_arguments)]
+    /// # Parameters
+    ///
+    /// * `infile`  — (I) Input file name (Fits)
+    /// * `outfile` — (I) Output file name (ASCII)
     pub(crate) fn ftverify_work(
-        infile: &[c_char],  /* I - Input file name (Fits) */
-        outfile: &[c_char], /* I - Output file name (ASCII) */
+        infile: &[c_char],
+        outfile: &[c_char],
         _prehead: c_int,
         prstat: c_int,
         errreport: &[c_char],
@@ -364,9 +365,7 @@ pub(crate) mod main_ftverify {
 
 use main_ftverify::ftverify_work;
 
-/*---------------------------------------------------------------------------*/
 /*  fitsverify.c                                                             */
-/*---------------------------------------------------------------------------*/
 pub(crate) fn main() -> ExitCode {
     let mut status: c_int_alias = 0;
     let mut invalid = 0;
