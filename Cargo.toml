@@ -66,7 +66,16 @@ memchr = { version = "2.8.3", default-features = false }
 errno = "0.3.14"
 # Used by the fpack/funpack binaries: temporary output files (fpack's fp_tmpnam)
 # and `funpack -Z` gzipping.  Binaries cannot see [dev-dependencies], so these
-# live here.  flate2 is pinned to the zlib-rs backend so it shares the
-# libz-rs-sys already in the tree rather than pulling in a second zlib.
+# live here.
+#
+# flate2 uses the pure-Rust miniz_oxide backend rather than the zlib-rs one that
+# would share the libz-rs-sys already in the tree.  zlib-rs's `stable` API -- the
+# one flate2's zlib-rs backend drives, and the only part of zlib-rs that is not
+# reached through libz-rs-sys's C entry points -- has a soundness bug: DeflateStream
+# holds `state: &'a mut State<'a>` pointing into the block that `deflate::end` then
+# frees while that reference is still a protected function argument, so miri reports
+# "deallocating while item is strongly protected" from GzEncoder::finish.  Present in
+# 0.6.6 and 0.6.7 and on upstream main.  libz-rs-sys's own deflateEnd is unaffected,
+# so this only concerns flate2.  Revert to `features = ["zlib-rs"]` once it is fixed.
 tempfile = "3.27"
-flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }

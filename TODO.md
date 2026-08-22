@@ -55,6 +55,18 @@
 - [ ] Report the CFITSIO defects the fpack/funpack port turned up. Two are
       already filed upstream (heasarc/cfitsio#134 and #136); the rest are
       marked NOTE (upstream bug N) in src/bin/fpack/
+- [ ] Report the zlib-rs soundness bug upstream, then revert Cargo.toml to
+      `flate2 = { ..., features = ["zlib-rs"] }` so flate2 shares the
+      libz-rs-sys already in the tree instead of pulling in miniz_oxide.
+      `DeflateStream` holds `state: &'a mut State<'a>` pointing into the block
+      that `deflate::end` then frees while that reference is still a protected
+      function argument, so `GzEncoder::finish` is UB: miri reports
+      "deallocating while item is strongly protected". A 12-line GzEncoder
+      write-and-finish reproduces it with no rsfitsio code involved. Present in
+      0.6.6, 0.6.7 and upstream main. Only zlib-rs's `stable` API is affected --
+      libz-rs-sys's C `deflateEnd` builds its `&mut DeflateStream` differently
+      and is clean -- so the library's own GZIP paths were never involved, only
+      the two fpack/funpack gzip tests.
 - [ ] Restructure modules, ::api ??
 - [X] Every extern function should be a wrapper around a safe interface
 - [ ] Keep shrinking `unsafe` outside the FFI wrappers. Measure with
