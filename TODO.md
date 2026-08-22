@@ -1,3 +1,12 @@
+- [X] Convert the inherited C comment style to rustdoc. Done across all 109
+      files in `src/`: the C banner headers are `//!` module docs, the 2372
+      `/*-----*/` separators are gone, the 10589 trailing `/* I - ... */`
+      parameter comments are `# Parameters` sections keeping their I/O/IO
+      markers, and struct fields and constants carry `///`. Comments inside
+      function bodies were left alone. `#![warn(missing_docs)]` is on at the
+      crate root and in every module, so the state cannot regress; the
+      flex/bison output and the vendored relibc carry a commented
+      `#![allow(missing_docs)]` instead.
 - [ ] Refactor the NullCheckType and NullValue. NullValue isn't Copy and these concepts are intrinsicly linked.
 - [ ] Investigate all code with 'WARNING'
 - [ ] Investigate all code with 'TODO'
