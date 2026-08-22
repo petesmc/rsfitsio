@@ -2,6 +2,14 @@
 //! executables so exit status and both streams are covered.  Everything below
 //! the CLI is covered by the `#[cfg(test)]` modules inside `src/bin/fpack/`,
 //! and `scripts/fpack_diff.sh` compares against the C over a wider matrix.
+//!
+//! Every test here spawns the executable under test, which miri cannot do: it
+//! stops on `socketpair` (and, for the stdout test, `copy_file_range`) before
+//! any of our code runs.  These were the bulk of the miri run's failures and
+//! none of them was ever a finding, so skip the file wholesale under miri and
+//! leave the run reporting only things worth looking at.
+
+#![cfg(not(miri))]
 
 mod common;
 

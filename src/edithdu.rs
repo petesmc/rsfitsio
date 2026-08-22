@@ -1842,6 +1842,11 @@ mod tests {
     }
 
     #[test]
+    // ffwrhdu takes a C `FILE *`, as in the C, so exercising it needs a real
+    // stdio stream from libc's fopen.  miri cannot call foreign functions, so
+    // this test can never run under it -- unlike the rest of the suite, which
+    // it is worth keeping noise-free so that real findings stand out.
+    #[cfg_attr(miri, ignore)]
     fn test_wrhdu_write_to_stream() {
         // Test ffwrhdu - write HDU to output stream.
         with_temp_file(|filename| {
