@@ -153,7 +153,7 @@ pub unsafe extern "C" fn ffomem(
     fptr: *mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     name: *const c_char,              /* I - name of file to open                */
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    buffptr: *const *const c_void,    /* I - address of memory pointer           */
+    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
     buffsize: *mut usize,             /* I - size of buffer, in bytes            */
     deltasize: usize,                 /* I - increment for future realloc's      */
     mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
@@ -184,7 +184,7 @@ pub fn ffomem_safer(
     fptr: &mut Option<Box<fitsfile>>, /* O - FITS file pointer                   */
     name: &[c_char],                  /* I - name of file to open                */
     mode: c_int,                      /* I - 0 = open readonly; 1 = read/write   */
-    buffptr: *const *const c_void,    /* I - address of memory pointer           */
+    buffptr: *mut *mut c_void,        /* I - address of memory pointer           */
     buffsize: &mut usize,             /* I - size of buffer, in bytes            */
     deltasize: usize,                 /* I - increment for future realloc's      */
     mem_realloc: unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void, /* function       */
@@ -5502,7 +5502,7 @@ pub fn ffimem_safer(
     /* call driver routine to "open" the memory file */
     let lock = FFLOCK(); /* lock this while searching for vacant handle */
     *status = mem_openmem(
-        buffptr as *const *const c_void,
+        buffptr,
         buffsize,
         deltasize,
         mem_realloc,
@@ -12881,7 +12881,7 @@ mod tests {
             &mut f2,
             &str_to_c_array("mem://"),
             READONLY,
-            (&raw const buffer).cast::<*const c_void>(),
+            (&raw mut buffer).cast::<*mut c_void>(),
             &mut bufsize,
             0,
             libc::realloc,

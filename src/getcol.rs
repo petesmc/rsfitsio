@@ -3062,6 +3062,11 @@ pub fn ffgcvn_safe(
         for icol in 0..(ncols as usize) {
             let nelem1: LONGLONG = nread * repeats[icol];
 
+            /* bytes_per_datatype gives the size of one element, so this is
+            already the whole of the caller's buffer for this column: one
+            element for each of the nrows rows times the column's repeat.
+            Scaling it by nrows * repeats a second time claimed a buffer
+            (nrows * repeats) times larger than the caller allocated. */
             let bytes = match bytes_per_datatype(datatype[icol]) {
                 Some(x) => x * nrows as usize * repeats[icol] as usize,
                 None => {
@@ -3070,12 +3075,7 @@ pub fn ffgcvn_safe(
                 }
             };
 
-            let arr = unsafe {
-                slice::from_raw_parts_mut(
-                    array[icol].cast::<u8>(),
-                    bytes * (nrows * repeats[icol]) as usize,
-                )
-            };
+            let arr = unsafe { slice::from_raw_parts_mut(array[icol].cast::<u8>(), bytes) };
             let array1 =
                 &mut arr[(repeats[icol] * ndone) as usize * (sizes[datatype[icol] as usize])..];
 

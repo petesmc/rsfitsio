@@ -261,7 +261,7 @@ pub(crate) fn mem_create_comp_unsafe(
 /*--------------------------------------------------------------------------*/
 /// lowest level routine to open a pre-existing memory file.
 pub(crate) fn mem_openmem(
-    buffptr: *const *const c_void, /* I - address of memory pointer          */
+    buffptr: *mut *mut c_void, /* I - address of memory pointer          */
     buffsize: &mut usize,          /* I - size of buffer, in bytes           */
     deltasize: usize,              /* I - increment for future realloc's     */
     memrealloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function (may be NULL)  */
@@ -287,7 +287,7 @@ pub(crate) fn mem_openmem(
         return TOO_MANY_FILES; /* too many files opened */
     }
 
-    m[ii].memaddrptr = buffptr as *mut *mut c_char; /* pointer to start addres */
+    m[ii].memaddrptr = buffptr.cast::<*mut c_char>(); /* pointer to start addres */
     m[ii].memsizeptr = buffsize; /* allocated size of memory */
     m[ii].deltasize = deltasize; /* suggested realloc increment */
     m[ii].fitsfilesize = *buffsize as LONGLONG; /* size of FITS file (upper limit) */
