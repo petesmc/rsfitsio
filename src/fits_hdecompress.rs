@@ -1,3 +1,9 @@
+//! Deprecated C-ABI shims for Hcompress decompression.
+//!
+//! The counterpart of [`crate::fits_hcompress`]: nothing in this crate calls
+//! these, and they delegate to the `hcompress` crate's `HCDecoder`.
+#![warn(missing_docs)]
+
 /* H-decompress routines */
 
 use hcompress::read::HCDecoder;

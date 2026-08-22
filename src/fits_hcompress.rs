@@ -1,3 +1,11 @@
+//! Deprecated C-ABI shims for Hcompress compression.
+//!
+//! Nothing in this crate calls these: the real implementation is the published
+//! `hcompress` crate, which [`crate::imcompress`] uses directly through
+//! `HCEncoder`. They exist so that a program linking against this library by
+//! its C ABI still finds the symbols, and they delegate to the same encoder.
+#![warn(missing_docs)]
+
 /* H-compress routines */
 
 use bytemuck::cast_slice_mut;
