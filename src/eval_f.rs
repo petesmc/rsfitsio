@@ -2352,14 +2352,23 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
             lParse.colData.clear();
 
             for col in 0..lParse.nCols {
-                if lParse.varData[col as usize].undef.is_none() {
-                    continue;
-                }
-
                 if lParse.varData[col as usize].dtype == ValueSort::Bits {
-                    let data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
-                    let mut first_ptr = *data_ptr;
-                    FREE!(first_ptr);
+                    /* Two allocations to release: the row-pointer array in
+                    `data`, and the one block every row points into, at
+                    data[0]. Only Bits columns own their `data`; for the other
+                    types it points into the iterator's own array.
+
+                    This used to sit below an `undef.is_none()` skip, but a
+                    Bits column has no undef array -- see "No need for UNDEF
+                    array" in Setup_DataArrays -- so the skip fired every time
+                    and the free below it was unreachable. */
+                    let mut data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
+                    if !data_ptr.is_null() {
+                        let mut first_ptr = *data_ptr;
+                        FREE!(first_ptr);
+                        FREE!(data_ptr);
+                        lParse.varData[col as usize].data = ptr::null_mut();
+                    }
                 }
 
                 lParse.varData[col as usize].undef = None;
@@ -3379,7 +3388,13 @@ fn Setup_DataArrays(
                     j -= 1;
                     let varData = &mut lParse.varData[j];
                     if varData.dtype == ValueSort::Bits {
-                        FREE!(*varData.data.cast::<*mut c_char>().add(0));
+                        /* The array as well as the block; see ffcprs. */
+                        let mut data_ptr = varData.data.cast::<*mut c_char>();
+                        if !data_ptr.is_null() {
+                            FREE!(*data_ptr);
+                            FREE!(data_ptr);
+                            varData.data = ptr::null_mut();
+                        }
                     }
                     varData.undef = None;
                 }
