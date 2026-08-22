@@ -26,13 +26,11 @@
       yylex as an argument and the yyextra_r field is gone, so the scanner no
       longer refers to it and cannot alias the `&mut ParseData` that ffiprs
       and yyparse hold.
-- [ ] Fix the Info.parseData aliasing in the eval engine. `eval_f.rs` stores
-      `Info.parseData = &mut lParse` and then invalidates it two lines later
-      with `&mut lParse.colData[..]`, so the iterator work function's later
-      `as_mut()` on it is UB. This is the front of the queue for the eval
-      engine now that yyextra_r is gone. Same shape as the FPTR_TABLE and
-      infptr/outfptr entries below: a struct holding a pointer to something
-      that is also reached through a `&mut`.
+- [X] Fix the Info.parseData aliasing in the eval engine. `Info.parseData` is
+      a raw borrow (`&raw mut lParse`) rather than a `&mut`, and the raw pointer
+      to `lParse.colData` is taken before it rather than after, so storing one
+      no longer invalidates the other and the work function's `as_mut()` is
+      sound.
 - [X] The `test_ffcalc_*` tests alias `&mut *fp_self` twice to pass one file
       as both input and output. Done: every `fp_self` is gone; the tests call
       the `_inplace` forms instead. See the infptr/outfptr entry below.
@@ -98,69 +96,42 @@
         PixelFilter is a C struct of raw pointers, so narrowing it means changing
         that struct. Documented in place.
 - [X] Fix broken testprog.out comparison
-- [ ] Miri still reports Undefined Behavior. Run with
+- [ ] Re-run miri end to end and confirm the findings below are gone. Use
       `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri nextest run
       --no-fail-fast -j 8` (cap the threads: the default fans out to one miri
-      process per core at ~1.1GB each and thrashes swap). All of the findings
-      below are Stacked Borrows violations, i.e. real aliasing UB that LLVM's
-      `noalias` is entitled to miscompile, not miri pedantry. A full run takes
-      ~3.8h and reports 2287 passed / 485 failed: 435 UB, 42 unsupported
-      operations, 8 alignment panics. Counts below are failing tests per site.
-      Root causes, in order of blast radius. The line numbers are from that
-      run; the lexer, drvrmem, getcolui, getcol and grparser ones are fixed:
-      * eval_l.rs:1571 (258) — fixed; those tests now stop on the yyextra_r
-        aliasing above instead.
-      * drvrmem.rs:259 (53), getcolui.rs:1380 (38), getcol.rs:2778 (8),
-        grparser.rs:1046 (5) — fixed. Two uncovered a further problem behind
-        them: drvrmem frees Rust-allocated buffers through libc realloc, and
-        the getcol TSTRING path assumes every caller-supplied char* is at
-        least FLEN_VALUE bytes.
-      * cfileio.rs:1880 (20) — the FPTR_TABLE entry below.
-      * The `&mut`/`&mut` aliasing sites are 1 test each, but see the first
-        entry: they are a signature problem, not a local one.
-      * FIXED for ffsrow/ffcalc/ffcalc_rng/ffcpcl/ffcpky. The C API allows
-        `infptr == outfptr` but two `&mut` to one object can never be legal, so
-        each of those now has an `_inplace` twin taking a single `&mut`, and the
-        `extern "C"` wrapper compares the two raw pointers and dispatches --
-        matching what ffcopy/ffcpfl/ffcphd/ffcpdt already did. The bodies are
-        deliberately duplicated rather than parameterised; each pair carries a
-        NOTE pointing at its twin. The `&mut *f` launders in cfileio.rs
-        (ffselect_table, ffedit_columns) and the eval_f.rs/editcol.rs tests are
-        all gone. Note the wrapper test is *handle* identity: two distinct
-        handles sharing one FITSfile (fits_reopen_file) is a supported two-file
-        case, and the FITSfile-level `ptr::eq(a.Fptr.as_ptr(), ..)` checks in
-        ffcpcl_safe/ffcpdt_safe are a different test and stay.
-      * FIXED: `fitsfile.Fptr` is an `FptrRef` (repr(transparent) NonNull with
-        Deref/DerefMut), not a `Box`, so sharing a FITSfile between handles no
-        longer means two live Boxes owning one allocation.
-      * `FPTR_TABLE` now stores `Fptr.as_ptr()`, the same pointer the handles
-        deref through, and fits_already_open takes a shared `&FITSfile` from it
-        rather than minting a `&mut` that aliased every live handle. What is
-        left is that `FPTR_TABLE` is still a `static mut`; wrapping it in a
-        Mutex over a Send newtype would confine that to one `unsafe impl`.
-      * eval_l.rs:1571 — the lexer's yy_buffer_stack hands out `&mut` into a
-        raw buffer that is then invalidated at eval_l.rs:1752.
-      * drvrmem.rs:259 — `m[ii].memaddrptr = &mut m[ii].memaddr` is a
-        self-referential struct; any later access through the slice kills it.
-      * cfileio.rs:8907 — returns a raw pointer into the caller's buffer which
-        is used after a later write invalidates the tag.
-      * getcolui.rs:1380, getcol.rs:2778, grparser.rs:1046 — each rebuilds a
-        slice with slice::from_raw_parts(_mut) from a pointer that is still
-        borrowed elsewhere. grparser's also makes a *mutable* slice from a
-        CStr's const pointer, which miri reports as a write through a
-        SharedReadOnly tag.
-      Not UB, but surfaced by the same run:
-      * 8 tests panic in bytemuck `cast_slice_mut` with
-        TargetAlignmentGreaterAndInputNotAligned, at getcol.rs:2299 reading
-        TSHORT into the tiled-image `cbuf` (imcompress.rs:7720), which is a
-        `Vec<u8>` and so only 1-byte aligned. Native malloc happens to return
-        over-aligned blocks, so this passes outside miri; it is a real latent
-        panic that fires whenever the buffer lands on an odd address. Fixing
-        it means giving cbuf an alignment suitable for the widest type read
-        into it rather than relying on the allocator.
-      * 42 tests fail on miri's own gaps, not on defects: `socketpair` and
-        `copy_file_range` (the fpack/funpack/fitsverify tests spawn
-        subprocesses). Exactly one is ours: a remaining C `fopen` call.
+      process per core at ~1.1GB each and thrashes swap). A full run takes
+      ~3.8h. Do not run any other cargo command while one is in flight -- it
+      corrupts the run.
+      The last full run reported 2287 passed / 485 failed. Every finding from
+      it has since been fixed, but no full run has been done since, so the
+      confirming run is what is outstanding here. What that run found, and
+      where it went:
+      * 435 UB, all Stacked Borrows violations -- real aliasing UB that LLVM's
+        `noalias` is entitled to miscompile, not miri pedantry. The dominant
+        shape, five times over, was a struct holding a pointer to something
+        also reached through a `&mut`: FPTR_TABLE, the lexer's yy_buffer_stack,
+        yyextra_r, Info.parseData, histData.iterCols and def_fptr. The rest
+        were slices rebuilt with slice::from_raw_parts(_mut) over a pointer
+        still borrowed elsewhere (eval_l, drvrmem, getcolui, getcol, grparser),
+        `infptr == outfptr` aliasing (fixed with `_inplace` twins), a TSTRING
+        path that assumed every caller's char* was FLEN_VALUE bytes, an
+        ffgcvn_safe length multiplied twice, and ffomem declaring `void **` as
+        `*const *const`.
+      * 19 leaks, in the eval engine's row buffers: the BITSTR column buffers,
+        const nodes' buffers, and Do_Deref's error paths releasing only one of
+        an Allocate_Ptrs node's two allocations.
+      * 8 alignment panics in bytemuck cast_slice_mut, from reading TSHORT into
+        a `Vec<u8>` tiled-image buffer that is only 1-byte aligned. Native
+        malloc happens to over-align, so this passed outside miri; it was a
+        real latent panic. Fixed with helpers/aligned.rs.
+      * 42 unsupported operations, all miri's own gaps rather than defects:
+        `socketpair`/`copy_file_range` in tests/test_fpack_cli.rs, which spawns
+        the real executables, and one libc `fopen` in a test of ffwrhdu, which
+        takes a C `FILE *`. Both are now skipped under miri so that a run
+        reports only things worth looking at.
+      Still open, and not a miri finding as such: FPTR_TABLE is a `static mut`.
+      Wrapping it in a Mutex over a Send newtype would confine that to one
+      `unsafe impl`.
 - [X] Fix dodgy safety code in ffedit_columns. The `same_ftpr` launder is gone;
       it calls `ffcalc_inplace_safe` instead.
 - [X] Mark all extern functions as deprecated so that we can detect usage
