@@ -1,3 +1,10 @@
+//! What remains of the network drivers.
+//!
+//! CFITSIO's `drvrnet.c` implements `http://`, `ftp://` and `root://` access.
+//! This port does not: only the HTTPS configuration hooks that the public API
+//! exposes are kept, so that a program calling them still links.
+#![warn(missing_docs)]
+
 use std::sync::Mutex;
 
 use crate::c_types::{c_int, c_uint};
