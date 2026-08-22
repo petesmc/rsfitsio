@@ -14451,6 +14451,13 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
+/* NOTE: the error paths below release the result node with free_node_buffer,
+not value.data.free_buffer().  For a Bits or String node Allocate_Ptrs makes
+two allocations -- the row-pointer array in `data`, and the single block every
+row points into, at data[0] -- and free_buffer releases only the array.  It
+also leaves the value Empty, so the teardown in ffcprs then skipped the node
+and the block at data[0] leaked.  BITS[9] is the smallest case: an out-of-range
+index on an 8X column. */
 fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut theVar: &mut Node;
@@ -14566,7 +14573,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     }
                 } else {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                 }
             } else if allConst != 0 && nDims == 1 {
                 /* Reduce dimensions by 1, using a constant index */
@@ -14577,7 +14584,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                             [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                 {
                     fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                    (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                    free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                 } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
                     || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                 {
@@ -14671,7 +14678,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     lParse,
                                     cs!(c"Null encountered as vector index"),
                                 );
-                                (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                                free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                                 break;
                             } else {
                                 dimVals[i as usize] =
@@ -14742,7 +14749,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                         }
                     } else {
                         fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                        free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                     }
                     row += 1;
                 }
@@ -14753,7 +14760,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                     /* Index cannot be a constant */
                     if *((lParse.Nodes[theDims[0]]).value.undef).offset(row as isize) != 0 {
                         fits_parser_yyerror(lParse, cs!(c"Null encountered as vector index"));
-                        (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                        free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                         break;
                     } else {
                         dimVals[0] =
@@ -14764,7 +14771,7 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
                                     [((lParse.Nodes[theVar]).value.naxis - 1) as usize]
                         {
                             fits_parser_yyerror(lParse, cs!(c"Index out of range"));
-                            (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                            free_node_buffer(&mut (lParse.Nodes[this_node_idx]));
                         } else if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
                             || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
                         {
