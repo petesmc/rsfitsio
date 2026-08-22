@@ -1,3 +1,9 @@
+//! `scanf`-family parsing.
+//!
+//! Vendored from relibc; see [`crate::relibc`].
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 use super::lookaheadreader::LookAheadReader;
 use super::printf::{CustomVaList, VaArg};
 use crate::c_types::{

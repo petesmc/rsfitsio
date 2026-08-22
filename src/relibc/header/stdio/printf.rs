@@ -1,3 +1,9 @@
+//! `printf`-family formatting.
+//!
+//! Vendored from relibc; see [`crate::relibc`].
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 use crate::c_types::{
     c_char, c_double, c_int, c_long, c_longlong, c_short, c_uchar, c_uint, c_ulong, c_ulonglong,
     c_ushort, intmax_t, ptrdiff_t, size_t, ssize_t, uintmax_t,
@@ -1443,12 +1449,11 @@ unsafe fn inner_printf<W: Write>(w: W, format: &CStr, mut ap: CustomVaList) -> i
 /// [`unsigned ptrdiff_t`]: ptrdiff_t
 /// [`wchar_t`]: wchar_t
 /// [`char`]: c_char
-/// [`signed char`]: c_schar
+/// [`signed char`]: crate::c_types::c_schar
 /// [`short`]: c_short
 /// [`long`]: c_long
 /// [`long long`]: c_longlong
 /// [`double`]: c_double
-/// [`long double`]: c_longdouble
 /// [`void`]: c_void
 ///
 /// # Safety

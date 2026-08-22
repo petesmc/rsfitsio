@@ -1,3 +1,7 @@
+//! Tests for the vendored `sscanf` implementation.
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 #[cfg(test)]
 mod tests {
 

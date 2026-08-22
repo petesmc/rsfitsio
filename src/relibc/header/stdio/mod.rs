@@ -1,3 +1,10 @@
+//! The `stdio` formatting routines: `printf`, `scanf` and their variants.
+//!
+//! Vendored from relibc; see [`crate::relibc`]. These are what
+//! `int_snprintf!` and the file drivers use instead of calling libc.
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 use crate::c_types::{c_char, c_double, c_int, c_long, c_uint, size_t};
 use bytemuck::cast_slice;
 use core::ffi::{CStr, c_void};
