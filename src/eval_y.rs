@@ -1,72 +1,18 @@
-/************************************************************************/
-/*                                                                      */
-/*                       CFITSIO Lexical Parser                         */
-/*                                                                      */
-/* This file is one of 3 files containing code which parses an          */
-/* arithmetic expression and evaluates it in the context of an input    */
-/* FITS file table extension.  The CFITSIO lexical parser is divided    */
-/* into the following 3 parts/files: the CFITSIO "front-end",           */
-/* eval_f.c, contains the interface between the user/CFITSIO and the    */
-/* real core of the parser; the FLEX interpreter, eval_l.c, takes the   */
-/* input string and parses it into tokens and identifies the FITS       */
-/* information required to evaluate the expression (ie, keywords and    */
-/* columns); and, the BISON grammar and evaluation routines, eval_y.c,  */
-/* receives the FLEX output and determines and performs the actual      */
-/* operations.  The files eval_l.c and eval_y.c are produced from       */
-/* running flex and bison on the files eval.l and eval.y, respectively. */
-/* (flex and bison are available from any GNU archive: see www.gnu.org) */
-/*                                                                      */
-/* The grammar rules, rather than evaluating the expression in situ,    */
-/* builds a tree, or Nodal, structure mapping out the order of          */
-/* operations and expression dependencies.  This "compilation" process  */
-/* allows for much faster processing of multiple rows.  This technique  */
-/* was developed by Uwe Lammers of the XMM Science Analysis System,     */
-/* although the CFITSIO implementation is entirely code original.       */
-/*                                                                      */
-/*                                                                      */
-/* Modification History:                                                */
-/*                                                                      */
-/*   Kent Blackburn      c1992  Original parser code developed for the  */
-/*                              FTOOLS software package, in particular, */
-/*                              the fselect task.                       */
-/*   Kent Blackburn      c1995  BIT column support added                */
-/*   Peter D Wilson   Feb 1998  Vector column support added             */
-/*   Peter D Wilson   May 1998  Ported to CFITSIO library.  User        */
-/*                              interface routines written, in essence  */
-/*                              making fselect, fcalc, and maketime     */
-/*                              capabilities available to all tools     */
-/*                              via single function calls.              */
-/*   Peter D Wilson   Jun 1998  Major rewrite of parser core, so as to  */
-/*                              create a run-time evaluation tree,      */
-/*                              inspired by the work of Uwe Lammers,    */
-/*                              resulting in a speed increase of        */
-/*                              10-100 times.                           */
-/*   Peter D Wilson   Jul 1998  gtifilter(a,b,c,d) function added       */
-/*   Peter D Wilson   Aug 1998  regfilter(a,b,c,d) function added       */
-/*   Peter D Wilson   Jul 1999  Make parser fitsfile-independent,       */
-/*                              allowing a purely vector-based usage    */
-/*  Craig B Markwardt Jun 2004  Add MEDIAN() function                   */
-/*  Craig B Markwardt Jun 2004  Add SUM(), and MIN/MAX() for bit arrays */
-/*  Craig B Markwardt Jun 2004  Allow subscripting of nX bit arrays     */
-/*  Craig B Markwardt Jun 2004  Implement statistical functions         */
-/*                              NVALID(), AVERAGE(), and STDDEV()       */
-/*                              for integer and floating point vectors  */
-/*  Craig B Markwardt Jun 2004  Use NULL values for range errors instead*/
-/*                              of throwing a parse error               */
-/*  Craig B Markwardt Oct 2004  Add ACCUM() and SEQDIFF() functions     */
-/*  Craig B Markwardt Feb 2005  Add ANGSEP() function                   */
-/*  Craig B Markwardt Aug 2005  CIRCLE, BOX, ELLIPSE, NEAR and REGFILTER*/
-/*                              functions now accept vector arguments   */
-/*  Craig B Markwardt Sum 2006  Add RANDOMN() and RANDOMP() functions   */
-/*  Craig B Markwardt Mar 2007  Allow arguments to RANDOM and RANDOMN to*/
-/*                              determine the output dimensions         */
-/*  Craig B Markwardt Aug 2009  Add substring STRMID() and string search*/
-/*                              STRSTR() functions; more overflow checks*/
-/*  Craig B Markwardt Dec 2019  Add bit/hex/oct literal strings and     */
-/*                              bitwise operatiosn between integers     */
-/*  Craig B Markwardt Mar 2021  Add SETNULL() function                  */
-/*                                                                      */
-/************************************************************************/
+//! The CFITSIO expression parser's grammar and evaluation routines.
+//!
+//! **Generated code**: produced by running `bison` on `eval.y`, then
+//! transpiled. Edits belong in `eval.y` upstream, not here. The bulk of this
+//! file is the parser's state tables and token constants, which carry the
+//! grammar's own spelling.
+//!
+//! It receives the tokens from [`crate::eval_l`] and builds the evaluation
+//! tree described in [`crate::eval_f`], then walks that tree once per row.
+// The items below are bison's own output -- its typedefs, buffer state, token
+// constants and parser tables. They carry the generator's names and have no
+// meaning outside it, so they are exempt from the documentation ratchet rather
+// than given invented descriptions; the file header above documents the module
+// as a whole. Anything hand-written added here should be documented.
+#![allow(missing_docs)]
 
 use alloc::rc::Rc;
 use core::ffi::CStr;
@@ -241,7 +187,7 @@ pub type yy_state_fast_t = c_int;
 /// This was `typedef enum { rnd_fct = 1001, ... } funcOp` in eval_defs.h; the
 /// transpile flattened it to a `c_uint` alias with 51 loose constants, so any
 /// integer could be passed where a function code was wanted. The values are the
-/// C's, and they are contiguous from 1001, which [`funcOp::from_operation`]
+/// C's, and they are contiguous from 1001, which `funcOp::from_operation`
 /// relies on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -814,9 +760,7 @@ static YYR2: [yytype_int8; 136] = [
     12, 2, 3, 1, 1, 4, 1, 3, 3, 5, 5, 7,
 ];
 
-/*************************************************************************/
 /*  Start of "New" routines which build the expression Nodal structure   */
-/*************************************************************************/
 
 /* Use this for allocation to guarantee *Nodes */
 /* survives on failure, making it still valid  */
@@ -1959,10 +1903,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         18 => {
                             /* bits: BITSTR  */
                             /* Measure first: `text_mut()` reborrows the whole yyvs Vec, so
-                               taking the length after the pointer invalidated it and New_Const
-                               then read through a dead tag. */
+                            taking the length after the pointer invalidated it and New_Const
+                            then read through a dead tag. */
                             let text_len = (strlen_safe(yyvs[yyvsp].text_mut()))
-                                .wrapping_add((1).try_into().unwrap()) as c_long;
+                                .wrapping_add((1).try_into().unwrap())
+                                as c_long;
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::BITSTR as c_int,
@@ -5229,9 +5174,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let yy_v1 = yyvs[yyvsp - 3].node();
                             let yy_v2 = yyvs[yyvsp - 1].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 5)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
@@ -5254,9 +5199,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let yy_v1 = yyvs[yyvsp - 7].node();
                             let yy_v2 = yyvs[yyvsp - 5].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 9)).text_mut_ptr();
                             let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
@@ -6873,9 +6818,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ')'  */
                             let yy_v1 = yyvs[yyvsp - 1].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
@@ -6897,9 +6842,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFILTER STRING ',' expr ',' STRING ',' STRING ')'  */
                             let yy_v1 = yyvs[yyvsp - 5].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
                             let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
@@ -6959,9 +6904,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ')'  */
                             let yy_v1 = yyvs[yyvsp - 1].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_GTI(
@@ -6983,9 +6928,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             /* bexpr: GTIFIND STRING ',' expr ',' STRING ',' STRING ')'  */
                             let yy_v1 = yyvs[yyvsp - 5].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
                             let yy_p2 = (*yy_base.add(yyvsp - 3)).text_mut_ptr();
@@ -7027,9 +6972,9 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let yy_v1 = yyvs[yyvsp - 3].node();
                             let yy_v2 = yyvs[yyvsp - 1].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 5)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
@@ -7050,18 +6995,14 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                             let yy_v1 = yyvs[yyvsp - 5].node();
                             let yy_v2 = yyvs[yyvsp - 3].node();
                             /* Derive every slot pointer from the stack's own allocation pointer.
-                               `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
-                               any other yyvs access -- that way invalidated the first, and this
-                               constructor is handed up to three of them at once. */
+                            `yyvs[i]` reborrows the whole Vec, so taking a second pointer -- or
+                            any other yyvs access -- that way invalidated the first, and this
+                            constructor is handed up to three of them at once. */
                             let yy_base = yyvs.as_mut_ptr();
                             let yy_p1 = (*yy_base.add(yyvsp - 7)).text_mut_ptr();
                             let yy_p2 = (*yy_base.add(yyvsp - 1)).text_mut_ptr();
                             yyval = FITS_PARSER_YYSTYPE::Node(New_REG(
-                                lParse,
-                                yy_p1,
-                                yy_v1,
-                                yy_v2,
-                                yy_p2,
+                                lParse, yy_p1, yy_v1, yy_v2, yy_p2,
                             ));
                             if yyval.node() < 0 {
                                 current_block = 4830776507462815627;
@@ -7181,10 +7122,11 @@ pub(crate) fn fits_parser_yyparse(scanner: &mut yyguts_t, lParse: &mut ParseData
                         127 => {
                             /* sexpr: STRING  */
                             /* Measure first: `text_mut()` reborrows the whole yyvs Vec, so
-                               taking the length after the pointer invalidated it and New_Const
-                               then read through a dead tag. */
+                            taking the length after the pointer invalidated it and New_Const
+                            then read through a dead tag. */
                             let text_len = (strlen_safe(yyvs[yyvsp].text_mut()))
-                                .wrapping_add((1).try_into().unwrap()) as c_long;
+                                .wrapping_add((1).try_into().unwrap())
+                                as c_long;
                             yyval = FITS_PARSER_YYSTYPE::Node(New_Const(
                                 lParse,
                                 fits_parser_yytokentype::STRING as c_int,
@@ -8797,18 +8739,14 @@ fn Copy_Dims(lParse: &mut ParseData, Node1: c_int, Node2: c_int) {
     }
 }
 
-/********************************************************************/
 /*    Routines for actually evaluating the expression start here    */
-/********************************************************************/
 
-/***********************************************************************/
 /*  Reset the parser for processing another batch of data...           */
 /*    firstRow:  Row number of the first element to evaluate           */
 /*    nRows:     Number of rows to be processed                        */
 /*  Initialize each COLUMN node so that its UNDEF and DATA pointers    */
 /*  point to the appropriate column arrays.                            */
 /*  Finally, call Evaluate_Node for final node.                        */
-/***********************************************************************/
 pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c_long) {
     unsafe {
         let mut i: c_int = 0;
@@ -8820,9 +8758,9 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
         /* Initialize the random number generator once and only once */
         if RAND_INITIALIZED == 0 {
             /* Seed from the wall clock, as the C's time(NULL) does. Uses
-               SystemTime rather than libc time() so the expression engine has
-               no foreign call on this path -- Miri cannot make it, and it was
-               aborting every test that reaches the evaluator. */
+            SystemTime rather than libc time() so the expression engine has
+            no foreign call on this path -- Miri cannot make it, and it was
+            aborting every test that reaches the evaluator. */
             let seed = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs() as c_uint);
@@ -8930,10 +8868,8 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
     }
 }
 
-/**********************************************************************/
 /*  Recursively evaluate thisNode's subNodes, then call one of the    */
 /*  Do_<Action> functions pointed to by thisNode's DoOp element.      */
-/**********************************************************************/
 fn Evaluate_Node(lParse: &mut ParseData, thisNode: c_int) {
     let mut this_node_idx: usize;
     let mut i: c_int = 0;
@@ -10492,9 +10428,8 @@ fn Do_BinOp_lng(lParse: &mut ParseData, this_node_idx: usize) {
                     result is one too, but powf need not land exactly on it --
                     5**2 comes back as 24.999999999999996 under some libm
                     implementations, and `as c_long` then yields 24. */
-                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(
-                        pow(val1 as c_double, val2 as c_double).round() as c_long,
-                    );
+                    (lParse.Nodes[this_node_idx]).value.data =
+                        NodeValue::Long(pow(val1 as c_double, val2 as c_double).round() as c_long);
                 }
                 Operator::Accum => {
                     (lParse.Nodes[this_node_idx]).value.data = NodeValue::Long(val1);
@@ -15555,8 +15490,7 @@ fn Do_Vector(lParse: &mut ParseData, this_node_idx: usize) {
                 .operation
                 > 0
             {
-                let sub_idx =
-                    (lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize;
+                let sub_idx = (lParse.Nodes[this_node_idx]).SubNodes[node as usize] as usize;
                 free_node_buffer(&mut ((lParse.Nodes)[sub_idx]));
             }
             node += 1;
@@ -15685,9 +15619,7 @@ fn Do_Array(lParse: &mut ParseData, this_node_idx: usize) {
 
 // One arm per comparison operator, mirroring the C's switch; match guards
 // would make the operator table harder to scan.
-/*****************************************************************************/
 /*  Utility routines which perform the calculations on bits and SAO regions  */
-/*****************************************************************************/
 
 #[allow(clippy::collapsible_match, clippy::collapsible_if)]
 /// Left-pad the shorter of two bit strings with `'0'` so the two are the same

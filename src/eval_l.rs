@@ -1,55 +1,19 @@
-/************************************************************************/
-/*                                                                      */
-/*                       CFITSIO Lexical Parser                         */
-/*                                                                      */
-/* This specifies a thread-safe reentrant version of lex functions */
-/* This specifies CFITSIO-unique names for lexer functions */
-/* This facilitates calling between the Bison parser and this lexer */
-/* This file is one of 3 files containing code which parses an          */
-/* arithmetic expression and evaluates it in the context of an input    */
-/* FITS file table extension.  The CFITSIO lexical parser is divided    */
-/* into the following 3 parts/files: the CFITSIO "front-end",           */
-/* eval_f.c, contains the interface between the user/CFITSIO and the    */
-/* real core of the parser; the FLEX interpreter, eval_l.c, takes the   */
-/* input string and parses it into tokens and identifies the FITS       */
-/* information required to evaluate the expression (ie, keywords and    */
-/* columns); and, the BISON grammar and evaluation routines, eval_y.c,  */
-/* receives the FLEX output and determines and performs the actual      */
-/* operations.  The files eval_l.c and eval_y.c are produced from       */
-/* running flex and bison on the files eval.l and eval.y, respectively. */
-/* (flex and bison are available from any GNU archive: see www.gnu.org) */
-/*                                                                      */
-/* The grammar rules, rather than evaluating the expression in situ,    */
-/* builds a tree, or Nodal, structure mapping out the order of          */
-/* operations and expression dependencies.  This "compilation" process  */
-/* allows for much faster processing of multiple rows.  This technique  */
-/* was developed by Uwe Lammers of the XMM Science Analysis System,     */
-/* although the CFITSIO implementation is entirely code original.       */
-/*                                                                      */
-/*                                                                      */
-/* Modification History:                                                */
-/*                                                                      */
-/*   Kent Blackburn      c1992  Original parser code developed for the  */
-/*                              FTOOLS software package, in particular, */
-/*                              the fselect task.                       */
-/*   Kent Blackburn      c1995  BIT column support added                */
-/*   Peter D Wilson   Feb 1998  Vector column support added             */
-/*   Peter D Wilson   May 1998  Ported to CFITSIO library.  User        */
-/*                              interface routines written, in essence  */
-/*                              making fselect, fcalc, and maketime     */
-/*                              capabilities available to all tools     */
-/*                              via single function calls.              */
-/*   Peter D Wilson   Jun 1998  Major rewrite of parser core, so as to  */
-/*                              create a run-time evaluation tree,      */
-/*                              inspired by the work of Uwe Lammers,    */
-/*                              resulting in a speed increase of        */
-/*                              10-100 times.                           */
-/*   Peter D Wilson   Jul 1998  gtifilter(a,b,c,d) function added       */
-/*   Peter D Wilson   Aug 1998  regfilter(a,b,c,d) function added       */
-/*   Peter D Wilson   Jul 1999  Make parser fitsfile-independent,       */
-/*                              allowing a purely vector-based usage    */
-/*                                                                      */
-/************************************************************************/
+//! The CFITSIO expression parser's lexer.
+//!
+//! **Generated code**: produced by running `flex` on `eval.l`, then transpiled.
+//! Edits belong in `eval.l` upstream, not here. It is a thread-safe reentrant
+//! lexer using CFITSIO-specific function names, which is what lets the BISON
+//! parser in [`crate::eval_y`] call into it.
+//!
+//! The lexer turns the expression string into tokens and identifies the FITS
+//! keywords and columns the expression needs. See [`crate::eval_f`] for the
+//! parser as a whole.
+// The items below are flex's own output -- its typedefs, buffer state, token
+// constants and parser tables. They carry the generator's names and have no
+// meaning outside it, so they are exempt from the documentation ratchet rather
+// than given invented descriptions; the file header above documents the module
+// as a whole. Anything hand-written added here should be documented.
+#![allow(missing_docs)]
 #![deny(dead_code)]
 
 use errno::{Errno, errno, set_errno};
@@ -77,8 +41,6 @@ use crate::{
     fitscore::{ffpmsg_slice, fits_strcasecmp, fits_strncasecmp},
     wrappers::{tolower, toupper},
 };
-
-/*****  Definitions  *****/
 
 const OCT_0: &str = "000";
 const OCT_1: &str = "001";
@@ -283,8 +245,6 @@ fn expr_read(lParse: &mut ParseData, buf: &mut [c_char], nbytes: c_int) -> c_int
     buf[n as usize] = 0;
     n
 }
-
-/*****  Internal functions  *****/
 
 pub(crate) fn fits_parser_yyGetVariable(
     lParse: &mut ParseData,
@@ -825,7 +785,7 @@ pub(crate) fn fits_parser_yylex(
                                 let mut constval: c_long = 0;
                                 let mut p: *mut c_char = core::ptr::null_mut::<c_char>();
                                 /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
-                                   byte, so the scan below immediately ran past that provenance. */
+                                byte, so the scan below immediately ran past that provenance. */
                                 p = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p != 0 {
                                     constval = constval << 1
@@ -839,7 +799,7 @@ pub(crate) fn fits_parser_yylex(
                                 let mut constval_0: c_long = 0;
                                 let mut p_0: *mut c_char = core::ptr::null_mut::<c_char>();
                                 /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
-                                   byte, so the scan below immediately ran past that provenance. */
+                                byte, so the scan below immediately ran past that provenance. */
                                 p_0 = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p_0 != 0 {
                                     constval_0 = constval_0 << 3 as c_int
@@ -853,7 +813,7 @@ pub(crate) fn fits_parser_yylex(
                                 let mut constval_1: c_long = 0;
                                 let mut p_1: *mut c_char = core::ptr::null_mut::<c_char>();
                                 /* Plain pointer arithmetic: `&mut *ptr.offset(2)` borrows a single
-                                   byte, so the scan below immediately ran past that provenance. */
+                                byte, so the scan below immediately ran past that provenance. */
                                 p_1 = (yyscanner.yytext_r).offset(2 as c_int as isize);
                                 while *p_1 != 0 {
                                     let v: c_int = if isdigit_safe(*p_1) {
@@ -962,11 +922,13 @@ pub(crate) fn fits_parser_yylex(
                                     }
 
                                     /* yytext_r points into the same yylval slot that is passed as
-                                       `&mut` below, so the two arguments would alias. Copy the name
-                                       out first -- owned, so an overlong name keeps its terminator
-                                       rather than being truncated out of one. */
-                                    let name_owned: Vec<c_char> =
-                                        cast_slice(CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul()).to_vec();
+                                    `&mut` below, so the two arguments would alias. Copy the name
+                                    out first -- owned, so an overlong name keeps its terminator
+                                    rather than being truncated out of one. */
+                                    let name_owned: Vec<c_char> = cast_slice(
+                                        CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
+                                    )
+                                    .to_vec();
                                     let yytext_r_slice: &[c_char] = &name_owned;
 
                                     let get_data =
@@ -1037,11 +999,13 @@ pub(crate) fn fits_parser_yylex(
                                 }
 
                                 /* yytext_r points into the same yylval slot that is passed as
-                                   `&mut` below, so the two arguments would alias. Copy the name
-                                   out first -- owned, so an overlong name keeps its terminator
-                                   rather than being truncated out of one. */
-                                let name_owned: Vec<c_char> =
-                                    cast_slice(CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul()).to_vec();
+                                `&mut` below, so the two arguments would alias. Copy the name
+                                out first -- owned, so an overlong name keeps its terminator
+                                rather than being truncated out of one. */
+                                let name_owned: Vec<c_char> = cast_slice(
+                                    CStr::from_ptr(yyscanner.yytext_r).to_bytes_with_nul(),
+                                )
+                                .to_vec();
                                 let yytext_r_slice: &[c_char] = &name_owned;
 
                                 dtype = fits_parser_yyGetVariable(
