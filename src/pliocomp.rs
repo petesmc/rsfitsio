@@ -1,3 +1,10 @@
+//! A thin wrapper over the `pliocomp` crate's PLIO codec.
+//!
+//! Dead code: this module is not declared in `lib.rs`, and
+//! [`crate::imcompress`] calls the `pliocomp` crate directly. Kept for
+//! reference against the C.
+#![warn(missing_docs)]
+
 use pliocomp;
 
 /// Convert a pixel array to a line list.
