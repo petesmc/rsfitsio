@@ -1,8 +1,20 @@
-/*
-  The following code is based on algorithms written by Richard White at STScI and made
-  available for use in CFITSIO in July 1999 and updated in January 2008.
-
-*/
+//! Quantization of floating point images for lossy compression.
+//!
+//! The tile compressors work on integers, so a `float` or `double` image is
+//! first quantized: each tile's values are divided by a scale factor and
+//! rounded, and the scale and zero point are recorded in the `ZSCALE` and
+//! `ZZERO` columns so the values can be reconstructed. The scale is chosen from
+//! an estimate of the tile's noise, so that the quantization error stays below
+//! the noise already present -- which is what makes the loss acceptable.
+//!
+//! Rounding alone leaves the reconstructed values visibly striped at low signal
+//! levels, so a dither may be added before rounding and subtracted after; see
+//! `DitherType`, which is crate-private. `SubtractiveDither2` additionally
+//! preserves exact zeros, which would otherwise be perturbed.
+//!
+//! Based on algorithms written by Richard White at STScI, made available for
+//! use in CFITSIO in July 1999 and updated in January 2008.
+#![warn(missing_docs)]
 
 use core::slice;
 
@@ -17,9 +29,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Which dithering scheme to apply when quantizing a floating point tile.
 pub(crate) enum DitherType {
+    /// Round without dithering.
     NoDither = -1,
+    /// Add a pseudo-random dither before rounding and subtract it after.
     SubtractiveDither1 = 1,
+    /// As [`DitherType::SubtractiveDither1`], but a value of exactly zero is
+    /// preserved rather than dithered.
     SubtractiveDither2 = 2,
 }
 
@@ -58,11 +75,20 @@ so we must reserve a little more space */
 const N_RESERVED_VALUES: i32 = 10;
 
 /* more than this many standard deviations from the mean is an outlier */
+/// Values further than this many sigma from the mean are clipped when
+/// estimating a tile's noise.
 const SIGMA_CLIP: f64 = 5.0;
 
-const NITER: i32 = 3; /* number of sigma-clipping iterations */
+/// Number of sigma-clipping iterations used when estimating a tile's noise.
+const NITER: i32 = 3;
 
+/// Writes through an optional output reference, doing nothing when the caller
+/// passed `None`.
+///
+/// The C writes to an output parameter only after testing the pointer against
+/// NULL; this is that idiom, as a method.
 pub trait SomeSet<T> {
+    /// Store `v` if there is somewhere to store it.
     fn set_if_some(self, v: T);
 }
 
@@ -75,7 +101,6 @@ impl<T> SomeSet<T> for Option<&mut T> {
     }
 }
 
-/*---------------------------------------------------------------------------*/
 /// The function value will be one if the input fdata were copied to idata;
 /// in this case the parameters bscale and bzero can be used to convert back to
 /// nearly the original floating point values:  fdata ~= idata * bscale + bzero.
@@ -311,7 +336,6 @@ pub(crate) fn fits_quantize_float_inplace(
     1
 }
 
-/*---------------------------------------------------------------------------*/
 /// The function value will be one if the input fdata were copied to idata;
 /// in this case the parameters bscale and bzero can be used to convert back to
 /// nearly the original floating point values:  fdata ~= idata * bscale + bzero.
@@ -546,29 +570,46 @@ pub(crate) fn fits_quantize_double_inplace(
     1
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input short integer image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_img_stats_short(
-    array: *const c_short, /*  2 dimensional array of image pixels */
-    nx: c_long,            /* number of pixels in each row of the image */
-    ny: c_long,            /* number of rows in the image */
+    array: *const c_short,
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: c_int,   /* check for null values, if true */
-    nullvalue: c_short, /* value of null pixels, if nullcheck is true */
+    nullcheck: c_int,
+    nullvalue: c_short,
 
     /* returned parameters (if the pointer is not null)  */
-    ngoodpix: *mut c_long,  /* number of non-null pixels in the image */
-    minvalue: *mut c_short, /* returned minimum non-null value in the array */
-    maxvalue: *mut c_short, /* returned maximum non-null value in the array */
-    mean: *mut f64,         /* returned mean value of all non-null pixels */
-    sigma: *mut f64,        /* returned R.M.S. value of all non-null pixels */
-    noise1: *mut f64,       /* 1st order estimate of noise in image background level */
-    noise2: *mut f64,       /* 2nd order estimate of noise in image background level */
-    noise3: *mut f64,       /* 3rd order estimate of noise in image background level */
-    noise5: *mut f64,       /* 5th order estimate of noise in image background level */
-    status: *mut c_int,     /* error status */
+    ngoodpix: *mut c_long,
+    minvalue: *mut c_short,
+    maxvalue: *mut c_short,
+    mean: *mut f64,
+    sigma: *mut f64,
+    noise1: *mut f64,
+    noise2: *mut f64,
+    noise3: *mut f64,
+    noise5: *mut f64,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -594,28 +635,45 @@ pub unsafe extern "C" fn fits_img_stats_short(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input short integer image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 pub fn fits_img_stats_short_safe(
-    array: &[c_short], /*  2 dimensional array of image pixels */
-    nx: c_long,        /* number of pixels in each row of the image */
-    ny: c_long,        /* number of rows in the image */
+    array: &[c_short],
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: bool,    /* check for null values, if true */
-    nullvalue: c_short, /* value of null pixels, if nullcheck is true */
+    nullcheck: bool,
+    nullvalue: c_short,
 
     /* returned parameters (if the pointer is not null)  */
-    mut ngoodpix: Option<&mut c_long>, /* number of non-null pixels in the image */
-    minvalue: Option<&mut c_short>,    /* returned minimum non-null value in the array */
-    maxvalue: Option<&mut c_short>,    /* returned maximum non-null value in the array */
-    mean: Option<&mut f64>,            /* returned mean value of all non-null pixels */
-    sigma: Option<&mut f64>,           /* returned R.M.S. value of all non-null pixels */
-    noise1: Option<&mut f64>,          /* 1st order estimate of noise in image background level */
-    noise2: Option<&mut f64>,          /* 2nd order estimate of noise in image background level */
-    noise3: Option<&mut f64>,          /* 3rd order estimate of noise in image background level */
-    noise5: Option<&mut f64>,          /* 5th order estimate of noise in image background level */
-    status: &mut c_int,                /* error status */
+    mut ngoodpix: Option<&mut c_long>,
+    minvalue: Option<&mut c_short>,
+    maxvalue: Option<&mut c_short>,
+    mean: Option<&mut f64>,
+    sigma: Option<&mut f64>,
+    noise1: Option<&mut f64>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
     let mut minval: c_short = 0;
@@ -705,29 +763,46 @@ pub fn fits_img_stats_short_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input integer image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_img_stats_int(
-    array: *const c_int, /*  2 dimensional array of image pixels */
-    nx: c_long,          /* number of pixels in each row of the image */
-    ny: c_long,          /* number of rows in the image */
+    array: *const c_int,
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: c_int, /* check for null values, if true */
-    nullvalue: c_int, /* value of null pixels, if nullcheck is true */
+    nullcheck: c_int,
+    nullvalue: c_int,
 
     /* returned parameters (if the pointer is not null)  */
-    ngoodpix: *mut c_long, /* number of non-null pixels in the image */
-    minvalue: *mut c_int,  /* returned minimum non-null value in the array */
-    maxvalue: *mut c_int,  /* returned maximum non-null value in the array */
-    mean: *mut f64,        /* returned mean value of all non-null pixels */
-    sigma: *mut f64,       /* returned R.M.S. value of all non-null pixels */
-    noise1: *mut f64,      /* 1st order estimate of noise in image background level */
-    noise2: *mut f64,      /* 2nd order estimate of noise in image background level */
-    noise3: *mut f64,      /* 3rd order estimate of noise in image background level */
-    noise5: *mut f64,      /* 5th order estimate of noise in image background level */
-    status: *mut c_int,    /* error status */
+    ngoodpix: *mut c_long,
+    minvalue: *mut c_int,
+    maxvalue: *mut c_int,
+    mean: *mut f64,
+    sigma: *mut f64,
+    noise1: *mut f64,
+    noise2: *mut f64,
+    noise3: *mut f64,
+    noise5: *mut f64,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -753,28 +828,45 @@ pub unsafe extern "C" fn fits_img_stats_int(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input integer image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 pub fn fits_img_stats_int_safe(
-    array: &[c_int], /*  2 dimensional array of image pixels */
-    nx: c_long,      /* number of pixels in each row of the image */
-    ny: c_long,      /* number of rows in the image */
+    array: &[c_int],
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: bool,  /* check for null values, if true */
-    nullvalue: c_int, /* value of null pixels, if nullcheck is true */
+    nullcheck: bool,
+    nullvalue: c_int,
 
     /* returned parameters (if the pointer is not null)  */
-    mut ngoodpix: Option<&mut c_long>, /* number of non-null pixels in the image */
-    minvalue: Option<&mut c_int>,      /* returned minimum non-null value in the array */
-    maxvalue: Option<&mut c_int>,      /* returned maximum non-null value in the array */
-    mean: Option<&mut f64>,            /* returned mean value of all non-null pixels */
-    sigma: Option<&mut f64>,           /* returned R.M.S. value of all non-null pixels */
-    noise1: Option<&mut f64>,          /* 1st order estimate of noise in image background level */
-    noise2: Option<&mut f64>,          /* 2nd order estimate of noise in image background level */
-    noise3: Option<&mut f64>,          /* 3rd order estimate of noise in image background level */
-    noise5: Option<&mut f64>,          /* 5th order estimate of noise in image background level */
-    status: &mut c_int,                /* error status */
+    mut ngoodpix: Option<&mut c_long>,
+    minvalue: Option<&mut c_int>,
+    maxvalue: Option<&mut c_int>,
+    mean: Option<&mut f64>,
+    sigma: Option<&mut f64>,
+    noise1: Option<&mut f64>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
     let mut minval: c_int = 0;
@@ -862,29 +954,46 @@ pub fn fits_img_stats_int_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input float image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_img_stats_float(
-    array: *const f32, /*  2 dimensional array of image pixels */
-    nx: c_long,        /* number of pixels in each row of the image */
-    ny: c_long,        /* number of rows in the image */
+    array: *const f32,
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: c_int, /* check for null values, if true */
-    nullvalue: f32,   /* value of null pixels, if nullcheck is true */
+    nullcheck: c_int,
+    nullvalue: f32,
 
     /* returned parameters (if the pointer is not null)  */
-    ngoodpix: *mut c_long, /* number of non-null pixels in the image */
-    minvalue: *mut f32,    /* returned minimum non-null value in the array */
-    maxvalue: *mut f32,    /* returned maximum non-null value in the array */
-    mean: *mut f64,        /* returned mean value of all non-null pixels */
-    sigma: *mut f64,       /* returned R.M.S. value of all non-null pixels */
-    noise1: *mut f64,      /* 1st order estimate of noise in image background level */
-    noise2: *mut f64,      /* 2nd order estimate of noise in image background level */
-    noise3: *mut f64,      /* 3rd order estimate of noise in image background level */
-    noise5: *mut f64,      /* 5th order estimate of noise in image background level */
-    status: *mut c_int,    /* error status */
+    ngoodpix: *mut c_long,
+    minvalue: *mut f32,
+    maxvalue: *mut f32,
+    mean: *mut f64,
+    sigma: *mut f64,
+    noise1: *mut f64,
+    noise2: *mut f64,
+    noise3: *mut f64,
+    noise5: *mut f64,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -910,28 +1019,45 @@ pub unsafe extern "C" fn fits_img_stats_float(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute statistics of the input float image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `minvalue`  — returned minimum non-null value in the array
+/// * `maxvalue`  — returned maximum non-null value in the array
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `noise1`    — 1st order estimate of noise in image background level
+/// * `noise2`    — 2nd order estimate of noise in image background level
+/// * `noise3`    — 3rd order estimate of noise in image background level
+/// * `noise5`    — 5th order estimate of noise in image background level
+/// * `status`    — error status
 pub fn fits_img_stats_float_safe(
-    array: &[f32], /*  2 dimensional array of image pixels */
-    nx: c_long,    /* number of pixels in each row of the image */
-    ny: c_long,    /* number of rows in the image */
+    array: &[f32],
+    nx: c_long,
+    ny: c_long,
     /* (if this is a 3D image, then ny should be the */
     /* product of the no. of rows times the no. of planes) */
-    nullcheck: bool, /* check for null values, if true */
-    nullvalue: f32,  /* value of null pixels, if nullcheck is true */
+    nullcheck: bool,
+    nullvalue: f32,
 
     /* returned parameters (if the pointer is not null)  */
-    mut ngoodpix: Option<&mut c_long>, /* number of non-null pixels in the image */
-    minvalue: Option<&mut f32>,        /* returned minimum non-null value in the array */
-    maxvalue: Option<&mut f32>,        /* returned maximum non-null value in the array */
-    mean: Option<&mut f64>,            /* returned mean value of all non-null pixels */
-    sigma: Option<&mut f64>,           /* returned R.M.S. value of all non-null pixels */
-    noise1: Option<&mut f64>,          /* 1st order estimate of noise in image background level */
-    noise2: Option<&mut f64>,          /* 2nd order estimate of noise in image background level */
-    noise3: Option<&mut f64>,          /* 3rd order estimate of noise in image background level */
-    noise5: Option<&mut f64>,          /* 5th order estimate of noise in image background level */
-    status: &mut c_int,                /* error status */
+    mut ngoodpix: Option<&mut c_long>,
+    minvalue: Option<&mut f32>,
+    maxvalue: Option<&mut f32>,
+    mean: Option<&mut f64>,
+    sigma: Option<&mut f64>,
+    noise1: Option<&mut f64>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
     let mut minval: f32 = 0.0;
@@ -1019,17 +1145,27 @@ pub fn fits_img_stats_float_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute mean and RMS sigma of the non-null pixels in the input array.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `npix`      — number of pixels in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnMeanSigma_short(
-    array: &[c_short],    /*  2 dimensional array of image pixels */
-    npix: usize,          /* number of pixels in the image */
-    nullcheck: bool,      /* check for null values, if true */
-    nullvalue: c_short,   /* value of null pixels, if nullcheck is true */
-    ngoodpix: &mut usize, /* number of non-null pixels in the image */
-    mean: &mut f64,       /* returned mean value of all non-null pixels */
-    sigma: &mut f64,      /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,   /* error status */
+    array: &[c_short],
+    npix: usize,
+    nullcheck: bool,
+    nullvalue: c_short,
+    ngoodpix: &mut usize,
+    mean: &mut f64,
+    sigma: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
 
@@ -1079,17 +1215,27 @@ fn FnMeanSigma_short(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute mean and RMS sigma of the non-null pixels in the input array.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `npix`      — number of pixels in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnMeanSigma_int(
-    array: &[c_int],      /*  2 dimensional array of image pixels */
-    npix: usize,          /* number of pixels in the image */
-    nullcheck: bool,      /* check for null values, if true */
-    nullvalue: c_int,     /* value of null pixels, if nullcheck is true */
-    ngoodpix: &mut usize, /* number of non-null pixels in the image */
-    mean: &mut f64,       /* returned mean value of all non-null pixels */
-    sigma: &mut f64,      /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,   /* error status */
+    array: &[c_int],
+    npix: usize,
+    nullcheck: bool,
+    nullvalue: c_int,
+    ngoodpix: &mut usize,
+    mean: &mut f64,
+    sigma: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
 
@@ -1139,17 +1285,27 @@ fn FnMeanSigma_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute mean and RMS sigma of the non-null pixels in the input array.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `npix`      — number of pixels in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnMeanSigma_float(
-    array: &[f32],        /*  2 dimensional array of image pixels */
-    npix: usize,          /* number of pixels in the image */
-    nullcheck: bool,      /* check for null values, if true */
-    nullvalue: f32,       /* value of null pixels, if nullcheck is true */
-    ngoodpix: &mut usize, /* number of non-null pixels in the image */
-    mean: &mut f64,       /* returned mean value of all non-null pixels */
-    sigma: &mut f64,      /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,   /* error status */
+    array: &[f32],
+    npix: usize,
+    nullcheck: bool,
+    nullvalue: f32,
+    ngoodpix: &mut usize,
+    mean: &mut f64,
+    sigma: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
 
@@ -1199,17 +1355,27 @@ fn FnMeanSigma_float(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compute mean and RMS sigma of the non-null pixels in the input array.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `npix`      — number of pixels in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngoodpix`  — number of non-null pixels in the image
+/// * `mean`      — returned mean value of all non-null pixels
+/// * `sigma`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnMeanSigma_double(
-    array: &[f64],        /*  2 dimensional array of image pixels */
-    npix: usize,          /* number of pixels in the image */
-    nullcheck: bool,      /* check for null values, if true */
-    nullvalue: f64,       /* value of null pixels, if nullcheck is true */
-    ngoodpix: &mut usize, /* number of non-null pixels in the image */
-    mean: &mut f64,       /* returned mean value of all non-null pixels */
-    sigma: &mut f64,      /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,   /* error status */
+    array: &[f64],
+    npix: usize,
+    nullcheck: bool,
+    nullvalue: f64,
+    ngoodpix: &mut usize,
+    mean: &mut f64,
+    sigma: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: usize = 0;
 
@@ -1259,30 +1425,44 @@ fn FnMeanSigma_double(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 2nd, 3rd and 5th order Median Absolute Differences.
 ///
 /// The noise in the background of the image is calculated using the MAD algorithms
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 /// 3rd order:  noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise2`    — returned 2nd order MAD of all non-null pixels
+/// * `noise3`    — returned 3rd order MAD of all non-null pixels
+/// * `noise5`    — returned 5th order MAD of all non-null pixels
+/// * `status`    — error status
 fn FnNoise5_short(
-    array: &[c_short],            /*  2 dimensional array of image pixels */
-    nx: usize,                    /* number of pixels in each row of the image */
-    ny: usize,                    /* number of rows in the image */
-    nullcheck: bool,              /* check for null values, if true */
-    nullvalue: c_short,           /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>,    /* number of good, non-null pixels? */
-    minval: Option<&mut c_short>, /* minimum non-null value */
-    maxval: Option<&mut c_short>, /* maximum non-null value */
-    noise2: Option<&mut f64>,     /* returned 2nd order MAD of all non-null pixels */
-    noise3: Option<&mut f64>,     /* returned 3rd order MAD of all non-null pixels */
-    noise5: Option<&mut f64>,     /* returned 5th order MAD of all non-null pixels */
-    status: &mut c_int,           /* error status */
+    array: &[c_short],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_short,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut c_short>,
+    maxval: Option<&mut c_short>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -1408,7 +1588,6 @@ fn FnNoise5_short(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -1432,7 +1611,6 @@ fn FnNoise5_short(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -1456,7 +1634,6 @@ fn FnNoise5_short(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -1725,30 +1902,44 @@ fn FnNoise5_short(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 2nd, 3rd and 5th order Median Absolute Differences.
 ///
 /// The noise in the background of the image is calculated using the MAD algorithms
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 /// 3rd order:  noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise2`    — returned 2nd order MAD of all non-null pixels
+/// * `noise3`    — returned 3rd order MAD of all non-null pixels
+/// * `noise5`    — returned 5th order MAD of all non-null pixels
+/// * `status`    — error status
 fn FnNoise5_int(
-    array: &[c_int],            /*  2 dimensional array of image pixels */
-    nx: usize,                  /* number of pixels in each row of the image */
-    ny: usize,                  /* number of rows in the image */
-    nullcheck: bool,            /* check for null values, if true */
-    nullvalue: c_int,           /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>,  /* number of good, non-null pixels? */
-    minval: Option<&mut c_int>, /* minimum non-null value */
-    maxval: Option<&mut c_int>, /* maximum non-null value */
-    noise2: Option<&mut f64>,   /* returned 2nd order MAD of all non-null pixels */
-    noise3: Option<&mut f64>,   /* returned 3rd order MAD of all non-null pixels */
-    noise5: Option<&mut f64>,   /* returned 5th order MAD of all non-null pixels */
-    status: &mut c_int,         /* error status */
+    array: &[c_int],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_int,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut c_int>,
+    maxval: Option<&mut c_int>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -1874,7 +2065,6 @@ fn FnNoise5_int(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -1897,7 +2087,6 @@ fn FnNoise5_int(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -1920,7 +2109,6 @@ fn FnNoise5_int(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2196,30 +2384,44 @@ fn FnNoise5_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 2nd, 3rd and 5th order Median Absolute Differences.
 ///
 /// The noise in the background of the image is calculated using the MAD algorithms
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 /// 3rd order:  noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise2`    — returned 2nd order MAD of all non-null pixels
+/// * `noise3`    — returned 3rd order MAD of all non-null pixels
+/// * `noise5`    — returned 5th order MAD of all non-null pixels
+/// * `status`    — error status
 fn FnNoise5_float(
-    array: &[f32],             /*  2 dimensional array of image pixels */
-    nx: usize,                 /* number of pixels in each row of the image */
-    ny: usize,                 /* number of rows in the image */
-    nullcheck: bool,           /* check for null values, if true */
-    nullvalue: f32,            /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>, /* number of good, non-null pixels? */
-    minval: Option<&mut f32>,  /* minimum non-null value */
-    maxval: Option<&mut f32>,  /* maximum non-null value */
-    noise2: Option<&mut f64>,  /* returned 2nd order MAD of all non-null pixels */
-    noise3: Option<&mut f64>,  /* returned 3rd order MAD of all non-null pixels */
-    noise5: Option<&mut f64>,  /* returned 5th order MAD of all non-null pixels */
-    status: &mut c_int,        /* error status */
+    array: &[f32],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f32,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut f32>,
+    maxval: Option<&mut f32>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -2345,7 +2547,6 @@ fn FnNoise5_float(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2368,7 +2569,6 @@ fn FnNoise5_float(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2391,7 +2591,6 @@ fn FnNoise5_float(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2646,30 +2845,44 @@ fn FnNoise5_float(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 2nd, 3rd and 5th order Median Absolute Differences.
 ///
 /// The noise in the background of the image is calculated using the MAD algorithms
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 /// 3rd order:  noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise2`    — returned 2nd order MAD of all non-null pixels
+/// * `noise3`    — returned 3rd order MAD of all non-null pixels
+/// * `noise5`    — returned 5th order MAD of all non-null pixels
+/// * `status`    — error status
 fn FnNoise5_double(
-    array: &[f64],             /*  2 dimensional array of image pixels */
-    nx: usize,                 /* number of pixels in each row of the image */
-    ny: usize,                 /* number of rows in the image */
-    nullcheck: bool,           /* check for null values, if true */
-    nullvalue: f64,            /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>, /* number of good, non-null pixels? */
-    minval: Option<&mut f64>,  /* minimum non-null value */
-    maxval: Option<&mut f64>,  /* maximum non-null value */
-    noise2: Option<&mut f64>,  /* returned 2nd order MAD of all non-null pixels */
-    noise3: Option<&mut f64>,  /* returned 3rd order MAD of all non-null pixels */
-    noise5: Option<&mut f64>,  /* returned 5th order MAD of all non-null pixels */
-    status: &mut c_int,        /* error status */
+    array: &[f64],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f64,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut f64>,
+    maxval: Option<&mut f64>,
+    noise2: Option<&mut f64>,
+    noise3: Option<&mut f64>,
+    noise5: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -2795,7 +3008,6 @@ fn FnNoise5_double(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2818,7 +3030,6 @@ fn FnNoise5_double(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -2841,7 +3052,6 @@ fn FnNoise5_double(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3096,28 +3306,40 @@ fn FnNoise5_double(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 3rd order differences.
 ///
 /// The noise in the background of the image is calculated using the 3rd order algorithm
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 ///   noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise3_short(
-    array: &[c_short],            /*  2 dimensional array of image pixels */
-    nx: usize,                    /* number of pixels in each row of the image */
-    ny: usize,                    /* number of rows in the image */
-    nullcheck: bool,              /* check for null values, if true */
-    nullvalue: c_short,           /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>,    /* number of good, non-null pixels? */
-    minval: Option<&mut c_short>, /* minimum non-null value */
-    maxval: Option<&mut c_short>, /* maximum non-null value */
-    noise: Option<&mut f64>,      /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,           /* error status */
+    array: &[c_short],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_short,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut c_short>,
+    maxval: Option<&mut c_short>,
+    noise: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -3199,7 +3421,6 @@ fn FnNoise3_short(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3221,7 +3442,6 @@ fn FnNoise3_short(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3243,7 +3463,6 @@ fn FnNoise3_short(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3400,28 +3619,40 @@ fn FnNoise3_short(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 3rd order differences.
 ///
 /// The noise in the background of the image is calculated using the 3rd order algorithm
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 ///   noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise3_int(
-    array: &[c_int],            /*  2 dimensional array of image pixels */
-    nx: usize,                  /* number of pixels in each row of the image */
-    ny: usize,                  /* number of rows in the image */
-    nullcheck: bool,            /* check for null values, if true */
-    nullvalue: c_int,           /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>,  /* number of good, non-null pixels? */
-    minval: Option<&mut c_int>, /* minimum non-null value */
-    maxval: Option<&mut c_int>, /* maximum non-null value */
-    noise: Option<&mut f64>,    /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,         /* error status */
+    array: &[c_int],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_int,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut c_int>,
+    maxval: Option<&mut c_int>,
+    noise: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -3503,7 +3734,6 @@ fn FnNoise3_int(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3525,7 +3755,6 @@ fn FnNoise3_int(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3547,7 +3776,6 @@ fn FnNoise3_int(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3705,28 +3933,40 @@ fn FnNoise3_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 3rd order differences.
 ///
 /// The noise in the background of the image is calculated using the 3rd order algorithm
 /// developed for deriving the signal to noise ratio in spectra
-/// (see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+/// (see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 ///   noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 /// The returned estimates are the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise3_float(
-    array: &[f32],             /*  2 dimensional array of image pixels */
-    nx: usize,                 /* number of pixels in each row of the image */
-    ny: usize,                 /* number of rows in the image */
-    nullcheck: bool,           /* check for null values, if true */
-    nullvalue: f32,            /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>, /* number of good, non-null pixels? */
-    minval: Option<&mut f32>,  /* minimum non-null value */
-    maxval: Option<&mut f32>,  /* maximum non-null value */
-    noise: Option<&mut f64>,   /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,        /* error status */
+    array: &[f32],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f32,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut f32>,
+    maxval: Option<&mut f32>,
+    noise: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -3809,7 +4049,6 @@ fn FnNoise3_float(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3831,7 +4070,6 @@ fn FnNoise3_float(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3853,7 +4091,6 @@ fn FnNoise3_float(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -3981,28 +4218,40 @@ fn FnNoise3_float(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the median and background noise in the input image using 3rd order differences.
 ///
 ///The noise in the background of the image is calculated using the 3rd order algorithm
 ///developed for deriving the signal to noise ratio in spectra
-///(see issue #42 of the ST-ECF newsletter, http://www.stecf.org/documents/newsletter/)
+///(see issue #42 of the ST-ECF newsletter, <http://www.stecf.org/documents/newsletter/>)
 ///
 ///  noise = 1.482602 / sqrt(6) * median (abs(2*flux(i) - flux(i-2) - flux(i+2)))
 ///
 ///The returned estimates are the median of the values that are computed for each
 ///row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `ngood`     — number of good, non-null pixels?
+/// * `minval`    — minimum non-null value
+/// * `maxval`    — maximum non-null value
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise3_double(
-    array: &[f64],             /*  2 dimensional array of image pixels */
-    nx: usize,                 /* number of pixels in each row of the image */
-    ny: usize,                 /* number of rows in the image */
-    nullcheck: bool,           /* check for null values, if true */
-    nullvalue: f64,            /* value of null pixels, if nullcheck is true */
-    ngood: Option<&mut usize>, /* number of good, non-null pixels? */
-    minval: Option<&mut f64>,  /* minimum non-null value */
-    maxval: Option<&mut f64>,  /* maximum non-null value */
-    noise: Option<&mut f64>,   /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int,        /* error status */
+    array: &[f64],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f64,
+    ngood: Option<&mut usize>,
+    minval: Option<&mut f64>,
+    maxval: Option<&mut f64>,
+    noise: Option<&mut f64>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -4085,7 +4334,6 @@ fn FnNoise3_double(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4107,7 +4355,6 @@ fn FnNoise3_double(
             }
         }
 
-        /***** find the 2nd valid pixel in row (which we will skip over) */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4129,7 +4376,6 @@ fn FnNoise3_double(
             }
         }
 
-        /***** find the 3rd valid pixel in row */
         ii += 1;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4257,21 +4503,30 @@ fn FnNoise3_double(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the background noise in the input image using sigma of 1st order differences.
 ///
-///   noise = 1.0 / sqrt(2) * rms of (flux[i] - flux[i-1])
+///   noise = 1.0 / sqrt(2) * rms of (`flux[i]` - `flux[i-1]`)
 ///
 /// The returned estimate is the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise1_short(
-    array: &[c_short],  /*  2 dimensional array of image pixels */
-    nx: usize,          /* number of pixels in each row of the image */
-    ny: usize,          /* number of rows in the image */
-    nullcheck: bool,    /* check for null values, if true */
-    nullvalue: c_short, /* value of null pixels, if nullcheck is true */
-    noise: &mut f64,    /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int, /* error status */
+    array: &[c_short],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_short,
+    noise: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -4316,7 +4571,6 @@ fn FnNoise1_short(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4420,21 +4674,30 @@ fn FnNoise1_short(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the background noise in the input image using sigma of 1st order differences.
 ///
-///   noise = 1.0 / sqrt(2) * rms of (flux[i] - flux[i-1])
+///   noise = 1.0 / sqrt(2) * rms of (`flux[i]` - `flux[i-1]`)
 ///
 /// The returned estimate is the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise1_int(
-    array: &[c_int],    /*  2 dimensional array of image pixels */
-    nx: usize,          /* number of pixels in each row of the image */
-    ny: usize,          /* number of rows in the image */
-    nullcheck: bool,    /* check for null values, if true */
-    nullvalue: c_int,   /* value of null pixels, if nullcheck is true */
-    noise: &mut f64,    /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int, /* error status */
+    array: &[c_int],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: c_int,
+    noise: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -4479,7 +4742,6 @@ fn FnNoise1_int(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4583,21 +4845,30 @@ fn FnNoise1_int(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the background noise in the input image using sigma of 1st order differences.
 ///
-///   noise = 1.0 / sqrt(2) * rms of (flux[i] - flux[i-1])
+///   noise = 1.0 / sqrt(2) * rms of (`flux[i]` - `flux[i-1]`)
 ///
 /// The returned estimate is the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise1_float(
-    array: &[f32],      /*  2 dimensional array of image pixels */
-    nx: usize,          /* number of pixels in each row of the image */
-    ny: usize,          /* number of rows in the image */
-    nullcheck: bool,    /* check for null values, if true */
-    nullvalue: f32,     /* value of null pixels, if nullcheck is true */
-    noise: &mut f64,    /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int, /* error status */
+    array: &[f32],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f32,
+    noise: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -4642,7 +4913,6 @@ fn FnNoise1_float(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4746,21 +5016,30 @@ fn FnNoise1_float(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Estimate the background noise in the input image using sigma of 1st order differences.
 ///
-///   noise = 1.0 / sqrt(2) * rms of (flux[i] - flux[i-1])
+///   noise = 1.0 / sqrt(2) * rms of (`flux[i]` - `flux[i-1]`)
 ///
 /// The returned estimate is the median of the values that are computed for each
 /// row of the image.
+///
+/// # Parameters
+///
+/// * `array`     — 2 dimensional array of image pixels
+/// * `nx`        — number of pixels in each row of the image
+/// * `ny`        — number of rows in the image
+/// * `nullcheck` — check for null values, if true
+/// * `nullvalue` — value of null pixels, if nullcheck is true
+/// * `noise`     — returned R.M.S. value of all non-null pixels
+/// * `status`    — error status
 fn FnNoise1_double(
-    array: &[f64],      /*  2 dimensional array of image pixels */
-    nx: usize,          /* number of pixels in each row of the image */
-    ny: usize,          /* number of rows in the image */
-    nullcheck: bool,    /* check for null values, if true */
-    nullvalue: f64,     /* value of null pixels, if nullcheck is true */
-    noise: &mut f64,    /* returned R.M.S. value of all non-null pixels */
-    status: &mut c_int, /* error status */
+    array: &[f64],
+    nx: usize,
+    ny: usize,
+    nullcheck: bool,
+    nullvalue: f64,
+    noise: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: usize;
     let mut _jj: usize;
@@ -4805,7 +5084,6 @@ fn FnNoise1_double(
 
         rowpix = &array[(jj * nx)..]; /* point to first pixel in the row */
 
-        /***** find the first valid pixel in row */
         ii = 0;
         if nullcheck {
             while ii < nx && rowpix[ii] == nullvalue {
@@ -4909,17 +5187,11 @@ fn FnNoise1_double(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
-
-/*
- *  These Quickselect routines are based on the algorithm described in
- *  "Numerical recipes in C", Second Edition,
- *  Cambridge University Press, 1992, Section 8.5, ISBN 0-521-43108-5
- *  This code by Nicolas Devillard - 1998. Public domain.
- */
-
-/*--------------------------------------------------------------------------*/
-
+/// Selects the `n`th smallest element of `arr`, reordering it in the process.
+///
+/// Based on the Quickselect algorithm described in *Numerical Recipes in C*,
+/// Second Edition, Cambridge University Press, 1992, Section 8.5, ISBN
+/// 0-521-43108-5. This code by Nicolas Devillard, 1998, public domain.
 pub fn quick_select_float(arr: &mut [f32], n: usize) -> f32 {
     let mut middle: usize;
     let mut ll: usize;
@@ -4995,7 +5267,11 @@ pub fn quick_select_float(arr: &mut [f32], n: usize) -> f32 {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Selects the `n`th smallest element of `arr`, reordering it in the process.
+///
+/// Based on the Quickselect algorithm described in *Numerical Recipes in C*,
+/// Second Edition, Cambridge University Press, 1992, Section 8.5, ISBN
+/// 0-521-43108-5. This code by Nicolas Devillard, 1998, public domain.
 pub fn quick_select_short(arr: &mut [i16], n: usize) -> i16 {
     let mut middle: usize;
     let mut ll: usize;
@@ -5071,7 +5347,11 @@ pub fn quick_select_short(arr: &mut [i16], n: usize) -> i16 {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Selects the `n`th smallest element of `arr`, reordering it in the process.
+///
+/// Based on the Quickselect algorithm described in *Numerical Recipes in C*,
+/// Second Edition, Cambridge University Press, 1992, Section 8.5, ISBN
+/// 0-521-43108-5. This code by Nicolas Devillard, 1998, public domain.
 pub fn quick_select_int(arr: &mut [i32], n: usize) -> i32 {
     let mut middle: usize;
     let mut ll: usize;
@@ -5147,7 +5427,11 @@ pub fn quick_select_int(arr: &mut [i32], n: usize) -> i32 {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Selects the `n`th smallest element of `arr`, reordering it in the process.
+///
+/// Based on the Quickselect algorithm described in *Numerical Recipes in C*,
+/// Second Edition, Cambridge University Press, 1992, Section 8.5, ISBN
+/// 0-521-43108-5. This code by Nicolas Devillard, 1998, public domain.
 pub fn quick_select_longlong(arr: &mut [i64], n: usize) -> i64 {
     let mut middle: usize;
     let mut ll: usize;
@@ -5224,7 +5508,11 @@ pub fn quick_select_longlong(arr: &mut [i64], n: usize) -> i64 {
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// Selects the `n`th smallest element of `arr`, reordering it in the process.
+///
+/// Based on the Quickselect algorithm described in *Numerical Recipes in C*,
+/// Second Edition, Cambridge University Press, 1992, Section 8.5, ISBN
+/// 0-521-43108-5. This code by Nicolas Devillard, 1998, public domain.
 pub fn quick_select_double(arr: &mut [f64], n: usize) -> f64 {
     let mut middle: usize;
     let mut ll: usize;
