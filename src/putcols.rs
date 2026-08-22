@@ -1,9 +1,15 @@
-/*  This file, putcols.rs, contains routines that write data elements to    */
-/*  a FITS image or table, of type character string.                       */
+//! Routines that write data elements to a FITS image or table, with
+//! character string datatype.
+//!
+//! The [`TSTRING`] arm of the typed column I/O family. [`crate::putcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::getcols`].
+//!
+//! Ported from CFITSIO's `putcols.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
 use core::ffi::CStr;
 use core::slice;
 use core::{cmp, mem};
@@ -20,17 +26,26 @@ use crate::putcolu::ffpclu_safe;
 use crate::wrappers::*;
 use crate::{buffers::*, int_snprintf};
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of string values to a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of strings to write
+/// * `array`     — (I) array of pointers to strings
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcls(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                       */
-    colnum: c_int,               /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,          /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,         /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,             /* I - number of strings to write              */
-    array: *const *const c_char, /* I - array of pointers to strings            */
-    status: *mut c_int,          /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -57,16 +72,25 @@ pub unsafe extern "C" fn ffpcls(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of string values to a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of strings to write
+/// * `array`     — (I) array of pointers to strings
+/// * `status`    — (IO) error status
 pub fn ffpcls_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of strings to write              */
-    array: &[&[c_char]], /* I - array of pointers to strings            */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[&[c_char]],
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int;
     let mut maxelem: c_int = 0;
@@ -105,9 +129,7 @@ pub fn ffpcls_safe(
         return *status;
     }
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if colnum < 1 || colnum > fptr.Fptr.tfield {
         int_snprintf!(
             &mut message,
@@ -230,9 +252,7 @@ pub fn ffpcls_safe(
         *status = NOT_ASCII_COL;
         return *status;
     }
-    /*-------------------------------------------------------*/
     /*  Now write the strings to the FITS column.            */
-    /*-------------------------------------------------------*/
 
     next = 0; /* next element in array to be written  */
     rownum = 0; /* row number, relative to firstrow     */
@@ -313,9 +333,7 @@ pub fn ffpcls_safe(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= ntodo as LONGLONG;
         if remain > 0 {
             elemnum += ntodo as LONGLONG;
@@ -331,20 +349,30 @@ pub fn ffpcls_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  Write an array of elements to the specified column of a table.  Any input
 ///  pixels flagged as null will be replaced by the appropriate
 ///  null value in the output FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) string representing a null value
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcns(
-    fptr: *mut fitsfile,         /* I - FITS file pointer                       */
-    colnum: c_int,               /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,          /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG,         /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,             /* I - number of values to write               */
-    array: *const *const c_char, /* I - array of values to write                */
-    nulvalue: *const c_char,     /* I - string representing a null value        */
-    status: *mut c_int,          /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const *const c_char,
+    nulvalue: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -374,19 +402,29 @@ pub unsafe extern "C" fn ffpcns(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  Write an array of elements to the specified column of a table.  Any input
 ///  pixels flagged as null will be replaced by the appropriate
 ///  null value in the output FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) string representing a null value
+/// * `status`    — (IO) error status
 pub fn ffpcns_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[&[c_char]], /* I - array of values to write                */
-    nulvalue: &[c_char], /* I - string representing a null value        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[&[c_char]],
+    nulvalue: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut repeat: c_long = 0;
     let mut width: c_long = 0;
