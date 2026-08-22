@@ -96,16 +96,16 @@
         PixelFilter is a C struct of raw pointers, so narrowing it means changing
         that struct. Documented in place.
 - [X] Fix broken testprog.out comparison
-- [ ] Re-run miri end to end and confirm the findings below are gone. Use
+- [X] Miri is clean. The confirming end-to-end run reported 2780 passed, 0
+      failed, 59 skipped in 5h12m: no UB, no leaks, no unsupported operations.
+      Re-run it after any change to the aliasing-sensitive code below. Use
       `MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri nextest run
       --no-fail-fast -j 8` (cap the threads: the default fans out to one miri
       process per core at ~1.1GB each and thrashes swap). A full run takes
-      ~3.8h. Do not run any other cargo command while one is in flight -- it
+      ~5h. Do not run any other cargo command while one is in flight -- it
       corrupts the run.
-      The last full run reported 2287 passed / 485 failed. Every finding from
-      it has since been fixed, but no full run has been done since, so the
-      confirming run is what is outstanding here. What that run found, and
-      where it went:
+      The run before the fixes reported 485 failures. What it found, and where
+      each part went:
       * 435 UB, all Stacked Borrows violations -- real aliasing UB that LLVM's
         `noalias` is entitled to miscompile, not miri pedantry. The dominant
         shape, five times over, was a struct holding a pointer to something
