@@ -48,11 +48,12 @@ use core::ffi::CStr;
 use core::num::{ParseFloatError, ParseIntError};
 use core::{cmp, ptr};
 use core::{slice, str};
-use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, off_t};
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::{
+    free_registered, into_raw_registered, reregister, take_registered,
+};
 use crate::wrappers::strcpy_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -95,10 +96,6 @@ pub const GET_MESG: c_int = 4;
 pub const PUT_MESG: c_int = 5;
 /// `ffxmsg` action: add a marker to the stack.
 pub const PUT_MARK: c_int = 6;
-
-// Use this to keep track of allocations so we can deallocate with the same `Layout` used for allocation.
-pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
-    LazyLock::new(Default::default);
 
 static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| Mutex::new(ErrorStack::new()));
 
@@ -6451,18 +6448,7 @@ pub(crate) fn ffpinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
                 /* free memory for the old CHDU */
 
                 // HEAP DEALLOCATION
-                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-                if let Some((l, c)) = alloc {
-                    // HEAP DEALLOCATION
-                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
-                } else {
-                    let _ = Vec::from_raw_parts(
-                        fptr.Fptr.tableptr,
-                        fptr.Fptr.tfield as usize,
-                        fptr.Fptr.tfield as usize,
-                    );
-                }
+                free_registered(fptr.Fptr.tableptr);
             }
 
             fptr.Fptr.tableptr = ptr::null_mut(); /* set a null table structure pointer */
@@ -6501,18 +6487,7 @@ pub(crate) fn ffpinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
             if !fptr.Fptr.tableptr.is_null() {
                 /* free memory for the old CHDU */
                 // HEAP DEALLOCATION
-                let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-                let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-                if let Some((l, c)) = alloc {
-                    // HEAP DEALLOCATION
-                    let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
-                } else {
-                    let _ = Vec::from_raw_parts(
-                        fptr.Fptr.tableptr,
-                        fptr.Fptr.tfield as usize,
-                        fptr.Fptr.tfield as usize,
-                    );
-                }
+                free_registered(fptr.Fptr.tableptr);
             }
 
             // HEAP ALLOCATION
@@ -6546,9 +6521,7 @@ pub(crate) fn ffpinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
 
             /* copy the table structure address to the fitsfile structure */
 
-            let (p, l, c) = vec_into_raw_parts(colptr);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            fptr.Fptr.tableptr = p;
+            fptr.Fptr.tableptr = into_raw_registered(colptr);
         }
 
         let headstart = fptr.Fptr.get_headstart_as_slice();
@@ -6633,18 +6606,7 @@ pub(crate) fn ffainit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
             // HEAP DEALLOCATION
-            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-            if let Some((l, c)) = alloc {
-                // HEAP DEALLOCATION
-                let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
-            } else {
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
-            }
+            free_registered(fptr.Fptr.tableptr);
         }
         /* mem for column structures ; space is initialized = 0 */
         if tfield > 0 {
@@ -6658,9 +6620,7 @@ pub(crate) fn ffainit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
                 tmp.resize(tfield as usize, tcolumn::default());
             }
 
-            let (p, l, c) = vec_into_raw_parts(tmp);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            colptr = p;
+            colptr = into_raw_registered(tmp);
         }
 
         /* copy the table structure address to the fitsfile structure */
@@ -6896,18 +6856,7 @@ pub(crate) fn ffbinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
         if !fptr.Fptr.tableptr.is_null() {
             /* free memory for the old CHDU */
             // HEAP DEALLOCATION
-            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-            if let Some((l, c)) = alloc {
-                // HEAP DEALLOCATION
-                let _ = Vec::from_raw_parts(fptr.Fptr.tableptr, l, c);
-            } else {
-                let _ = Vec::from_raw_parts(
-                    fptr.Fptr.tableptr,
-                    fptr.Fptr.tfield as usize,
-                    fptr.Fptr.tfield as usize,
-                );
-            }
+            free_registered(fptr.Fptr.tableptr);
         }
 
         /* mem for column structures ; space is initialized = 0  */
@@ -6922,9 +6871,7 @@ pub(crate) fn ffbinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
                 tmp.resize(tfield as usize, tcolumn::default());
             }
 
-            let (p, l, c) = vec_into_raw_parts(tmp);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            colptr = p;
+            colptr = into_raw_registered(tmp);
         }
 
         /* copy the table structure address to the fitsfile structure */
@@ -9280,20 +9227,7 @@ pub(crate) fn ffchdu(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
         /* free memory for the CHDU structure only if no other files are using it */
         if !fptr.Fptr.tableptr.is_null() {
             // HEAP DEALLOCATION
-            let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-            let alloc = alloc_lock.remove(&(fptr.Fptr.tableptr as usize));
-            if let Some((l, c)) = alloc {
-                // HEAP DEALLOCATION
-                let _ = unsafe { Vec::from_raw_parts(fptr.Fptr.tableptr, l, c) };
-            } else {
-                let _ = unsafe {
-                    Vec::from_raw_parts(
-                        fptr.Fptr.tableptr,
-                        fptr.Fptr.tfield as usize,
-                        fptr.Fptr.tfield as usize,
-                    )
-                };
-            }
+            unsafe { free_registered(fptr.Fptr.tableptr) };
 
             fptr.Fptr.tableptr = ptr::null_mut();
 
@@ -9988,16 +9922,17 @@ pub fn ffcdfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
 /// not be dropped here, otherwise `fptr.Fptr.headstart` would be left dangling
 /// and freed a second time by `FITSfile::drop`.
 ///
-/// The array is always kept fully initialized with `MAXHDU + 1` elements
-/// (length == capacity), which is the invariant `get_headstart_as_slice` and
-/// the `ALLOCATIONS` bookkeeping rely on.
+/// The array is always kept fully initialized with `MAXHDU + 1` elements, which
+/// is the invariant `get_headstart_as_slice` relies on; the recorded length in
+/// [`crate::helpers::raw_owned`] is what `FITSfile::drop` releases it against.
 fn grow_headstart(fptr: &mut fitsfile) -> Result<(), c_int> {
     let old_ptr = fptr.Fptr.headstart;
     let l = fptr.Fptr.MAXHDU as usize + 1;
 
-    // SAFETY: headstart was registered in ALLOCATIONS as a Vec<LONGLONG> of
-    // exactly `l` elements, with length == capacity, and is not aliased here.
-    let mut vo = unsafe { Vec::from_raw_parts(old_ptr, l, l) };
+    // SAFETY: headstart was registered as a Vec<LONGLONG> of exactly `l`
+    // elements, with length == capacity, and is not aliased here.
+    let mut vo =
+        unsafe { take_registered(old_ptr) }.expect("headstart was registered by FITSfile::new");
 
     let res = vo.try_reserve_exact(1000);
     if res.is_ok() {
@@ -10009,12 +9944,7 @@ fn grow_headstart(fptr: &mut fitsfile) -> Result<(), c_int> {
     // Hand the allocation back to `fptr` before reporting anything: on the
     // error path the pointer is unchanged, on the success path it may have
     // moved.  Either way `fptr` must own it again.
-    let (p, len, cap) = vec_into_raw_parts(vo);
-    let mut allocations = ALLOCATIONS.lock().unwrap();
-    allocations.remove(&(old_ptr as usize));
-    allocations.insert(p as usize, (len, cap));
-    drop(allocations);
-    fptr.Fptr.headstart = p;
+    fptr.Fptr.headstart = reregister(old_ptr, vo);
 
     if res.is_err() {
         return Err(MEMORY_ALLOCATION);

@@ -72,7 +72,6 @@ use crate::wrappers::{strcat_safe, strcpy_safe, strlen_safe, strncpy_safe};
 use crate::{BL, NullCheckType, cs, fitsio::*, int_snprintf, raw_to_slice};
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::ffi::CStr;
-use libc::{free, malloc};
 
 // Constants needed for the function
 const UCHAR_MAX: LONGLONG = 255;
@@ -90,21 +89,6 @@ pub(crate) struct ffffrw_workdata {
 static DEBUG_PIXFILTER: c_int = 0;
 
 // Free macro for raw pointers
-macro_rules! FREE {
-    ($x:expr) => {
-        if !$x.is_null() {
-            // Every current expansion sits inside an unsafe fn or block, but
-            // keep the block so the macro stays usable from safe code.
-            #[allow(unused_unsafe)]
-            unsafe {
-                libc::free($x.cast::<libc::c_void>());
-            }
-            $x = core::ptr::null_mut();
-        } else {
-            println!("invalid free at {}:{}", file!(), line!());
-        }
-    };
-}
 
 /// Evaluate a boolean expression using the indicated rows, returning an
 /// array of flags indicating which rows evaluated to TRUE/FALSE
@@ -2439,13 +2423,9 @@ pub(crate) fn ffcprs(lParse: &mut ParseData) {
                     Bits column has no undef array -- see "No need for UNDEF
                     array" in Setup_DataArrays -- so the skip fired every time
                     and the free below it was unreachable. */
-                    let mut data_ptr = lParse.varData[col as usize].data.cast::<*mut c_char>();
-                    if !data_ptr.is_null() {
-                        let mut first_ptr = *data_ptr;
-                        FREE!(first_ptr);
-                        FREE!(data_ptr);
-                        lParse.varData[col as usize].data = ptr::null_mut();
-                    }
+                    lParse.varData[col as usize].bit_rows = Vec::new();
+                    lParse.varData[col as usize].bit_block = Vec::new();
+                    lParse.varData[col as usize].data = ptr::null_mut();
                 }
 
                 lParse.varData[col as usize].undef = None;
@@ -3085,9 +3065,9 @@ pub(crate) fn fits_parser_workfn_safe(
                         }
                     }
                     if result.is_computed() {
-                        /* the row pointers all index one block, allocated at [0] */
-                        let mut block = *(result.value.data.str_buf());
-                        FREE!(block);
+                        /* free_buffer releases the character block at [0] as
+                        well as the row-pointer array, so the block no longer
+                        has to be freed by hand here */
                         result.value.data.free_buffer();
                     }
                 }
@@ -3130,9 +3110,9 @@ pub(crate) fn fits_parser_workfn_safe(
                         lParse.status = PARSE_BAD_TYPE;
                     }
                     if result.is_computed() {
-                        /* the row pointers all index one block, allocated at [0] */
-                        let mut block = *(result.value.data.str_buf());
-                        FREE!(block);
+                        /* free_buffer releases the character block at [0] as
+                        well as the row-pointer array, so the block no longer
+                        has to be freed by hand here */
                         result.value.data.free_buffer();
                     }
                 }
@@ -3270,7 +3250,6 @@ fn Setup_DataArrays(
         let mut row: c_long = 0;
         let mut idx: c_long = 0;
 
-        let mut bitStrs: *mut *mut c_char = core::ptr::null_mut();
         let mut sptr: *mut *mut c_char = core::ptr::null_mut();
         let mut barray: *mut c_char = core::ptr::null_mut();
         let mut iarray: *mut c_long = core::ptr::null_mut();
@@ -3304,33 +3283,28 @@ fn Setup_DataArrays(
                 ValueSort::Bits => {
                     /* No need for UNDEF array, but must make string DATA array */
                     len = (nelem + 1) * nRows; /* Count '\0' */
-                    bitStrs = varData.data.cast::<*mut c_char>();
+                    /* The C free()d and malloc()ed the row-pointer array and
+                    the character block on every resize.  DataInfo owns both as
+                    Vecs now, so they are resized in place and released with
+                    ParseData; `data` is still the raw pointer the nodes read,
+                    taken from the row-pointer Vec. */
                     if do_realloc != 0 {
-                        if !bitStrs.is_null() {
-                            FREE!(*bitStrs);
-                        }
-                        free(bitStrs.cast::<c_void>());
-                        bitStrs =
-                            malloc(nRows as usize * size_of::<*mut c_char>()).cast::<*mut c_char>();
-                        if bitStrs.is_null() {
+                        varData.bit_rows.clear();
+                        varData.bit_block.clear();
+                        if varData.bit_rows.try_reserve_exact(nRows as usize).is_err()
+                            || varData.bit_block.try_reserve_exact(len as usize).is_err()
+                        {
                             varData.undef = None;
                             varData.data = ptr::null_mut();
                             lParse.status = MEMORY_ALLOCATION;
                             break;
                         }
-                        *bitStrs = malloc(len as usize * size_of::<c_char>()).cast::<c_char>();
-                        if (*bitStrs).is_null() {
-                            free(bitStrs.cast::<c_void>());
-                            varData.undef = None;
-                            varData.data = ptr::null_mut();
-                            lParse.status = MEMORY_ALLOCATION;
-                            break;
-                        }
+                        varData.bit_rows.resize(nRows as usize, ptr::null_mut());
+                        varData.bit_block.resize(len as usize, 0);
                     }
 
                     for row in 0..nRows as usize {
-                        *bitStrs.add(row) =
-                            (*bitStrs.add(0)).add((row as c_long * (nelem + 1)) as usize);
+                        let base = row * (nelem + 1) as usize;
                         idx = (row as c_long) * ((nelem + 7) / 8) + 1;
 
                         for len in 0..nelem as usize {
@@ -3338,20 +3312,28 @@ fn Setup_DataArrays(
                                 & (1 << (7 - (len % 8))))
                                 != 0
                             {
-                                *(*bitStrs.add(row)).add(len) = b'1' as c_char;
+                                varData.bit_block[base + len] = b'1' as c_char;
                             } else {
-                                *(*bitStrs.add(row)).add(len) = b'0' as c_char;
+                                varData.bit_block[base + len] = b'0' as c_char;
                             }
                             if len % 8 == 7 {
                                 idx += 1;
                             }
                         }
-                        *(*bitStrs.add(row)).add(nelem as usize) = 0;
+                        varData.bit_block[base + nelem as usize] = 0;
+                    }
+
+                    /* The C built each row pointer inside the fill loop; they
+                    are taken here instead, after the block is written, so no
+                    `&mut` to the Vec is live while the pointers into it are. */
+                    let block = varData.bit_block.as_mut_ptr();
+                    for row in 0..nRows as usize {
+                        varData.bit_rows[row] = block.add(row * (nelem + 1) as usize);
                     }
 
                     // WARNING: THIS SHOULD NOT BE COMMENTED OUT, BUT IT CAUSES A
                     // varData.undef = bitStrs.cast::<c_char>();
-                    varData.data = bitStrs.cast::<c_void>();
+                    varData.data = varData.bit_rows.as_mut_ptr().cast::<c_void>();
                 }
 
                 ValueSort::String => {
@@ -3485,13 +3467,11 @@ fn Setup_DataArrays(
                     j -= 1;
                     let varData = &mut lParse.varData[j];
                     if varData.dtype == ValueSort::Bits {
-                        /* The array as well as the block; see ffcprs. */
-                        let mut data_ptr = varData.data.cast::<*mut c_char>();
-                        if !data_ptr.is_null() {
-                            FREE!(*data_ptr);
-                            FREE!(data_ptr);
-                            varData.data = ptr::null_mut();
-                        }
+                        /* Both blocks are Vecs on DataInfo; releasing them is
+                        dropping them.  See ffcprs. */
+                        varData.bit_rows = Vec::new();
+                        varData.bit_block = Vec::new();
+                        varData.data = ptr::null_mut();
                     }
                     varData.undef = None;
                 }

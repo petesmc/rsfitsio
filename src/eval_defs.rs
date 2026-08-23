@@ -8,7 +8,9 @@
 //! See [`crate::eval_f`] for how the three files fit together.
 #![warn(missing_docs)]
 
+use alloc::alloc::{alloc_zeroed, dealloc};
 use alloc::rc::Rc;
+use core::alloc::Layout;
 use core::ffi::c_void;
 
 use crate::c_types::{c_char, c_int, c_long};
@@ -89,6 +91,15 @@ pub(crate) struct DataInfo {
     pub naxes: [c_long; MAXDIMS as usize],
     pub undef: Option<Vec<c_char>>,
     pub data: *mut c_void,
+    /// `Bits` columns only: the row-pointer array `data` points at, and the
+    /// single character block those pointers index into.
+    ///
+    /// `Setup_DataArrays` malloc'd both and `ffcprs` freed them. They are owned
+    /// here instead, so they go when the `ParseData` does; `data` is still the
+    /// raw `*mut c_void` the nodes read, taken from `bit_rows`.
+    pub bit_rows: Vec<*mut c_char>,
+    /// The character block `bit_rows` indexes into. See [`DataInfo::bit_rows`].
+    pub bit_block: Vec<c_char>,
 }
 
 impl Default for DataInfo {
@@ -101,6 +112,8 @@ impl Default for DataInfo {
             naxes: [0; MAXDIMS as usize],
             undef: None,
             data: core::ptr::null_mut(),
+            bit_rows: Vec::new(),
+            bit_block: Vec::new(),
         }
     }
 }
@@ -113,6 +126,55 @@ pub(crate) enum BufferKind {
     Logical,
     /// An array of row pointers into one contiguous character block.
     Text,
+}
+
+impl BufferKind {
+    /// The alignment a buffer of this kind must have.
+    ///
+    /// `Allocate_Ptrs` sizes its blocks in bytes -- the numeric one packs the
+    /// data and the trailing `undef` flags into a single allocation -- so the
+    /// alignment cannot come from a `Layout::array::<T>` and has to be stated.
+    const fn align(self) -> usize {
+        match self {
+            BufferKind::Long => align_of::<c_long>(),
+            BufferKind::Double => align_of::<f64>(),
+            BufferKind::Logical => align_of::<c_char>(),
+            BufferKind::Text => align_of::<*mut c_char>(),
+        }
+    }
+}
+
+/// Allocate `bytes` zeroed bytes aligned for `kind`, returning the block and
+/// the [`Layout`] it must be released with.
+///
+/// This is the C's `malloc`/`calloc` for the expression engine's row buffers.
+/// It is `alloc_zeroed` rather than `libc::calloc` so the blocks come from
+/// whatever global allocator the program installed, and the layout travels with
+/// the pointer because Rust's `dealloc` needs it back -- C's `free` did not.
+///
+/// A zero-length request is rounded up to one byte, matching the C, where
+/// `malloc(0)` returns a non-null pointer that the callers treat as success.
+/// Returns `None` on allocation failure, which is the null the C checked for.
+pub(crate) fn alloc_row_bytes(kind: BufferKind, bytes: usize) -> Option<(*mut c_void, Layout)> {
+    let layout = Layout::from_size_align(bytes.max(1), kind.align()).ok()?;
+    // SAFETY: the layout has a non-zero size.
+    let p = unsafe { alloc_zeroed(layout) };
+    if p.is_null() {
+        None
+    } else {
+        Some((p.cast::<c_void>(), layout))
+    }
+}
+
+/// Release a block from [`alloc_row_bytes`].
+///
+/// # Safety
+/// `ptr` must have come from [`alloc_row_bytes`] with this exact `layout`, and
+/// must not be used again.
+pub(crate) unsafe fn free_row_bytes(ptr: *mut c_void, layout: Layout) {
+    if !ptr.is_null() {
+        unsafe { dealloc(ptr.cast::<u8>(), layout) };
+    }
 }
 
 /// The value carried by a [`Node`].
@@ -136,7 +198,13 @@ pub(crate) enum BufferKind {
 ///   *column* node at `varData[column].data` before each evaluation, and for a
 ///   String column that is the iterator's own array, laid out by `ffiter`. An
 ///   owning arm would need a borrowed one beside it, and the ownership question
-///   moves to `ffiter`. See `notes/EVAL_STRING_STORAGE.md`.
+///   moves to `ffiter`.
+///
+/// What the allocation *is* no longer depends on the C runtime: the block comes
+/// from [`alloc_row_bytes`], i.e. the global Rust allocator, and the variant
+/// carries the [`Layout`] to release it with. `Owned::None` is how a column
+/// node's borrowed view into `varData` is distinguished from a buffer the node
+/// must free, which the callers used to have to know out of band.
 ///
 /// The `Text` arm makes this 264 bytes where the others need 16. That is the
 /// union's own footprint, so it is not a regression.
@@ -157,6 +225,9 @@ pub(crate) enum NodeValue {
     Buffer {
         kind: BufferKind,
         ptr: *mut c_void,
+        /// How `ptr` (and, for `Text`, the character block behind it) is
+        /// released.
+        own: Owned,
     },
     /// A region, by index into [`ParseData::regions`].
     ///
@@ -175,7 +246,9 @@ impl core::fmt::Debug for NodeValue {
             NodeValue::Double(v) => write!(f, "Double({v})"),
             NodeValue::Logical(v) => write!(f, "Logical({v})"),
             NodeValue::Text(_) => write!(f, "Text(..)"),
-            NodeValue::Buffer { kind, ptr } => write!(f, "Buffer({kind:?}, {ptr:?})"),
+            NodeValue::Buffer { kind, ptr, own } => {
+                write!(f, "Buffer({kind:?}, {ptr:?}, {own:?})")
+            }
             NodeValue::Region(i) => write!(f, "Region({i})"),
         }
     }
@@ -238,7 +311,7 @@ impl NodeValue {
 
     fn buffer(&self, want: BufferKind) -> *mut c_void {
         match self {
-            NodeValue::Buffer { kind, ptr } if *kind == want => *ptr,
+            NodeValue::Buffer { kind, ptr, .. } if *kind == want => *ptr,
             /* an unallocated node reads as a null buffer, as the union did */
             NodeValue::Empty => core::ptr::null_mut(),
             other => wrong_arm(&format!("Buffer({want:?})"), other),
@@ -275,8 +348,50 @@ impl NodeValue {
         }
     }
 
-    pub(crate) fn set_buffer(&mut self, kind: BufferKind, ptr: *mut c_void) {
-        *self = NodeValue::Buffer { kind, ptr };
+    /// Point the node at a buffer somebody else owns.
+    ///
+    /// `Evaluate_Parser` uses this for column nodes, whose data lives in
+    /// `varData` (and, for a String column, in the iterator's own array).
+    /// Nothing is freed through such a node.
+    pub(crate) fn set_borrowed_buffer(&mut self, kind: BufferKind, ptr: *mut c_void) {
+        *self = NodeValue::Buffer {
+            kind,
+            ptr,
+            own: Owned::None,
+        };
+    }
+
+    /// Give the node a buffer from [`alloc_row_bytes`] to own.
+    pub(crate) fn set_owned_buffer(&mut self, kind: BufferKind, ptr: *mut c_void, layout: Layout) {
+        *self = NodeValue::Buffer {
+            kind,
+            ptr,
+            own: Owned::Block(layout),
+        };
+    }
+
+    /// Record the single character block a `Text` buffer's row pointers index
+    /// into, which `Allocate_Ptrs` stores at `ptr[0]`.
+    ///
+    /// # Panics
+    /// If the node does not hold an owned buffer.
+    pub(crate) fn set_text_block(&mut self, block: *mut c_char, block_layout: Layout) {
+        match self {
+            NodeValue::Buffer {
+                own: own @ Owned::Block(_),
+                ..
+            } => {
+                let Owned::Block(rows) = *own else {
+                    unreachable!()
+                };
+                *own = Owned::BlockAndText {
+                    rows,
+                    block,
+                    block_layout,
+                };
+            }
+            other => wrong_arm("an owned Buffer", other),
+        }
     }
 
     /// A pointer to the scalar payload, for the conversion helpers that take a
@@ -296,19 +411,52 @@ impl NodeValue {
         }
     }
 
-    /// Release a row buffer and mark the node empty.
+    /// Release whatever this node owns and mark it empty.
+    ///
+    /// A borrowed buffer (`Owned::None`) is left alone; that is what makes it
+    /// safe to call on a column node, which points into `varData`. For a
+    /// `Text` buffer both allocations go -- the character block first, then the
+    /// row-pointer array -- so callers no longer have to free the block by hand
+    /// before calling this.
     ///
     /// # Safety
-    /// The buffer must have come from `malloc`/`calloc` and must not be
-    /// referenced elsewhere.
+    /// Nothing else may still refer to the buffer.
     pub(crate) unsafe fn free_buffer(&mut self) {
-        if let NodeValue::Buffer { ptr, .. } = *self
-            && !ptr.is_null()
-        {
-            unsafe { libc::free(ptr) };
+        if let NodeValue::Buffer { ptr, own, .. } = *self {
+            match own {
+                Owned::None => {}
+                Owned::Block(layout) => unsafe { free_row_bytes(ptr, layout) },
+                Owned::BlockAndText {
+                    rows,
+                    block,
+                    block_layout,
+                } => unsafe {
+                    /* the row pointers all index one block, allocated at [0] */
+                    free_row_bytes(block.cast::<c_void>(), block_layout);
+                    free_row_bytes(ptr, rows);
+                },
+            }
         }
         *self = NodeValue::Empty;
     }
+}
+
+/// How a [`NodeValue::Buffer`]'s storage is released.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Owned {
+    /// The node only borrows the block; something else frees it. This is a
+    /// column node pointing into `varData`.
+    #[default]
+    None,
+    /// The node owns one block, allocated with this layout.
+    Block(Layout),
+    /// A `Text` buffer: a row-pointer array with the `rows` layout, plus the
+    /// single character block at `ptr[0]` that every row pointer indexes into.
+    BlockAndText {
+        rows: Layout,
+        block: *mut c_char,
+        block_layout: Layout,
+    },
 }
 
 #[cold]

@@ -15,7 +15,7 @@ use core::ptr;
 use core::slice;
 
 use crate::c_types::*;
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::{free_registered, into_raw_registered};
 
 use bytemuck::cast_slice;
 
@@ -23,8 +23,8 @@ use crate::cfileio::ffdelt_safe;
 use crate::cfileio::ffinit_safe;
 
 use crate::fitscore::{
-    ALLOCATIONS, ffgcno_safe, ffghdn_safe, ffghdt_safe, ffgncl_safe, ffkeyn_safe, ffmahd_safe,
-    ffmkky_safe, ffmnhd_safe, ffpmsg_str, fits_copy_pixlist2image_safe,
+    ffgcno_safe, ffghdn_safe, ffghdt_safe, ffgncl_safe, ffkeyn_safe, ffmahd_safe, ffmkky_safe,
+    ffmnhd_safe, ffpmsg_str, fits_copy_pixlist2image_safe,
 };
 use crate::fitsio::*;
 use crate::getcold::ffgcvd_safe;
@@ -250,8 +250,7 @@ pub fn fits_read_wcstab_safer(
         }
 
         // HEAP ALLOCATION
-        let (ptr, l, c) = vec_into_raw_parts(tmp);
-        ALLOCATIONS.lock().unwrap().insert(ptr as usize, (l, c));
+        let ptr = into_raw_registered(tmp);
 
         // SAFETY: `arrayp` is a valid output pointer supplied by the caller.
         unsafe {
@@ -267,17 +266,15 @@ pub fn fits_read_wcstab_safer(
     if *status != 0 {
         wtbp = wtb;
         for iwtb in 0..(nwtb as usize) {
-            // SAFETY: `arrayp` was either nulled or set to a `vec_into_raw_parts`
-            // allocation above; reconstructing the Vec frees it.
+            // SAFETY: `arrayp` was either nulled or handed out by
+            // into_raw_registered above, and nothing else refers to it.
+            //
+            // This used to rebuild the Vec with `ndim` elements. `ndim` is the
+            // number of axes, not the element count -- the allocation above is
+            // `nelem` f64s -- so the block was released on a layout it was
+            // never allocated with. The registry carries the real length.
             unsafe {
-                if !(*wtbp[iwtb].arrayp).is_null() {
-                    // WARNING: Assuming that the ndim hasn't been changed
-                    let _ = Vec::from_raw_parts(
-                        *wtbp[iwtb].arrayp,
-                        wtbp[iwtb].ndim as usize,
-                        wtbp[iwtb].ndim as usize,
-                    );
-                }
+                free_registered(*wtbp[iwtb].arrayp);
             }
         }
     }
@@ -1640,13 +1637,7 @@ pub fn ffgtwcs_safe(
     strcat_safe(&mut hdr[cptr..], cs!(c"END"));
     strncat_safe(&mut hdr[cptr..], blanks, 77);
 
-    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
-    ALLOCATIONS
-        .lock()
-        .unwrap()
-        .insert(header_ptr as usize, (l, c));
-
-    *header = header_ptr;
+    *header = into_raw_registered(hdr);
 
     *status
 }

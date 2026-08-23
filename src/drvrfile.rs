@@ -798,7 +798,11 @@ pub(crate) fn file_is_compressed(filename: &mut [c_char; FLEN_FILENAME]) -> c_in
     }
 
     /* read the first 2 bytes of the file */
-    if diskfile.unwrap().read(&mut buffer).unwrap() != 2 {
+    /* read_fill, not a bare read(): a single read() is allowed to come back
+    short, and treating that as end-of-file reported every compressed file as
+    uncompressed.  Miri, which does return short reads where Linux does not,
+    is what surfaced it. */
+    if read_fill(&mut diskfile.unwrap(), &mut buffer).unwrap() != 2 {
         /* read 2 bytes */
         return 0;
     }
@@ -808,13 +812,18 @@ pub(crate) fn file_is_compressed(filename: &mut [c_char; FLEN_FILENAME]) -> c_in
     1 = this is a compressed file
     0 = not a compressed file
     */
+    /* The C spells these as octal escapes -- "\037\213" and friends -- so the
+    decimal values below are 0o37 = 31, 0o213 = 139, and so on.  Reading the
+    escapes as decimal digits is what made every one of these but PKZIP and
+    BZip2 unmatchable, which in turn made the whole compress:// driver
+    unreachable. */
     match buffer[..2] {
-        [37, 13] => 1,     /* GZIP  */
-        [b'P', b'K'] => 1, /* PKZIP */
-        [37, 36] => 1,     /* PACK  */
-        [37, 35] => 1,     /* LZW   */
-        [b'B', b'Z'] => 1, /* BZip2 */
-        [37, 40] => 1,     /* LZH   */
+        [0o037, 0o213] => 1, /* GZIP  */
+        [b'P', b'K'] => 1,   /* PKZIP, i.e. "\120\113" */
+        [0o037, 0o036] => 1, /* PACK  */
+        [0o037, 0o235] => 1, /* LZW   */
+        [b'B', b'Z'] => 1,   /* BZip2 */
+        [0o037, 0o240] => 1, /* LZH   */
         _ => 0,
     }
 }

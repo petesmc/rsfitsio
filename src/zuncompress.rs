@@ -542,7 +542,9 @@ mod tests {
 
     use crate::c_types::{c_char, c_int};
     use bytemuck::cast_slice;
-    use libc::{fdopen, realloc};
+    use libc::fdopen;
+
+    use crate::zcompress::mem_realloc_unsupported;
 
     use crate::zuncompress::zuncompress2mem;
 
@@ -593,7 +595,9 @@ mod tests {
             compressed_file_ptr,
             &mut decompressed_buffer.as_mut_ptr(),
             &mut buffer_size,
-            Some(realloc),
+            /* the buffer above is a Vec sized so this is never reached;
+            see mem_realloc_unsupported */
+            Some(mem_realloc_unsupported),
             &mut decompressed_size,
             &mut status,
         );

@@ -29,6 +29,7 @@ use alloc::collections::VecDeque;
 
 use crate::aliases::rust_api::*;
 use crate::c_types::{c_char, c_int, c_long, c_uchar};
+use crate::helpers::raw_owned::free_registered;
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use core::ffi::CStr;
@@ -1581,9 +1582,9 @@ pub fn ffgtop_safe(
 
             int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", grpid);
             /* SPR 1738 */
-            // SAFETY: ffgkls_safe sets tkeyvalue to a heap-allocated C string tracked in
-            // the ALLOCATIONS table (it is not yet ported to an owned String); copy it out
-            // and release it through the same mechanism.
+            // SAFETY: ffgkls_safe sets tkeyvalue to a heap-allocated C string
+            // tracked by helpers::raw_owned (it is not yet ported to an owned
+            // String); copy it out and release it the same way.
             let mut tkeyvalue: *mut c_char = core::ptr::null_mut();
             *status =
                 fits_read_key_longstr(mfptr, &keyword, &mut tkeyvalue, Some(&mut comment), status);
@@ -1593,10 +1594,7 @@ pub fn ffgtop_safe(
                         cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
                     let n = bytes.len().min(FLEN_FILENAME);
                     keyvalue[..n].copy_from_slice(&bytes[..n]);
-                    if let Some((l, c)) = ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
-                    {
-                        let _ = Vec::from_raw_parts(tkeyvalue, l, c);
-                    }
+                    free_registered(tkeyvalue);
                 }
             }
 
@@ -2492,7 +2490,7 @@ pub fn ffgtam_safe(
                         int_snprintf!(&mut keyword, FLEN_KEYWORD, "GRPLC{}", ngroups as c_int);
                         /* SPR 1738 */
                         /* fits_read_key_longstr (ffgkls_safe) outputs a raw heap C
-                        string tracked in ALLOCATIONS. The C reads from `mfptr`
+                        string tracked by helpers::raw_owned. The C reads from `mfptr`
                         here; when supplied by pointer that is the same as
                         tmpfptr, and the hdupos path does not reach this
                         negative-GRPID branch (it implies a different file). */
@@ -2506,7 +2504,7 @@ pub fn ffgtam_safe(
                         );
                         if 0 == *status {
                             // SAFETY: tgrplc is the heap C string from ffgkls_safe,
-                            // tracked in ALLOCATIONS; copy it out then release it.
+                            // tracked by helpers::raw_owned; copy it out then release it.
                             unsafe {
                                 let cs = CStr::from_ptr(tgrplc);
                                 let too_long = cs.to_bytes().len() > FLEN_FILENAME - 1;
@@ -2514,11 +2512,7 @@ pub fn ffgtam_safe(
                                     let val = cast_slice::<u8, c_char>(cs.to_bytes_with_nul());
                                     strcpy_safe(&mut grplc, val);
                                 }
-                                if let Some((l, c)) =
-                                    ALLOCATIONS.lock().unwrap().remove(&(tgrplc as usize))
-                                {
-                                    let _ = Vec::from_raw_parts(tgrplc, l, c);
-                                }
+                                free_registered(tgrplc);
                                 if too_long {
                                     ffpmsg_str("GRPLCn string is too long (ffgtam)");
                                     *status = URL_PARSE_ERROR;
@@ -2929,17 +2923,13 @@ pub fn ffgmng_safe(mfptr: &mut fitsfile, ngroups: &mut c_long, status: &mut c_in
                 if 0 == *status {
                     fits_delete_key(mfptr, &keyword, status);
                     // SAFETY: tkeyvalue is the heap C string allocated by ffgkls_safe and
-                    // tracked in ALLOCATIONS; use it then release it via that table.
+                    // tracked by helpers::raw_owned; use it then release it that way.
                     unsafe {
                         let val =
                             cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
                         fits_insert_key_longstr(mfptr, &newKeyword, val, Some(&comment), status);
                         fits_write_key_longwarn(mfptr, status);
-                        if let Some((l, c)) =
-                            ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
-                        {
-                            let _ = Vec::from_raw_parts(tkeyvalue, l, c);
-                        }
+                        free_registered(tkeyvalue);
                     }
                 }
 
@@ -4446,18 +4436,14 @@ pub fn ffgmrm_safe(
                         );
                         if 0 == *status {
                             // SAFETY: tgrplc is the heap C string from ffgkls_safe,
-                            // tracked in ALLOCATIONS; copy it out then release it.
+                            // tracked by helpers::raw_owned; copy it out then release it.
                             let too_long = unsafe {
                                 let cs = CStr::from_ptr(tgrplc);
                                 let too_long = cs.to_bytes().len() > FLEN_FILENAME - 1;
                                 if !too_long {
                                     strcpy_safe(&mut grplc, cast_slice(cs.to_bytes_with_nul()));
                                 }
-                                if let Some((l, c)) =
-                                    ALLOCATIONS.lock().unwrap().remove(&(tgrplc as usize))
-                                {
-                                    let _ = Vec::from_raw_parts(tgrplc, l, c);
-                                }
+                                free_registered(tgrplc);
                                 too_long
                             };
 
@@ -6275,17 +6261,13 @@ pub(crate) fn ffgtcpr(
                 );
                 if 0 == *status {
                     // SAFETY: tkeyvalue is the heap C string from ffgkls_safe,
-                    // tracked in ALLOCATIONS; copy it out, use it, then release it.
+                    // tracked by helpers::raw_owned; copy it out, use it, then release it.
                     unsafe {
                         let val =
                             cast_slice::<u8, c_char>(CStr::from_ptr(tkeyvalue).to_bytes_with_nul());
                         fits_insert_key_longstr(outfptr, &card, val, Some(&comment), status);
                         fits_write_key_longwarn(outfptr, status);
-                        if let Some((l, c)) =
-                            ALLOCATIONS.lock().unwrap().remove(&(tkeyvalue as usize))
-                        {
-                            let _ = Vec::from_raw_parts(tkeyvalue, l, c);
-                        }
+                        free_registered(tkeyvalue);
                     }
                 }
             }

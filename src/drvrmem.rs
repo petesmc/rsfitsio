@@ -25,16 +25,18 @@ use std::sync::Mutex;
 
 use crate::c_types::{FILE, c_char, c_int, c_long, c_uchar, c_uint, c_ushort, c_void};
 use crate::helpers::cfile::CFile;
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::{
+    free_registered, into_raw_registered, reregister, take_registered,
+};
 use crate::zuncompress::zuncompress2mem;
-use libc::{EOF, fclose, fgetc, fopen, fread, memcmp, memcpy, memset, realloc, ungetc};
+use libc::{EOF, fclose, fgetc, fopen, fread, memcmp, memcpy, memset, ungetc};
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::cfileio::ffclos_safe;
 use crate::cfileio::{MAX_PREFIX_LEN, ffimem_safer};
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
-use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
 use crate::fitsio2::*;
 use crate::iraffits::iraf2mem;
@@ -149,28 +151,66 @@ fn release_owned_cell(d: &mut memdriver) {
 /// calling realloc.
 unsafe fn owned_realloc(ptr: *mut c_char, newsize: usize) -> *mut c_char {
     unsafe {
-        let mut allocations = ALLOCATIONS.lock().unwrap();
-
-        let Some((len, capacity)) = allocations.remove(&(ptr as usize)) else {
+        let Some(mut v) = take_registered(ptr) else {
             /* Not one of ours; refuse rather than free it with the wrong
             allocator. */
             return ptr::null_mut();
         };
 
-        let mut v = Vec::from_raw_parts(ptr, len, capacity);
-
         if newsize > v.len() && v.try_reserve_exact(newsize - v.len()).is_err() {
             /* Put it back so the close path can still release it. */
-            let (p, l, c) = vec_into_raw_parts(v);
-            allocations.insert(p as usize, (l, c));
+            reregister(ptr, v);
             return ptr::null_mut();
         }
         v.resize(newsize, 0);
         v.shrink_to(newsize);
 
-        let (p, l, c) = vec_into_raw_parts(v);
-        allocations.insert(p as usize, (l, c));
-        p
+        reregister(ptr, v)
+    }
+}
+
+/// [`owned_realloc`] in the shape of CFITSIO's `mem_realloc` callback.
+///
+/// The decompression entry points take a C-style grow function and apply it to
+/// the memory file's buffer.  The C passed `realloc` there; that buffer comes
+/// from `mem_createmem`, i.e. a `Vec`, so the callback has to go through the
+/// Rust allocator instead.  Returns null for any pointer this driver did not
+/// allocate, which is what `owned_realloc` does.
+unsafe extern "C" fn owned_realloc_c(p: *mut c_void, newsize: usize) -> *mut c_void {
+    unsafe { owned_realloc(p.cast::<c_char>(), newsize).cast::<c_void>() }
+}
+
+/// Resize a memory-file buffer down to `fitsfilesize`, through whichever
+/// allocator owns it.
+///
+/// Both compressed-open paths trim an over-allocated decompression buffer.  The
+/// C did that with a bare `realloc()`, which is wrong for a buffer that
+/// `mem_createmem` allocated as a `Vec` -- the same distinction
+/// [`owned_realloc`] documents.  Returns the new address, or null on failure
+/// (leaving the old buffer intact and still recorded).
+///
+/// # Safety
+/// `d` must be a live table slot whose `memaddrptr`/`memsizeptr` are set.
+unsafe fn shrink_mem_buffer(d: &mut memdriver) -> *mut c_char {
+    unsafe {
+        let newsize = d.fitsfilesize as usize;
+
+        let ptr = if d.owned_cell.is_null() {
+            /* caller's buffer, so the caller's realloc -- and nothing to do if
+            the caller did not supply one */
+            match d.mem_realloc {
+                Some(f) => f((*(d.memaddrptr)).cast::<c_void>(), newsize).cast::<c_char>(),
+                None => ptr::null_mut(),
+            }
+        } else {
+            owned_realloc(*(d.memaddrptr), newsize)
+        };
+
+        if !ptr.is_null() {
+            *(d.memaddrptr) = ptr;
+            *(d.memsizeptr) = newsize;
+        }
+        ptr
     }
 }
 
@@ -363,9 +403,7 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
             return FILE_NOT_OPENED;
         } else {
             v.resize(msize, 0);
-            let (p, l, c) = vec_into_raw_parts(v);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-            unsafe { *m[ii].memaddrptr = p };
+            unsafe { *m[ii].memaddrptr = into_raw_registered(v) };
         }
     }
 
@@ -374,7 +412,11 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
     m[ii].deltasize = BL!();
     m[ii].fitsfilesize = 0;
     m[ii].currentpos = 0;
-    m[ii].mem_realloc = Some(realloc);
+    /* The C set this to realloc().  This buffer is a Vec, so it is resized
+    through owned_realloc instead -- selected by owned_cell, which is always
+    set here.  Leaving the C realloc() in the slot would be a live
+    cross-allocator hazard for no gain, so the slot advertises no realloc. */
+    m[ii].mem_realloc = None;
     0
 }
 
@@ -582,13 +624,33 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
 
         loop {
             /* allocate memory for another FITS block */
-            memptr = realloc(memptr.cast::<c_void>(), memsize + delta).cast::<c_char>();
+            /* The C called realloc() directly.  mem_createmem allocates this
+            buffer with a Vec, so it has to be resized through the Rust
+            allocator; see owned_realloc.  Only a caller-supplied buffer goes
+            through the caller's realloc. */
+            let newptr = if m[hd as usize].owned_cell.is_null() {
+                match m[hd as usize].mem_realloc {
+                    Some(f) => f(memptr.cast::<c_void>(), memsize + delta).cast::<c_char>(),
+                    None => ptr::null_mut(),
+                }
+            } else {
+                owned_realloc(memptr, memsize + delta)
+            };
 
-            if memptr.is_null() {
+            if newptr.is_null() {
                 ffpmsg_str("realloc failed while copying stdin (stdin2mem)");
                 return MEMORY_ALLOCATION;
             }
+            memptr = newptr;
             memsize += delta;
+
+            /* Publish the new address immediately.  The C left the caller's
+            *memaddrptr holding the pre-realloc pointer until the function
+            returned, so the MEMORY_ALLOCATION path above -- and the
+            Vec::from_raw_parts cleanup in mem_stdin_open that follows it --
+            would have worked from a stale address. */
+            *m[hd as usize].memaddrptr = memptr;
+            *m[hd as usize].memsizeptr = memsize;
 
             /* read another FITS block */
             nread = fread(memptr.add(filesize).cast::<c_void>(), 1, delta, STDIN!());
@@ -758,7 +820,11 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             return READ_ERROR;
         }
 
-        if buffer[..2] == [37, 213] {
+        /* The C writes these magic numbers as octal escapes ("\037\213" and
+        friends), so they are spelled in octal here too; reading the escapes as
+        decimal is what made this function reject every compressed file it was
+        handed.  See file_is_compressed for the same fix. */
+        if buffer[..2] == [0o037, 0o213] {
             /* GZIP */
 
             /* the uncompressed file size is give at the end */
@@ -812,7 +878,7 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             }
 
             estimated = 0; /* file size is known, not estimated */
-        } else if buffer[..2] == [120, 113] {
+        } else if buffer[..2] == [0o120, 0o113] {
             /* PKZIP */
 
             /* the uncompressed file size is give at byte 22 the file */
@@ -830,13 +896,13 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
             finalsize = modulosize as usize;
 
             estimated = 0; /* file size is known, not estimated */
-        } else if buffer[..2] == [37, 36] {
+        } else if buffer[..2] == [0o037, 0o036] {
             /* PACK */
             finalsize = 0; /* for most methods we can't determine final size */
-        } else if buffer[..2] == [37, 235] {
+        } else if buffer[..2] == [0o037, 0o235] {
             /* LZW */
             finalsize = 0; /* for most methods we can't determine final size */
-        } else if buffer[..2] == [37, 240] {
+        } else if buffer[..2] == [0o037, 0o240] {
             /* LZH */
             finalsize = 0; /* for most methods we can't determine final size */
         } else if memcmp(
@@ -888,18 +954,13 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
 
         /* if we allocated too much memory initially, then free it */
         if *(m[*hdl as usize].memsizeptr) > ((m[*hdl as usize].fitsfilesize as usize) + 256) {
-            let ptr = realloc(
-                (*(m[*hdl as usize].memaddrptr)).cast(),
-                m[*hdl as usize].fitsfilesize as usize,
-            )
-            .cast::<c_char>();
+            /* the C shrank this with realloc(); mem_createmem allocated it
+            with a Vec, so it has to go back through the Rust allocator */
+            let ptr = shrink_mem_buffer(&mut m[*hdl as usize]);
             if ptr.is_null() {
                 ffpmsg_str("Failed to reduce size of allocated memory (compress_open)");
                 return MEMORY_ALLOCATION;
             }
-
-            *(m[*hdl as usize].memaddrptr) = ptr;
-            *(m[*hdl as usize].memsizeptr) = (m[*hdl as usize].fitsfilesize) as usize;
         }
 
         0
@@ -946,18 +1007,13 @@ pub(crate) unsafe fn mem_compress_stdin_open(
 
         /* if we allocated too much memory initially, then free it */
         if *(m[*hdl as usize].memsizeptr) > ((m[*hdl as usize].fitsfilesize as usize) + 256) {
-            let ptr = realloc(
-                (*(m[*hdl as usize].memaddrptr)).cast::<c_void>(),
-                m[*hdl as usize].fitsfilesize as usize,
-            )
-            .cast::<c_char>();
+            /* the C shrank this with realloc(); mem_createmem allocated it
+            with a Vec, so it has to go back through the Rust allocator */
+            let ptr = shrink_mem_buffer(&mut m[*hdl as usize]);
             if ptr.is_null() {
                 ffpmsg_str("Failed to reduce size of allocated memory (compress_stdin_open)");
                 return MEMORY_ALLOCATION;
             }
-
-            *(m[*hdl as usize].memaddrptr) = ptr;
-            *(m[*hdl as usize].memsizeptr) = (m[*hdl as usize].fitsfilesize) as usize;
         }
 
         0
@@ -1288,7 +1344,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                 raw_file_handle,
                 m[hdl as usize].memaddrptr.cast::<*mut u8>(), /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
-                Some(realloc),                                /* reallocation function */
+                Some(owned_realloc_c),                        /* reallocation function */
                 &mut finalsize,
                 &mut status, /* returned file size and status*/
             );
@@ -1316,7 +1372,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
                 diskfile,
                 m[hdl as usize].memaddrptr.cast::<*mut u8>(), /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
-                Some(realloc),                                        /* reallocation function */
+                Some(owned_realloc_c),                                /* reallocation function */
                 &mut finalsize,
                 &mut status,
             ); /* returned file size nd status*/
@@ -1357,7 +1413,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
                 raw_file_handle,
                 m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().unwrap(), /* pointer to size of memory */
-                Some(realloc),                              /* reallocation function */
+                Some(owned_realloc_c),                      /* reallocation function */
                 &mut finalsize,
                 &mut status, /* returned file size and status*/
             );
@@ -1380,7 +1436,7 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
                 diskfile,
                 m[hdl as usize].memaddrptr as *mut *mut u8, /* pointer to memory address */
                 m[hdl as usize].memsizeptr.as_mut().expect(NULL_MSG), /* pointer to size of memory */
-                Some(realloc),                                        /* reallocation function */
+                Some(owned_realloc_c),                                /* reallocation function */
                 &mut finalsize,
                 &mut status,
             ); /* returned file size nd status*/
@@ -1415,14 +1471,11 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
         /* free( *(m[handle].memaddrptr) );  - C free() tolerates a NULL pointer, so
         guard against it here (the buffer may never have been allocated, e.g. when
         an IRAF conversion failed before writing the buffer pointer). */
-        let dataptr = *(m[handle].memaddrptr);
-        if !dataptr.is_null() {
-            if let Some((l, c)) = ALLOCATIONS.lock().unwrap().remove(&(dataptr as usize)) {
-                _ = Vec::from_raw_parts(dataptr, l, c);
-            } else {
-                _ = Vec::from_raw_parts(dataptr, memsize, memsize);
-            }
-        }
+        /* A buffer supplied through mem_openmem belongs to the caller and was
+        never registered; free_registered leaves it alone, where the old
+        `else` branch would have released it on a guessed layout with the
+        wrong allocator. */
+        free_registered(*(m[handle].memaddrptr));
         // free( *(m[handle].memaddrptr) );
 
         release_owned_cell(&mut m[handle]);
@@ -1695,5 +1748,148 @@ pub(crate) unsafe fn bzip2uncompress2mem(
             return;
         }
         *filesize = total_read;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+
+    use super::*;
+    use crate::cfileio::{ffinit_safe, ffopen_safe};
+    use crate::getcolj::ffgpvj_safe;
+    use crate::helpers::testhelpers::{to_buf, with_temp_file};
+    use crate::putcolj::ffpprj_safe;
+    use crate::putkey::ffphps_safe;
+
+    /// Write a 1-D LONG_IMG of `npix` values to `path` and return them.
+    ///
+    /// `compressible` picks a ramp (which bzip2 crushes) or a deterministic LCG
+    /// sequence (which it cannot), because the bz2 path's buffer estimate is
+    /// three times the *compressed* size -- only incompressible data makes that
+    /// estimate overshoot the real file.
+    fn write_fits_data(path: &str, npix: usize, compressible: bool) -> Vec<c_long> {
+        let data: Vec<c_long> = if compressible {
+            (0..npix as c_long).collect()
+        } else {
+            let mut x: u64 = 0x2545_F491_4F6C_DD1D;
+            (0..npix)
+                .map(|_| {
+                    x = x
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    /* LONG_IMG is BITPIX 32, so keep the values in i32 */
+                    ((x >> 32) as u32 as i32) as c_long
+                })
+                .collect()
+        };
+
+        let mut status: c_int = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffinit_safe(&mut fptr, &to_buf(path), &mut status);
+        assert_eq!(status, 0, "ffinit failed");
+        {
+            let f = fptr.as_deref_mut().unwrap();
+            let naxes: [c_long; 1] = [npix as c_long];
+            ffphps_safe(f, LONG_IMG, 1, &naxes, &mut status);
+            ffpprj_safe(f, 1, 1, npix as LONGLONG, &data, &mut status);
+            assert_eq!(status, 0, "write failed");
+        }
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+
+        data
+    }
+
+    /// Open a compressed FITS file and return its `npix` pixels.
+    fn read_back(path: &str, npix: usize) -> Vec<c_long> {
+        let mut status: c_int = 0;
+        let mut fptr: Option<Box<fitsfile>> = None;
+        ffopen_safe(&mut fptr, &to_buf(path), READONLY, &mut status);
+        assert_eq!(status, 0, "ffopen of the compressed file failed");
+
+        let mut got: Vec<c_long> = vec![-1; npix];
+        {
+            let f = fptr.as_deref_mut().unwrap();
+            ffgpvj_safe(f, 1, 1, npix as LONGLONG, 0, &mut got, None, &mut status);
+            assert_eq!(status, 0, "ffgpv failed");
+        }
+        ffclos_safe(fptr.take().unwrap(), &mut status);
+        assert_eq!(status, 0, "ffclos failed");
+        got
+    }
+
+    /// Write a ramp, gzip it, reopen it through the compress:// driver and
+    /// check the pixels came back unchanged.
+    fn roundtrip_gz(npix: usize) {
+        with_temp_file(|filename| {
+            let expected = write_fits_data(filename, npix, true);
+
+            let plain = std::fs::read(filename).unwrap();
+            let gz = File::create(format!("{filename}.gz")).unwrap();
+            let mut enc = GzEncoder::new(gz, Compression::default());
+            enc.write_all(&plain).unwrap();
+            enc.finish().unwrap();
+
+            assert_eq!(read_back(&format!("{filename}.gz"), npix), expected);
+        });
+    }
+
+    /// Opening a gzipped file end to end through the compress:// driver.
+    ///
+    /// gzip records the uncompressed size in its trailer, so mem_compress_open
+    /// sizes the memory file exactly and neither grows nor shrinks it; what
+    /// this pins is that a compressed file is recognised as one at all.
+    #[test]
+    fn test_gz_open_reads_back_through_the_compress_driver() {
+        roundtrip_gz(64);
+    }
+
+    /// bzip2 does not record the uncompressed size, so mem_compress_open
+    /// guesses 3x the compressed size and mem_compress_open trims the result.
+    ///
+    /// That trim is the regression test for the allocator mismatch: the buffer
+    /// comes from mem_createmem, i.e. a Vec, and the C shrank it with a bare
+    /// realloc().  It now goes through shrink_mem_buffer -> owned_realloc.
+    #[cfg(feature = "bzip2")]
+    #[test]
+    // mem_uncompress2mem hands the bzip2 reader a C `FILE *` built with
+    // `fdopen`, which miri cannot call.
+    #[cfg_attr(miri, ignore)]
+    fn test_bz2_open_shrinks_driver_owned_buffer() {
+        use libbz2_rs_sys::BZ2_bzBuffToBuffCompress;
+
+        with_temp_file(|filename| {
+            /* enough incompressible pixels that 3x the compressed size
+            overshoots the real file by well over the 256-byte slack, so
+            mem_compress_open takes its trim branch */
+            let npix = 2000;
+            let expected = write_fits_data(filename, npix, false);
+
+            let mut plain = std::fs::read(filename).unwrap();
+            let mut dest = vec![0u8; plain.len() * 2 + 1024];
+            let mut destlen = dest.len() as c_uint;
+            // SAFETY: both buffers are live and `destlen` is dest's length.
+            let rc = unsafe {
+                BZ2_bzBuffToBuffCompress(
+                    dest.as_mut_ptr().cast::<c_char>(),
+                    &raw mut destlen,
+                    plain.as_mut_ptr().cast::<c_char>(),
+                    plain.len() as c_uint,
+                    9,
+                    0,
+                    30,
+                )
+            };
+            assert_eq!(rc, 0, "bzip2 compression failed");
+            dest.truncate(destlen as usize);
+            std::fs::write(format!("{filename}.bz2"), &dest).unwrap();
+
+            let got = read_back(&format!("{filename}.bz2"), npix);
+            assert_eq!(got, expected);
+        });
     }
 }

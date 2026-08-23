@@ -20,7 +20,7 @@
 #![warn(missing_docs)]
 
 use crate::c_types::{c_char, c_int};
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::into_raw_registered;
 use crate::wrappers::read_fill;
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -31,7 +31,7 @@ use std::io::Error;
 use std::io::Seek;
 use std::sync::Mutex;
 
-use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
+use crate::fitscore::{ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::NULL_MSG;
 use crate::int_snprintf;
 use crate::{
@@ -235,8 +235,7 @@ pub(crate) fn iraf2mem(
     /* append the image data onto the FITS header */
     irafrdimage(&mut b_ptr, buffsize, filesize, status);
 
-    let (raw_ptr, l, c) = vec_into_raw_parts(b_ptr);
-    ALLOCATIONS.lock().unwrap().insert(raw_ptr as usize, (l, c));
+    let raw_ptr = into_raw_registered(b_ptr);
 
     *buffptr = raw_ptr;
 
