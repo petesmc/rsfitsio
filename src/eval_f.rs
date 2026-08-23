@@ -48,7 +48,7 @@ use crate::eval_l::{
     fits_parser_yylex_destroy, fits_parser_yylex_init, fits_parser_yyrestart, yyguts_t,
 };
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
-use crate::eval_y::{free_node_buffer, Evaluate_Parser, fits_parser_yyparse, funcOp};
+use crate::eval_y::{Evaluate_Parser, fits_parser_yyparse, free_node_buffer, funcOp};
 use crate::fitscore::{
     ffcmph_safe, ffcmsg_safe, ffgcno_safe, ffgdesll_safe, ffgncl_safe, ffgnrw_safe, ffiblk,
     ffkeyn_safe, ffmahd_safe, ffpdes_safe, ffpmrk_safe, fits_strcasecmp,
