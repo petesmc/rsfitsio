@@ -1,3 +1,15 @@
+//! Spatial region filtering.
+//!
+//! Parses a region file -- the format DS9 and funtools write -- into a set of
+//! shapes, and tests whether a position falls inside it. This backs the
+//! `regfilter()` function of the row filtering syntax, so a table can be
+//! filtered down to the rows whose coordinates land in a region drawn on an
+//! image.
+//!
+//! Shapes may be given in pixel, degree or sexagesimal coordinates, and may be
+//! combined with an include or exclude sense.
+#![warn(missing_docs)]
+
 use core::ffi::CStr;
 use std::fs::File;
 
@@ -71,39 +83,56 @@ enum CoordFmt {
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+/// One shape in a region: what it is, where it is, and whether it includes or
+/// excludes the area it covers.
 pub(crate) struct RgnShape {
-    sign: c_char,     /*  Include or exclude?        */
-    shape: ShapeType, /*  Shape of this region       */
-    comp: c_int,      /*  Component number for this region */
+    /// Include or exclude?
+    sign: c_char,
+    /// Shape of this region.
+    shape: ShapeType,
+    /// Component number for this region.
+    comp: c_int,
 
-    /*  bounding box    */
+    /// Left edge of the bounding box.
     xmin: f64,
+    /// Right edge of the bounding box.
     xmax: f64,
+    /// Bottom edge of the bounding box.
     ymin: f64,
+    /// Top edge of the bounding box.
     ymax: f64,
 
-    /*  Parameters - In pixels     */
+    /// Shape parameters, in pixels, for every shape but a polygon.
     genericParams: RgnShapeGeneric,
+    /// Shape parameters, in pixels, for a polygon.
     polyParams: RgnShapePolygon,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
+/// Shape parameters for every shape but a polygon; which slots of `p` are
+/// used depends on the [`ShapeType`].
 pub(crate) struct RgnShapeGeneric {
-    p: [f64; 11], /*  Region parameters       */
+    /// Region parameters.
+    p: [f64; 11],
 
-    /*  For rotated shapes      */
+    /// Sine of the rotation angle, for a rotated shape.
     sinT: f64,
+    /// Cosine of the rotation angle, for a rotated shape.
     cosT: f64,
 
-    /*  Extra scratch area      */
+    /// Scratch area, used differently by each shape.
     a: f64,
+    /// Scratch area, used differently by each shape.
     b: f64,
 }
 
 #[derive(Default, Debug, Clone, PartialEq)]
+/// Shape parameters for a polygon.
 struct RgnShapePolygon {
-    nPts: c_int,   /*  Number of Polygon pts   */
-    Pts: Vec<f64>, /*  Polygon points          */
+    /// Number of polygon points.
+    nPts: c_int,
+    /// The polygon points, as alternating x and y.
+    Pts: Vec<f64>,
 }
 
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -113,7 +142,6 @@ pub(crate) struct SAORegion {
     wcs: WCSdata,
 }
 
-/*---------------------------------------------------------------------------*/
 /// Read regions from either a FITS or ASCII region file and return the information
 /// in the "SAORegion" structure.  If it is nonNULL, use wcs to convert the  
 /// region coordinates to pixels.  Return an error if region is in degrees   
@@ -147,7 +175,6 @@ pub(crate) fn fits_read_rgnfile(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// Read regions from a SAO-style region file and return the information     
 /// in the "SAORegion" structure.  If it is nonNULL, use wcs to convert the  
 /// region coordinates to pixels.  Return an error if region is in degrees   
@@ -456,9 +483,7 @@ pub(crate) fn fits_read_ascii_region(
                     return *status;
                 }
 
-                /**************************************************/
                 /*  We've apparently found a region... Set it up  */
-                /**************************************************/
 
                 if (aRgn.nShapes % 10) == 0 {
                     let len = aRgn.Shapes.len();
@@ -922,7 +947,6 @@ pub(crate) fn fits_read_ascii_region(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// Test if the given point is within the region described by Rgn.  X and
 /// Y are in pixel coordinates.                                          
 pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &SAORegion) -> c_int {
@@ -1257,7 +1281,6 @@ pub(crate) fn fits_in_region(X: f64, Y: f64, Rgn: &SAORegion) -> c_int {
     if result { 1 } else { 0 }
 }
 
-/*---------------------------------------------------------------------------*/
 ///  Free up memory allocated to hold the region data.
 ///  This is more complicated for the case of polygons, which may be sharing
 ///  points arrays due to shallow copying (in fits_set_region_components) of
@@ -1309,7 +1332,6 @@ pub(crate) fn fits_free_region(Rgn: Box<SAORegion>) {
     drop(Rgn);
 }
 
-/*---------------------------------------------------------------------------*/
 /// Internal routine for testing whether the coordinate x,y is within the
 /// polygon region traced out by the array Pts.
 fn Pt_in_Poly(x: f64, y: f64, nPts: c_int, Pts: &[f64]) -> c_int {
@@ -1388,7 +1410,6 @@ fn Pt_in_Poly(x: f64, y: f64, nPts: c_int, Pts: &[f64]) -> c_int {
     flag
 }
 
-/*---------------------------------------------------------------------------*/
 /// Internal routine to turn a collection of regions read from an ascii file into
 /// the more complex structure that is allowed by the FITS REGION extension with
 /// multiple components. Regions are anded within components and ored between them
@@ -1473,7 +1494,6 @@ pub(crate) fn fits_set_region_components(aRgn: &mut SAORegion) {
     }
 }
 
-/*---------------------------------------------------------------------------*/
 pub(crate) fn fits_setup_shape(newShape: &mut RgnShape) {
     /* Perform some useful calculations now to speed up filter later             */
 
@@ -1740,7 +1760,6 @@ pub(crate) fn fits_setup_shape(newShape: &mut RgnShape) {
     }
 }
 
-/*---------------------------------------------------------------------------*/
 /// Read regions from a FITS region extension and return the information
 /// in the "SAORegion" structure.  If it is nonNULL, use wcs to convert the
 /// region coordinates to pixels.  Return an error if region is in degrees

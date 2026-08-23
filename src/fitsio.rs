@@ -1,3 +1,16 @@
+//! The public CFITSIO datatypes, symbolic constants and error status codes.
+//!
+//! Ported from CFITSIO's `fitsio.h`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center. The descriptions of the error status codes are taken
+//! from the "CFITSIO Error Status Codes" appendix of the CFITSIO User's
+//! Reference Guide.
+//!
+//! Every routine in this crate returns an error status code as its `c_int`
+//! return value and through its `status` parameter; `0` means success. Prefer
+//! the symbolic names here over the integer values.
+#![warn(missing_docs)]
+
 use crate::{
     c_types::c_ulonglong,
     helpers::{boxed::box_try_new, vec_raw_parts::vec_into_raw_parts},
@@ -19,8 +32,12 @@ use crate::{
 
 use crate::cfileio::fitsdriver;
 
+/// Whether the platform provides `ftruncate()`, so a file can be shortened in
+/// place.
 pub const HAVE_FTRUNCATE: bool = true;
 
+/// The FITS block length, 2880 bytes, as a literal usable in a constant
+/// expression such as an array length.
 #[macro_export]
 macro_rules! BL {
     () => {
@@ -28,366 +45,672 @@ macro_rules! BL {
     };
 }
 
+/// Panic message used when an `extern "C"` wrapper is handed a null pointer it
+/// is not allowed to receive.
 pub const NULL_MSG: &str = "Null Pointer";
 
+/// Length of a FITS block, in bytes. A FITS file is an integral number of
+/// these.
 pub const BLOCK_LEN: usize = 2880;
 
+/// The CFITSIO version this crate is a port of, as a nul-terminated string.
 pub const CFITSIO_VERSION: [u8; 6] = *b"4.7.0\0";
 
 /* Minor and micro numbers must not exceed 99 under current method of version representataion in ffvers(). */
+/// Micro part of the CFITSIO version. Must not exceed 99, given how `ffvers`
+/// packs the version number.
 pub const CFITSIO_MICRO: u64 = 0;
+/// Minor part of the CFITSIO version. Must not exceed 99, given how `ffvers`
+/// packs the version number.
 pub const CFITSIO_MINOR: u64 = 7;
+/// Major part of the CFITSIO version.
 pub const CFITSIO_MAJOR: u64 = 4;
-pub const CFITSIO_SONAME: u64 = 10;
-
 /* the SONAME is incremented in a new release if the binary shared */
 /* library (on linux and Mac systems) is not backward compatible */
 /* with the previous release of CFITSIO */
+/// Shared library version. Incremented in a new release when the binary shared
+/// library (on Linux and macOS) is not backward compatible with the previous
+/// release of CFITSIO.
+pub const CFITSIO_SONAME: u64 = 10;
 
+/// Whether 64-bit integer literals need an `LL` suffix on this platform.
 pub const USE_LL_SUFFIX: u64 = 1;
 
+/// The 64-bit signed integer datatype. CFITSIO spells it `LONGLONG` because C
+/// has no portable name for it.
 pub type LONGLONG = c_longlong;
+/// The 64-bit unsigned integer datatype.
 pub type ULONGLONG = c_ulonglong;
 
 /*  define a default value, even if it is never used */
+/// Largest value a [`LONGLONG`] can hold.
 pub const LONGLONG_MAX: c_longlong = c_longlong::MAX;
+/// Smallest value a [`LONGLONG`] can hold.
 pub const LONGLONG_MIN: c_longlong = c_longlong::MIN;
 
+/// Largest value a `c_long` can hold. Target-dependent: 64-bit on Linux and
+/// macOS, 32-bit on Windows.
 pub const LONG_MAX: c_long = c_long::MAX;
+/// Smallest value a `c_long` can hold. Target-dependent: 64-bit on Linux and
+/// macOS, 32-bit on Windows.
 pub const LONG_MIN: c_long = c_long::MIN;
 
-pub const NIOBUF: u64 = 40; /* number of IO buffers to create (default = 40) */
-/* !! Significantly increasing NIOBUF may degrade performance !! */
+/// Number of I/O buffers to create. Significantly increasing this may *degrade*
+/// performance.
+pub const NIOBUF: u64 = 40;
 
-pub const IOBUFLEN: i64 = 2880; /* size in bytes of each IO buffer (DONT CHANGE!) */
+/// Size in bytes of each I/O buffer. Do not change: it is one FITS block.
+pub const IOBUFLEN: i64 = 2880;
 
-/* global variables */
+/// Maximum length of a filename.
+pub const FLEN_FILENAME: usize = 1025;
+/// Maximum length of a keyword name, allowing for the HIERARCH convention.
+pub const FLEN_KEYWORD: usize = 75;
+/// Length of a FITS header card, plus the nul terminator.
+pub const FLEN_CARD: usize = 81;
+/// Maximum length of a keyword value string.
+pub const FLEN_VALUE: usize = 71;
+/// Maximum length of a keyword comment string.
+pub const FLEN_COMMENT: usize = 73;
+/// Maximum length of a FITSIO error message.
+pub const FLEN_ERRMSG: usize = 81;
+/// Maximum length of a FITSIO status text string.
+pub const FLEN_STATUS: usize = 31;
 
-pub const FLEN_FILENAME: usize = 1025; /* max length of a filename  */
-pub const FLEN_KEYWORD: usize = 75; /* max length of a keyword (HIERARCH convention) */
-pub const FLEN_CARD: usize = 81; /* length of a FITS header card */
-pub const FLEN_VALUE: usize = 71; /* max length of a keyword value string */
-pub const FLEN_COMMENT: usize = 73; /* max length of a keyword comment string */
-pub const FLEN_ERRMSG: usize = 81; /* max length of a FITSIO error message */
-pub const FLEN_STATUS: usize = 31; /* max length of a FITSIO status text string */
-
-pub const TBIT: c_int = 1; /* codes for FITS table data types */
+/// Datatype code for a bit column in a FITS table.
+pub const TBIT: c_int = 1;
+/// Datatype code for an unsigned byte (`unsigned char`).
 pub const TBYTE: c_int = 11;
+/// Datatype code for a signed byte (`signed char`).
 pub const TSBYTE: c_int = 12;
+/// Datatype code for a logical value (`int`).
 pub const TLOGICAL: c_int = 14;
+/// Datatype code for a character string.
 pub const TSTRING: c_int = 16;
+/// Datatype code for an `unsigned short`.
 pub const TUSHORT: c_int = 20;
+/// Datatype code for a `short`.
 pub const TSHORT: c_int = 21;
+/// Datatype code for an `unsigned int`.
 pub const TUINT: c_int = 30;
+/// Datatype code for an `int`.
 pub const TINT: c_int = 31;
+/// Datatype code for an `unsigned long`.
 pub const TULONG: c_int = 40;
+/// Datatype code for a `long`.
 pub const TLONG: c_int = 41;
-pub const TINT32BIT: c_int = 41; /* used when returning datatype of a column */
+/// Datatype code for a 32-bit integer. Used when returning the datatype of a
+/// column; the same value as [`TLONG`].
+pub const TINT32BIT: c_int = 41;
+/// Datatype code for a `float`.
 pub const TFLOAT: c_int = 42;
+/// Datatype code for an unsigned 64-bit integer.
 pub const TULONGLONG: c_int = 80;
+/// Datatype code for a signed 64-bit integer.
 pub const TLONGLONG: c_int = 81;
+/// Datatype code for a `double`.
 pub const TDOUBLE: c_int = 82;
+/// Datatype code for a single-precision complex value.
 pub const TCOMPLEX: c_int = 83;
+/// Datatype code for a double-precision complex value.
 pub const TDBLCOMPLEX: c_int = 163;
 
+/// Keyword class: a structural keyword (`SIMPLE`, `BITPIX`, `NAXIS`, `END`, …).
 pub const TYP_STRUC_KEY: c_int = 10;
+/// Keyword class: a tile-compression keyword (`ZIMAGE`, `ZCMPTYPE`, …).
 pub const TYP_CMPRS_KEY: c_int = 20;
+/// Keyword class: a scaling keyword (`BSCALE`, `BZERO`, `TSCALn`, `TZEROn`).
 pub const TYP_SCAL_KEY: c_int = 30;
+/// Keyword class: a null-value keyword (`BLANK`, `TNULLn`).
 pub const TYP_NULL_KEY: c_int = 40;
+/// Keyword class: a dimension keyword (`TDIMn`).
 pub const TYP_DIM_KEY: c_int = 50;
+/// Keyword class: a range keyword (`TLMINn`, `TLMAXn`, `TDMINn`, `TDMAXn`).
 pub const TYP_RANG_KEY: c_int = 60;
+/// Keyword class: a units keyword (`TUNITn`).
 pub const TYP_UNIT_KEY: c_int = 70;
+/// Keyword class: a display-format keyword (`TDISPn`).
 pub const TYP_DISP_KEY: c_int = 80;
+/// Keyword class: an HDU identification keyword (`EXTNAME`, `EXTVER`, …).
 pub const TYP_HDUID_KEY: c_int = 90;
+/// Keyword class: a checksum keyword (`CHECKSUM`, `DATASUM`).
 pub const TYP_CKSUM_KEY: c_int = 100;
+/// Keyword class: a world coordinate system keyword.
 pub const TYP_WCS_KEY: c_int = 110;
+/// Keyword class: a reference system keyword (`EQUINOX`, `RADESYS`, …).
 pub const TYP_REFSYS_KEY: c_int = 120;
+/// Keyword class: a commentary keyword (`COMMENT`, `HISTORY`, blank).
 pub const TYP_COMM_KEY: c_int = 130;
+/// Keyword class: a `CONTINUE` keyword of the long-string convention.
 pub const TYP_CONT_KEY: c_int = 140;
+/// Keyword class: any other, user-defined keyword.
 pub const TYP_USER_KEY: c_int = 150;
 
-pub type INT32BIT = c_int; /* 32-bit integer datatype.  Currently this       */
+/* 32-bit integer datatype.  Currently this       */
 /* datatype is an 'int' on all useful platforms   */
 /* however, it is possible that that are cases    */
 /* where 'int' is a 2-byte integer, in which case */
 /* INT32BIT would need to be defined as 'long'.   */
+/// A 32-bit integer datatype.
+///
+/// This is an `int` on every useful platform, but there could be cases where
+/// `int` is a 2-byte integer, in which case it would have to be a `long`.
+pub type INT32BIT = c_int;
 
-pub const BYTE_IMG: c_int = 8; /* BITPIX code values for FITS image types */
+/// `BITPIX` code for an 8-bit unsigned integer image.
+pub const BYTE_IMG: c_int = 8;
+/// `BITPIX` code for a 16-bit signed integer image.
 pub const SHORT_IMG: c_int = 16;
+/// `BITPIX` code for a 32-bit signed integer image.
 pub const LONG_IMG: c_int = 32;
+/// `BITPIX` code for a 64-bit signed integer image.
 pub const LONGLONG_IMG: c_int = 64;
+/// `BITPIX` code for a single-precision floating point image.
 pub const FLOAT_IMG: c_int = -32;
+/// `BITPIX` code for a double-precision floating point image.
 pub const DOUBLE_IMG: c_int = -64;
 /* The following 2 codes are not true FITS         */
 /* datatypes; these codes are only used internally */
 /* within cfitsio to make it easier for users      */
 /* to deal with unsigned integers.                 */
+/// `BITPIX` code for a signed-byte image.
+///
+/// Not a true FITS datatype: used only internally, to make signed bytes easier
+/// to deal with. Equivalent to [`BYTE_IMG`] with a `BZERO` of -128.
 pub const SBYTE_IMG: c_int = 10;
+/// `BITPIX` code for an unsigned 16-bit integer image.
+///
+/// Not a true FITS datatype: equivalent to [`SHORT_IMG`] with a `BZERO` of
+/// 32768, which is how FITS stores unsigned integers.
 pub const USHORT_IMG: c_int = 20;
+/// `BITPIX` code for an unsigned 32-bit integer image.
+///
+/// Not a true FITS datatype: equivalent to [`LONG_IMG`] with a `BZERO` of
+/// 2147483648.
 pub const ULONG_IMG: c_int = 40;
+/// `BITPIX` code for an unsigned 64-bit integer image.
+///
+/// Not a true FITS datatype: equivalent to [`LONGLONG_IMG`] with a `BZERO` of
+/// 9223372036854775808.
 pub const ULONGLONG_IMG: c_int = 80;
 
-pub const IMAGE_HDU: c_int = 0; /* Primary Array or IMAGE HDU */
-pub const ASCII_TBL: c_int = 1; /* ASCII table HDU  */
-pub const BINARY_TBL: c_int = 2; /* Binary table HDU */
-pub const ANY_HDU: c_int = -1; /* matches any HDU type */
+/// HDU type code for a primary array or IMAGE extension.
+pub const IMAGE_HDU: c_int = 0;
+/// HDU type code for an ASCII table extension.
+pub const ASCII_TBL: c_int = 1;
+/// HDU type code for a binary table extension.
+pub const BINARY_TBL: c_int = 2;
+/// HDU type code matching any HDU type.
+pub const ANY_HDU: c_int = -1;
 
-pub const READONLY: c_int = 0; /* options when opening a file */
+/// File access mode: open for reading only.
+pub const READONLY: c_int = 0;
+/// File access mode: open for reading and writing.
 pub const READWRITE: c_int = 1;
 
 /* adopt a hopefully obscure number to use as a null value flag */
+/// Sentinel `float` meaning "this pixel is undefined".
+///
+/// A hopefully obscure value, so that it does not collide with real data.
 pub const FLOATNULLVALUE: f32 = -9.11912E-36;
+/// Sentinel `double` meaning "this pixel is undefined".
+///
+/// A hopefully obscure value, so that it does not collide with real data.
 pub const DOUBLENULLVALUE: f64 = -9.1191291391491E-36;
 
-/* compression algorithm codes */
+/// Quantization dithering: do not dither.
 pub const NO_DITHER: c_int = -1;
+/// Quantization dithering: subtractive dither, starting from a fixed offset.
 pub const SUBTRACTIVE_DITHER_1: c_int = 1;
+/// Quantization dithering: as [`SUBTRACTIVE_DITHER_1`], but zero-valued pixels
+/// are preserved exactly.
 pub const SUBTRACTIVE_DITHER_2: c_int = 2;
 
+/// Maximum number of image dimensions the tile-compression code supports.
 pub const MAX_COMPRESS_DIM: usize = 6;
+/// Compression algorithm code for Rice.
 pub const RICE_1: c_int = 11;
+/// Compression algorithm code for GZIP.
 pub const GZIP_1: c_int = 21;
+/// Compression algorithm code for GZIP applied to byte-shuffled data.
 pub const GZIP_2: c_int = 22;
+/// Compression algorithm code for PLIO, for bit-mask images.
 pub const PLIO_1: c_int = 31;
+/// Compression algorithm code for Hcompress.
 pub const HCOMPRESS_1: c_int = 41;
-pub const BZIP2_1: c_int = 51; /* not publicly supported; only for test purposes */
+/// Compression algorithm code for BZIP2. Not publicly supported; for test
+/// purposes only.
+pub const BZIP2_1: c_int = 51;
+/// Compression algorithm code meaning "do not compress".
 pub const NOCOMPRESS: c_int = -1;
 
+/// Boolean true, as CFITSIO spells it.
 pub const TRUE: u64 = 1;
 
+/// Boolean false, as CFITSIO spells it.
 pub const FALSE: u64 = 0;
 
-pub const CASESEN: u64 = 1; /* do case-sensitive string match */
-pub const CASEINSEN: u64 = 0; /* do case-insensitive string match */
+/// Do a case-sensitive string match.
+pub const CASESEN: u64 = 1;
+/// Do a case-insensitive string match.
+pub const CASEINSEN: u64 = 0;
 
-pub const GT_ID_ALL_URI: u64 = 0; /* hierarchical grouping parameters */
+/// Grouping table member identification: by all of URI, position and reference.
+pub const GT_ID_ALL_URI: u64 = 0;
+/// Grouping table member identification: by reference.
 pub const GT_ID_REF: u64 = 1;
+/// Grouping table member identification: by position.
 pub const GT_ID_POS: u64 = 2;
+/// Grouping table member identification: by both reference and position.
 pub const GT_ID_ALL: u64 = 3;
+/// Grouping table member identification: by reference and URI.
 pub const GT_ID_REF_URI: u64 = 11;
+/// Grouping table member identification: by position and URI.
 pub const GT_ID_POS_URI: u64 = 12;
 
+/// Grouping table removal option: remove the grouping table itself.
 pub const OPT_RM_GPT: u64 = 0;
+/// Grouping table removal option: remove the member's entry only.
 pub const OPT_RM_ENTRY: u64 = 1;
+/// Grouping table removal option: remove the member HDU.
 pub const OPT_RM_MBR: u64 = 2;
+/// Grouping table removal option: remove the grouping table and all members.
 pub const OPT_RM_ALL: u64 = 3;
 
+/// Grouping table copy option: copy the grouping table only.
 pub const OPT_GCP_GPT: u64 = 0;
+/// Grouping table copy option: copy the member HDUs.
 pub const OPT_GCP_MBR: u64 = 1;
+/// Grouping table copy option: copy the grouping table and all its members.
 pub const OPT_GCP_ALL: u64 = 2;
 
+/// Group member copy option: add the copy to the same grouping table.
 pub const OPT_MCP_ADD: u64 = 0;
+/// Group member copy option: do not add the copy to a grouping table.
 pub const OPT_MCP_NADD: u64 = 1;
+/// Group member copy option: replace the original member with the copy.
 pub const OPT_MCP_REPL: u64 = 2;
+/// Group member copy option: move the member rather than copying it.
 pub const OPT_MCP_MOV: u64 = 3;
 
+/// Grouping table merge option: copy the members into the target table.
 pub const OPT_MRG_COPY: u64 = 0;
+/// Grouping table merge option: move the members into the target table.
 pub const OPT_MRG_MOV: u64 = 1;
 
+/// Grouping table compact option: compact member grouping tables.
 pub const OPT_CMT_MBR: u64 = 1;
+/// Grouping table compact option: compact member grouping tables and delete
+/// them afterwards.
 pub const OPT_CMT_MBR_DEL: u64 = 11;
 
-pub const VALIDSTRUC: c_int = 555; /* magic value used to identify if structure is valid */
+/// Magic value stored in [`FITSfile::validcode`] to identify a valid structure.
+pub const VALIDSTRUC: c_int = 555;
 
-pub const INPUT_COL: c_int = 0; /* flag for input only iterator column       */
-pub const INPUT_OUTPUT_COL: c_int = 1; /* flag for input and output iterator column */
-pub const OUTPUT_COL: c_int = 2; /* flag for output only iterator column      */
-pub const TEMPORARY_COL: c_int = 3; /* flag for temporary iterator column INTERNAL */
+/// Iterator column flag: the column is read but not written.
+pub const INPUT_COL: c_int = 0;
+/// Iterator column flag: the column is both read and written.
+pub const INPUT_OUTPUT_COL: c_int = 1;
+/// Iterator column flag: the column is written but not read.
+pub const OUTPUT_COL: c_int = 2;
+/// Iterator column flag: a temporary column, used internally.
+pub const TEMPORARY_COL: c_int = 3;
 
 /* error status codes */
 
-pub const CREATE_DISK_FILE: c_int = -106; /* create disk file, without extended filename syntax */
-pub const OPEN_DISK_FILE: c_int = -105; /* open disk file, without extended filename syntax */
-pub const SKIP_TABLE: c_int = -104; /* move to 1st image when opening file */
-pub const SKIP_IMAGE: c_int = -103; /* move to 1st table when opening file */
-pub const SKIP_NULL_PRIMARY: c_int = -102; /* skip null primary array when opening file */
-pub const USE_MEM_BUFF: c_int = -101; /* use memory buffer when opening file */
-pub const OVERFLOW_ERR: c_int = -11; /* overflow during datatype conversion */
-pub const PREPEND_PRIMARY: c_int = -9; /* used in ffiimg to insert new primary array */
-pub const SAME_FILE: c_int = 101; /* input and output files are the same */
-pub const TOO_MANY_FILES: c_int = 103; /* tried to open too many FITS files */
-pub const FILE_NOT_OPENED: c_int = 104; /* could not open the named file */
-pub const FILE_NOT_CREATED: c_int = 105; /* could not create the named file */
-pub const WRITE_ERROR: c_int = 106; /* error writing to FITS file */
-pub const END_OF_FILE: c_int = 107; /* tried to move past end of file */
-pub const READ_ERROR: c_int = 108; /* error reading from FITS file */
-pub const FILE_NOT_CLOSED: c_int = 110; /* could not close the file */
-pub const ARRAY_TOO_BIG: c_int = 111; /* array dimensions exceed internal limit */
-pub const READONLY_FILE: c_int = 112; /* Cannot write to readonly file */
-pub const MEMORY_ALLOCATION: c_int = 113; /* Could not allocate memory */
-pub const BAD_FILEPTR: c_int = 114; /* invalid fitsfile pointer */
-pub const NULL_INPUT_PTR: c_int = 115; /* NULL input pointer to routine */
-pub const SEEK_ERROR: c_int = 116; /* error seeking position in file */
-pub const BAD_NETTIMEOUT: c_int = 117; /* bad value for file download timeout setting */
+/// Create a disk file, without applying the extended filename syntax.
+pub const CREATE_DISK_FILE: c_int = -106;
+/// Open a disk file, without applying the extended filename syntax.
+pub const OPEN_DISK_FILE: c_int = -105;
+/// Move to the first image when opening the file.
+pub const SKIP_TABLE: c_int = -104;
+/// Move to the first table when opening the file.
+pub const SKIP_IMAGE: c_int = -103;
+/// Skip a null primary array when opening the file.
+pub const SKIP_NULL_PRIMARY: c_int = -102;
+/// Use a memory buffer when opening the file.
+pub const USE_MEM_BUFF: c_int = -101;
+/// Overflow during datatype conversion.
+pub const OVERFLOW_ERR: c_int = -11;
+/// Used in `ffiimg` to insert a new primary array.
+pub const PREPEND_PRIMARY: c_int = -9;
+/// Input and output files are the same.
+pub const SAME_FILE: c_int = 101;
+/// Tried to open too many FITS files at once.
+pub const TOO_MANY_FILES: c_int = 103;
+/// Could not open the named file.
+pub const FILE_NOT_OPENED: c_int = 104;
+/// Could not create the named file.
+pub const FILE_NOT_CREATED: c_int = 105;
+/// Error writing to the FITS file.
+pub const WRITE_ERROR: c_int = 106;
+/// Tried to move past the end of the file.
+pub const END_OF_FILE: c_int = 107;
+/// Error reading from the FITS file.
+pub const READ_ERROR: c_int = 108;
+/// Could not close the file.
+pub const FILE_NOT_CLOSED: c_int = 110;
+/// Array dimensions exceed an internal limit.
+pub const ARRAY_TOO_BIG: c_int = 111;
+/// Cannot write to a readonly file.
+pub const READONLY_FILE: c_int = 112;
+/// Could not allocate memory.
+pub const MEMORY_ALLOCATION: c_int = 113;
+/// Invalid [`fitsfile`] pointer.
+pub const BAD_FILEPTR: c_int = 114;
+/// Null input pointer to a routine.
+pub const NULL_INPUT_PTR: c_int = 115;
+/// Error seeking to a position in the file.
+pub const SEEK_ERROR: c_int = 116;
+/// Bad value for the file download timeout setting.
+pub const BAD_NETTIMEOUT: c_int = 117;
 
-pub const BAD_URL_PREFIX: c_int = 121; /* invalid URL prefix on file name */
-pub const TOO_MANY_DRIVERS: c_int = 122; /* tried to register too many IO drivers */
-pub const DRIVER_INIT_FAILED: c_int = 123; /* driver initialization failed */
-pub const NO_MATCHING_DRIVER: c_int = 124; /* matching driver is not registered */
-pub const URL_PARSE_ERROR: c_int = 125; /* failed to parse input file URL */
-pub const RANGE_PARSE_ERROR: c_int = 126; /* failed to parse input file URL */
+/// Invalid URL prefix on the file name.
+pub const BAD_URL_PREFIX: c_int = 121;
+/// Tried to register too many I/O drivers.
+pub const TOO_MANY_DRIVERS: c_int = 122;
+/// Driver initialization failed.
+pub const DRIVER_INIT_FAILED: c_int = 123;
+/// The matching driver is not registered.
+pub const NO_MATCHING_DRIVER: c_int = 124;
+/// Failed to parse the input file URL.
+pub const URL_PARSE_ERROR: c_int = 125;
+/// Parse error in a range list.
+pub const RANGE_PARSE_ERROR: c_int = 126;
 
+/// Base value the shared memory driver's error codes are offset from.
 pub const SHARED_ERRBASE: c_int = 150;
+/// Bad argument in the shared memory driver.
 pub const SHARED_BADARG: c_int = SHARED_ERRBASE + 1;
+/// Null pointer passed as an argument to the shared memory driver.
 pub const SHARED_NULPTR: c_int = SHARED_ERRBASE + 2;
+/// No more free shared memory handles.
 pub const SHARED_TABFULL: c_int = SHARED_ERRBASE + 3;
+/// The shared memory driver is not initialized.
 pub const SHARED_NOTINIT: c_int = SHARED_ERRBASE + 4;
+/// IPC error returned by a system call.
 pub const SHARED_IPCERR: c_int = SHARED_ERRBASE + 5;
+/// No memory in the shared memory driver.
 pub const SHARED_NOMEM: c_int = SHARED_ERRBASE + 6;
+/// Resource deadlock would occur.
 pub const SHARED_AGAIN: c_int = SHARED_ERRBASE + 7;
+/// Attempt to open or create the lock file failed.
 pub const SHARED_NOFILE: c_int = SHARED_ERRBASE + 8;
+/// The shared memory block cannot be resized at the moment.
 pub const SHARED_NORESIZE: c_int = SHARED_ERRBASE + 9;
 
-pub const HEADER_NOT_EMPTY: c_int = 201; /* header already contains keywords */
-pub const KEY_NO_EXIST: c_int = 202; /* keyword not found in header */
-pub const KEY_OUT_BOUNDS: c_int = 203; /* keyword record number is out of bounds */
-pub const VALUE_UNDEFINED: c_int = 204; /* keyword value field is blank */
-pub const NO_QUOTE: c_int = 205; /* string is missing the closing quote */
-pub const BAD_INDEX_KEY: c_int = 206; /* illegal indexed keyword name */
-pub const BAD_KEYCHAR: c_int = 207; /* illegal character in keyword name or card */
-pub const BAD_ORDER: c_int = 208; /* required keywords out of order */
-pub const NOT_POS_INT: c_int = 209; /* keyword value is not a positive integer */
-pub const NO_END: c_int = 210; /* couldn't find END keyword */
-pub const BAD_BITPIX: c_int = 211; /* illegal BITPIX keyword value*/
-pub const BAD_NAXIS: c_int = 212; /* illegal NAXIS keyword value */
-pub const BAD_NAXES: c_int = 213; /* illegal NAXISn keyword value */
-pub const BAD_PCOUNT: c_int = 214; /* illegal PCOUNT keyword value */
-pub const BAD_GCOUNT: c_int = 215; /* illegal GCOUNT keyword value */
-pub const BAD_TFIELDS: c_int = 216; /* illegal TFIELDS keyword value */
-pub const NEG_WIDTH: c_int = 217; /* negative table row size */
-pub const NEG_ROWS: c_int = 218; /* negative number of rows in table */
-pub const COL_NOT_FOUND: c_int = 219; /* column with this name not found in table */
-pub const BAD_SIMPLE: c_int = 220; /* illegal value of SIMPLE keyword  */
-pub const NO_SIMPLE: c_int = 221; /* Primary array doesn't start with SIMPLE */
-pub const NO_BITPIX: c_int = 222; /* Second keyword not BITPIX */
-pub const NO_NAXIS: c_int = 223; /* Third keyword not NAXIS */
-pub const NO_NAXES: c_int = 224; /* Couldn't find all the NAXISn keywords */
-pub const NO_XTENSION: c_int = 225; /* HDU doesn't start with XTENSION keyword */
-pub const NOT_ATABLE: c_int = 226; /* the CHDU is not an ASCII table extension */
-pub const NOT_BTABLE: c_int = 227; /* the CHDU is not a binary table extension */
-pub const NO_PCOUNT: c_int = 228; /* couldn't find PCOUNT keyword */
-pub const NO_GCOUNT: c_int = 229; /* couldn't find GCOUNT keyword */
-pub const NO_TFIELDS: c_int = 230; /* couldn't find TFIELDS keyword */
-pub const NO_TBCOL: c_int = 231; /* couldn't find TBCOLn keyword */
-pub const NO_TFORM: c_int = 232; /* couldn't find TFORMn keyword */
-pub const NOT_IMAGE: c_int = 233; /* the CHDU is not an IMAGE extension */
-pub const BAD_TBCOL: c_int = 234; /* TBCOLn keyword value < 0 or > rowlength */
-pub const NOT_TABLE: c_int = 235; /* the CHDU is not a table */
-pub const COL_TOO_WIDE: c_int = 236; /* column is too wide to fit in table */
-pub const COL_NOT_UNIQUE: c_int = 237; /* more than 1 column name matches template */
-pub const BAD_ROW_WIDTH: c_int = 241; /* sum of column widths not = NAXIS1 */
-pub const UNKNOWN_EXT: c_int = 251; /* unrecognizable FITS extension type */
-pub const UNKNOWN_REC: c_int = 252; /* unrecognizable FITS record */
-pub const END_JUNK: c_int = 253; /* END keyword is not blank */
-pub const BAD_HEADER_FILL: c_int = 254; /* Header fill area not blank */
-pub const BAD_DATA_FILL: c_int = 255; /* Data fill area not blank or zero */
-pub const BAD_TFORM: c_int = 261; /* illegal TFORM format code */
-pub const BAD_TFORM_DTYPE: c_int = 262; /* unrecognizable TFORM datatype code */
-pub const BAD_TDIM: c_int = 263; /* illegal TDIMn keyword value */
-pub const BAD_HEAP_PTR: c_int = 264; /* invalid BINTABLE heap address */
+/// The header already contains keywords.
+pub const HEADER_NOT_EMPTY: c_int = 201;
+/// The keyword was not found in the header.
+pub const KEY_NO_EXIST: c_int = 202;
+/// The keyword record number is out of bounds.
+pub const KEY_OUT_BOUNDS: c_int = 203;
+/// The keyword value field is blank.
+pub const VALUE_UNDEFINED: c_int = 204;
+/// The string is missing its closing quote.
+pub const NO_QUOTE: c_int = 205;
+/// Illegal indexed keyword name, e.g. `TFORM1000`.
+pub const BAD_INDEX_KEY: c_int = 206;
+/// Illegal character in a keyword name or card.
+pub const BAD_KEYCHAR: c_int = 207;
+/// Required keywords are out of order.
+pub const BAD_ORDER: c_int = 208;
+/// The keyword value is not a positive integer.
+pub const NOT_POS_INT: c_int = 209;
+/// Could not find the `END` keyword.
+pub const NO_END: c_int = 210;
+/// Illegal `BITPIX` keyword value.
+pub const BAD_BITPIX: c_int = 211;
+/// Illegal `NAXIS` keyword value.
+pub const BAD_NAXIS: c_int = 212;
+/// Illegal `NAXISn` keyword value.
+pub const BAD_NAXES: c_int = 213;
+/// Illegal `PCOUNT` keyword value.
+pub const BAD_PCOUNT: c_int = 214;
+/// Illegal `GCOUNT` keyword value.
+pub const BAD_GCOUNT: c_int = 215;
+/// Illegal `TFIELDS` keyword value.
+pub const BAD_TFIELDS: c_int = 216;
+/// Negative table row size.
+pub const NEG_WIDTH: c_int = 217;
+/// Negative number of rows in the table.
+pub const NEG_ROWS: c_int = 218;
+/// No column with this name was found in the table.
+pub const COL_NOT_FOUND: c_int = 219;
+/// Illegal value of the `SIMPLE` keyword.
+pub const BAD_SIMPLE: c_int = 220;
+/// The primary array does not start with `SIMPLE`.
+pub const NO_SIMPLE: c_int = 221;
+/// The second keyword is not `BITPIX`.
+pub const NO_BITPIX: c_int = 222;
+/// The third keyword is not `NAXIS`.
+pub const NO_NAXIS: c_int = 223;
+/// Could not find all the `NAXISn` keywords.
+pub const NO_NAXES: c_int = 224;
+/// The HDU does not start with the `XTENSION` keyword.
+pub const NO_XTENSION: c_int = 225;
+/// The current HDU is not an ASCII table extension.
+pub const NOT_ATABLE: c_int = 226;
+/// The current HDU is not a binary table extension.
+pub const NOT_BTABLE: c_int = 227;
+/// Could not find the `PCOUNT` keyword.
+pub const NO_PCOUNT: c_int = 228;
+/// Could not find the `GCOUNT` keyword.
+pub const NO_GCOUNT: c_int = 229;
+/// Could not find the `TFIELDS` keyword.
+pub const NO_TFIELDS: c_int = 230;
+/// Could not find the `TBCOLn` keyword.
+pub const NO_TBCOL: c_int = 231;
+/// Could not find the `TFORMn` keyword.
+pub const NO_TFORM: c_int = 232;
+/// The current HDU is not an IMAGE extension.
+pub const NOT_IMAGE: c_int = 233;
+/// `TBCOLn` keyword value is < 0 or > the row length.
+pub const BAD_TBCOL: c_int = 234;
+/// The current HDU is not a table.
+pub const NOT_TABLE: c_int = 235;
+/// The column is too wide to fit in the table.
+pub const COL_TOO_WIDE: c_int = 236;
+/// More than one column name matches the template.
+pub const COL_NOT_UNIQUE: c_int = 237;
+/// The sum of the column widths does not equal `NAXIS1`.
+pub const BAD_ROW_WIDTH: c_int = 241;
+/// Unrecognizable FITS extension type.
+pub const UNKNOWN_EXT: c_int = 251;
+/// Unknown record: the first keyword is neither `SIMPLE` nor `XTENSION`.
+pub const UNKNOWN_REC: c_int = 252;
+/// The `END` keyword record is not blank.
+pub const END_JUNK: c_int = 253;
+/// The header fill area contains non-blank characters.
+pub const BAD_HEADER_FILL: c_int = 254;
+/// Illegal data fill bytes: neither zero nor blank.
+pub const BAD_DATA_FILL: c_int = 255;
+/// Illegal `TFORM` format code.
+pub const BAD_TFORM: c_int = 261;
+/// Unrecognizable `TFORM` datatype code.
+pub const BAD_TFORM_DTYPE: c_int = 262;
+/// Illegal `TDIMn` keyword value.
+pub const BAD_TDIM: c_int = 263;
+/// The binary table heap pointer is out of range.
+pub const BAD_HEAP_PTR: c_int = 264;
 
-pub const BAD_HDU_NUM: c_int = 301; /* HDU number < 1 or > MAXHDU */
-pub const BAD_COL_NUM: c_int = 302; /* column number < 1 or > tfields */
-pub const NEG_FILE_POS: c_int = 304; /* tried to move before beginning of file  */
-pub const NEG_BYTES: c_int = 306; /* tried to read or write negative bytes */
-pub const BAD_ROW_NUM: c_int = 307; /* illegal starting row number in table */
-pub const BAD_ELEM_NUM: c_int = 308; /* illegal starting element number in vector */
-pub const NOT_ASCII_COL: c_int = 309; /* this is not an ASCII string column */
-pub const NOT_LOGICAL_COL: c_int = 310; /* this is not a logical datatype column */
-pub const BAD_ATABLE_FORMAT: c_int = 311; /* ASCII table column has wrong format */
-pub const BAD_BTABLE_FORMAT: c_int = 312; /* Binary table column has wrong format */
-pub const NO_NULL: c_int = 314; /* null value has not been defined */
-pub const NOT_VARI_LEN: c_int = 317; /* this is not a variable length column */
-pub const BAD_DIMEN: c_int = 320; /* illegal number of dimensions in array */
-pub const BAD_PIX_NUM: c_int = 321; /* first pixel number greater than last pixel */
-pub const ZERO_SCALE: c_int = 322; /* illegal BSCALE or TSCALn keyword = 0 */
-pub const NEG_AXIS: c_int = 323; /* illegal axis length < 1 */
+/// HDU number < 1 or > `MAXHDU`.
+pub const BAD_HDU_NUM: c_int = 301;
+/// Column number < 1 or > `tfields`.
+pub const BAD_COL_NUM: c_int = 302;
+/// Tried to move to a negative byte location in the file.
+pub const NEG_FILE_POS: c_int = 304;
+/// Tried to read or write a negative number of bytes.
+pub const NEG_BYTES: c_int = 306;
+/// Illegal starting row number in the table.
+pub const BAD_ROW_NUM: c_int = 307;
+/// Illegal starting element number in the vector.
+pub const BAD_ELEM_NUM: c_int = 308;
+/// This is not an ASCII string column.
+pub const NOT_ASCII_COL: c_int = 309;
+/// This is not a logical datatype column.
+pub const NOT_LOGICAL_COL: c_int = 310;
+/// The ASCII table column has the wrong format.
+pub const BAD_ATABLE_FORMAT: c_int = 311;
+/// The binary table column has the wrong format.
+pub const BAD_BTABLE_FORMAT: c_int = 312;
+/// The null value has not been defined.
+pub const NO_NULL: c_int = 314;
+/// This is not a variable length column.
+pub const NOT_VARI_LEN: c_int = 317;
+/// Illegal number of dimensions in the array.
+pub const BAD_DIMEN: c_int = 320;
+/// The first pixel number is greater than the last pixel.
+pub const BAD_PIX_NUM: c_int = 321;
+/// Illegal `BSCALE` or `TSCALn` keyword value of 0.
+pub const ZERO_SCALE: c_int = 322;
+/// Illegal axis length < 1.
+pub const NEG_AXIS: c_int = 323;
 
+/// Grouping function error: the HDU is not a grouping table.
 pub const NOT_GROUP_TABLE: c_int = 340;
+/// Grouping function error: the HDU is already a member of the group.
 pub const HDU_ALREADY_MEMBER: c_int = 341;
+/// Grouping function error: the group member was not found.
 pub const MEMBER_NOT_FOUND: c_int = 342;
+/// Grouping function error: the grouping table was not found.
 pub const GROUP_NOT_FOUND: c_int = 343;
+/// Grouping function error: bad group identifier.
 pub const BAD_GROUP_ID: c_int = 344;
+/// Grouping function error: too many HDUs are being tracked.
 pub const TOO_MANY_HDUS_TRACKED: c_int = 345;
+/// Grouping function error: the HDU is already being tracked.
 pub const HDU_ALREADY_TRACKED: c_int = 346;
+/// Grouping function error: bad option value.
 pub const BAD_OPTION: c_int = 347;
+/// Grouping function error: the two file pointers are identical.
 pub const IDENTICAL_POINTERS: c_int = 348;
+/// Grouping function error: could not attach the HDU to the group.
 pub const BAD_GROUP_ATTACH: c_int = 349;
+/// Grouping function error: could not detach the HDU from the group.
 pub const BAD_GROUP_DETACH: c_int = 350;
 
-pub const BAD_I2C: c_int = 401; /* bad int to formatted string conversion */
-pub const BAD_F2C: c_int = 402; /* bad float to formatted string conversion */
-pub const BAD_INTKEY: c_int = 403; /* can't interprete keyword value as integer */
-pub const BAD_LOGICALKEY: c_int = 404; /* can't interprete keyword value as logical */
-pub const BAD_FLOATKEY: c_int = 405; /* can't interprete keyword value as float */
-pub const BAD_DOUBLEKEY: c_int = 406; /* can't interprete keyword value as double */
-pub const BAD_C2I: c_int = 407; /* bad formatted string to int conversion */
-pub const BAD_C2F: c_int = 408; /* bad formatted string to float conversion */
-pub const BAD_C2D: c_int = 409; /* bad formatted string to double conversion */
-pub const BAD_DATATYPE: c_int = 410; /* bad keyword datatype code */
-pub const BAD_DECIM: c_int = 411; /* bad number of decimal places specified */
-pub const NUM_OVERFLOW: c_int = 412; /* overflow during datatype conversion */
+/// Bad `int` to formatted string conversion.
+pub const BAD_I2C: c_int = 401;
+/// Bad `float` to formatted string conversion.
+pub const BAD_F2C: c_int = 402;
+/// Cannot interpret the keyword value as an integer.
+pub const BAD_INTKEY: c_int = 403;
+/// Cannot interpret the keyword value as a logical.
+pub const BAD_LOGICALKEY: c_int = 404;
+/// Cannot interpret the keyword value as a float.
+pub const BAD_FLOATKEY: c_int = 405;
+/// Cannot interpret the keyword value as a double.
+pub const BAD_DOUBLEKEY: c_int = 406;
+/// Bad formatted string to `int` conversion.
+pub const BAD_C2I: c_int = 407;
+/// Bad formatted string to `float` conversion.
+pub const BAD_C2F: c_int = 408;
+/// Bad formatted string to `double` conversion.
+pub const BAD_C2D: c_int = 409;
+/// Illegal datatype code value.
+pub const BAD_DATATYPE: c_int = 410;
+/// Bad number of decimal places specified.
+pub const BAD_DECIM: c_int = 411;
+/// Overflow during datatype conversion.
+pub const NUM_OVERFLOW: c_int = 412;
 
-pub const DATA_COMPRESSION_ERR: c_int = 413; /* error in imcompress routines */
-pub const DATA_DECOMPRESSION_ERR: c_int = 414; /* error in imcompress routines */
-pub const NO_COMPRESSED_TILE: c_int = 415; /* compressed tile doesn't exist */
+/// Error compressing the image.
+pub const DATA_COMPRESSION_ERR: c_int = 413;
+/// Error uncompressing the image.
+pub const DATA_DECOMPRESSION_ERR: c_int = 414;
+/// The compressed tile does not exist.
+pub const NO_COMPRESSED_TILE: c_int = 415;
 
-pub const BAD_DATE: c_int = 420; /* error in date or time conversion */
+/// Error in a date or time conversion.
+pub const BAD_DATE: c_int = 420;
 
-pub const PARSE_SYNTAX_ERR: c_int = 431; /* syntax error in parser expression */
-pub const PARSE_BAD_TYPE: c_int = 432; /* expression did not evaluate to desired type */
-pub const PARSE_LRG_VECTOR: c_int = 433; /* vector result too large to return in array */
-pub const PARSE_NO_OUTPUT: c_int = 434; /* data parser failed not sent an out column */
-pub const PARSE_BAD_COL: c_int = 435; /* bad data encounter while parsing column */
-pub const PARSE_BAD_OUTPUT: c_int = 436; /* Output file not of proper type          */
+/// Syntax error in a parser expression.
+pub const PARSE_SYNTAX_ERR: c_int = 431;
+/// The expression did not evaluate to the desired type.
+pub const PARSE_BAD_TYPE: c_int = 432;
+/// The vector result is too large to return in the array.
+pub const PARSE_LRG_VECTOR: c_int = 433;
+/// The data parser was not sent an output column.
+pub const PARSE_NO_OUTPUT: c_int = 434;
+/// Bad data encountered while parsing a column.
+pub const PARSE_BAD_COL: c_int = 435;
+/// The output file is not of the proper type.
+pub const PARSE_BAD_OUTPUT: c_int = 436;
 
-pub const ANGLE_TOO_BIG: c_int = 501; /* celestial angle too large for projection */
-pub const BAD_WCS_VAL: c_int = 502; /* bad celestial coordinate or pixel value */
-pub const WCS_ERROR: c_int = 503; /* error in celestial coordinate calculation */
-pub const BAD_WCS_PROJ: c_int = 504; /* unsupported type of celestial projection */
-pub const NO_WCS_KEY: c_int = 505; /* celestial coordinate keywords not found */
-pub const APPROX_WCS_KEY: c_int = 506; /* approximate WCS keywords were calculated */
+/// Celestial angle too large for the projection.
+pub const ANGLE_TOO_BIG: c_int = 501;
+/// Bad celestial coordinate or pixel value.
+pub const BAD_WCS_VAL: c_int = 502;
+/// Error in a celestial coordinate calculation.
+pub const WCS_ERROR: c_int = 503;
+/// Unsupported type of celestial projection.
+pub const BAD_WCS_PROJ: c_int = 504;
+/// The celestial coordinate keywords were not found.
+pub const NO_WCS_KEY: c_int = 505;
+/// Approximate WCS keyword values were returned.
+pub const APPROX_WCS_KEY: c_int = 506;
 
-pub const NO_CLOSE_ERROR: c_int = 999; /* special value used internally to switch off */
-/* the error message from ffclos and ffchdu */
+/// Special value used internally to switch off the error message from `ffclos`
+/// and `ffchdu`.
+pub const NO_CLOSE_ERROR: c_int = 999;
 
-/*------- following error codes are used in the grparser.c file -----------*/
-pub const NGP_ERRBASE: c_int = 360; /* base chosen so not to interfere with CFITSIO */
+// The following error codes are used by the header template parser in
+// grparser.rs.
+/// Base value the template parser's error codes are offset from. Chosen so as
+/// not to interfere with the CFITSIO codes.
+pub const NGP_ERRBASE: c_int = 360;
+/// Template parser: no error.
 pub const NGP_OK: c_int = 0;
-pub const NGP_NO_MEMORY: c_int = NGP_ERRBASE; /* malloc failed */
-pub const NGP_READ_ERR: c_int = NGP_ERRBASE + 1; /* read error from file */
-pub const NGP_NUL_PTR: c_int = NGP_ERRBASE + 2; /* null pointer passed as argument */
-pub const NGP_EMPTY_CURLINE: c_int = NGP_ERRBASE + 3; /* line read seems to be empty */
-pub const NGP_UNREAD_QUEUE_FULL: c_int = NGP_ERRBASE + 4; /* cannot unread more then 1 line (or single line twice) */
-pub const NGP_INC_NESTING: c_int = NGP_ERRBASE + 5; /* too deep include file nesting (inf. loop ?) */
-pub const NGP_ERR_FOPEN: c_int = NGP_ERRBASE + 6; /* fopen() failed, cannot open file */
-pub const NGP_EOF: c_int = NGP_ERRBASE + 7; /* end of file encountered */
-pub const NGP_BAD_ARG: c_int = NGP_ERRBASE + 8; /* bad arguments passed */
-pub const NGP_TOKEN_NOT_EXPECT: c_int = NGP_ERRBASE + 9; /* token not expected here */
+/// Template parser: memory allocation failed.
+pub const NGP_NO_MEMORY: c_int = NGP_ERRBASE;
+/// Template parser: read error from the file.
+pub const NGP_READ_ERR: c_int = NGP_ERRBASE + 1;
+/// Template parser: null pointer passed as an argument. Usually means a null
+/// pointer was passed as the name of the template file.
+pub const NGP_NUL_PTR: c_int = NGP_ERRBASE + 2;
+/// Template parser: the line read seems to be empty. Used internally.
+pub const NGP_EMPTY_CURLINE: c_int = NGP_ERRBASE + 3;
+/// Template parser: cannot unread more than one line, or unread a single line
+/// twice.
+pub const NGP_UNREAD_QUEUE_FULL: c_int = NGP_ERRBASE + 4;
+/// Template parser: include file nesting is too deep — an infinite loop, or a
+/// template that includes itself.
+pub const NGP_INC_NESTING: c_int = NGP_ERRBASE + 5;
+/// Template parser: `fopen()` failed, cannot open the template file.
+pub const NGP_ERR_FOPEN: c_int = NGP_ERRBASE + 6;
+/// Template parser: end of file encountered where it was not expected.
+pub const NGP_EOF: c_int = NGP_ERRBASE + 7;
+/// Template parser: bad arguments passed. Usually an internal parser error that
+/// should not happen.
+pub const NGP_BAD_ARG: c_int = NGP_ERRBASE + 8;
+/// Template parser: token not expected here.
+pub const NGP_TOKEN_NOT_EXPECT: c_int = NGP_ERRBASE + 9;
 
+/// Stores table column information.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct tcolumn {
-    /* structure used to store table column information */
+    /// Column name — the FITS `TTYPEn` keyword.
     pub ttype: [c_char; 70],
-    /* column name = FITS TTYPEn keyword; */
+    /// Offset in the row to the first byte of the column.
     pub tbcol: LONGLONG,
-    /* offset in row to first byte of each column */
+    /// Datatype code of the column.
     pub tdatatype: c_int,
-    /* datatype code of each column */
+    /// Repeat count of the column: the number of elements.
     pub trepeat: LONGLONG,
-    /* repeat count of column; number of elements */
+    /// FITS `TSCALn` linear scaling factor.
     pub tscale: f64,
-    /* FITS TSCALn linear scaling factor */
+    /// FITS `TZEROn` linear scaling zero point.
     pub tzero: f64,
-    /* FITS TZEROn linear scaling zero point */
+    /// FITS null value, for an integer image or binary table column.
     pub tnull: LONGLONG,
-    /* FITS null value for int image or binary table cols */
+    /// FITS null value string, for an ASCII table column.
     pub strnull: [c_char; 20],
-    /* FITS null value string for ASCII table columns */
+    /// FITS `TFORMn` keyword value.
     pub tform: [c_char; 10],
-    /* FITS tform keyword value  */
-    pub twidth: c_long, /* width of each ASCII table column */
+    /// Width of the column, for an ASCII table.
+    pub twidth: c_long,
 }
 
 impl Default for tcolumn {
@@ -673,6 +996,21 @@ impl Default for FITSfile {
 }
 
 impl FITSfile {
+    /// Allocates a `FITSfile` for an already-opened file, with its filename,
+    /// `headstart` array and I/O buffers reserved.
+    ///
+    /// # Parameters
+    ///
+    /// * `driver` — (I) the I/O driver the file was opened with
+    /// * `handle` — (I) the driver's handle for the open file
+    /// * `url`    — (I) the file name, used for the error message
+    /// * `caller` — (I) name of the calling routine, used for the error message
+    /// * `status` — (IO) error status
+    ///
+    /// # Errors
+    ///
+    /// Closes `handle` and returns [`MEMORY_ALLOCATION`] if any of the three
+    /// allocations fails.
     pub fn new(
         driver: &fitsdriver,
         handle: c_int,
@@ -782,26 +1120,36 @@ impl FITSfile {
         Ok(b.unwrap())
     }
 
+    /// The byte offset of the start of each HDU, as a slice of `MAXHDU + 1`
+    /// entries.
     pub fn get_headstart_as_slice(&self) -> &[LONGLONG] {
         unsafe { core::slice::from_raw_parts(self.headstart, self.MAXHDU as usize + 1) }
     }
 
+    /// The byte offset of the start of each HDU, mutably.
     pub fn get_headstart_as_mut_slice(&mut self) -> &mut [LONGLONG] {
         unsafe { core::slice::from_raw_parts_mut(self.headstart, self.MAXHDU as usize + 1) }
     }
 
+    /// The [`NIOBUF`] I/O buffers of [`IOBUFLEN`] bytes each, as one flat
+    /// slice, reached through a raw pointer rather than through `self`.
     pub fn get_iobuffer(iobuffer: &mut *mut c_char) -> &[c_char] {
         unsafe { core::slice::from_raw_parts(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
     }
 
+    /// The I/O buffers as one flat slice, mutably.
     pub fn get_iobuffer_mut(iobuffer: &mut *mut c_char) -> &mut [c_char] {
         unsafe { core::slice::from_raw_parts_mut(*iobuffer, NIOBUF as usize * IOBUFLEN as usize) }
     }
 
+    /// The table's column descriptions, one per field.
     pub fn get_tableptr_as_slice(&self) -> &[tcolumn] {
         unsafe { core::slice::from_raw_parts(self.tableptr, self.tfield as usize) }
     }
 
+    /// The table's column descriptions, reached through a raw pointer and a
+    /// caller-supplied length rather than through `self`, so the returned
+    /// slice does not borrow the `FITSfile`.
     pub fn get_tableptr_as_slice_unlinked<'a>(
         tableptr: &*mut tcolumn,
         len: usize,
@@ -809,50 +1157,63 @@ impl FITSfile {
         unsafe { core::slice::from_raw_parts(*tableptr, len) }
     }
 
+    /// The table's column descriptions, mutably.
     pub fn get_tableptr_as_mut_slice(&mut self) -> &mut [tcolumn] {
         unsafe { core::slice::from_raw_parts_mut(self.tableptr, self.tfield as usize) }
     }
 
+    /// Number of tiles along the first axis of a compressed image, which is
+    /// the length every per-tile array below is allocated to.
     pub fn get_tile_alloc_len(&self) -> usize {
         ((((self).znaxis[0] - 1) / ((self).tilesize[0])) + 1) as usize
     }
 
+    /// The row number of each cached uncompressed tile.
     pub fn get_tilerow_as_slice(&self) -> &[c_int] {
         unsafe { core::slice::from_raw_parts(self.tilerow, self.get_tile_alloc_len()) }
     }
 
+    /// The row number of each cached uncompressed tile, mutably.
     pub fn get_tilerow_as_mut_slice(&mut self) -> &mut [c_int] {
         unsafe { core::slice::from_raw_parts_mut(self.tilerow, self.get_tile_alloc_len()) }
     }
 
+    /// The length in bytes of each cached tile's data.
     pub fn get_tiledatasize_as_slice(&self) -> &[c_long] {
         unsafe { core::slice::from_raw_parts(self.tiledatasize, self.get_tile_alloc_len()) }
     }
 
+    /// The length in bytes of each cached tile's data, mutably.
     pub fn get_tiledatasize_as_mut_slice(&mut self) -> &mut [c_long] {
         unsafe { core::slice::from_raw_parts_mut(self.tiledatasize, self.get_tile_alloc_len()) }
     }
 
+    /// The datatype code ([`TINT`], [`TSHORT`], …) of each cached tile.
     pub fn get_tiletype_as_slice(&self) -> &[c_int] {
         unsafe { core::slice::from_raw_parts(self.tiletype, self.get_tile_alloc_len()) }
     }
 
+    /// The datatype code of each cached tile, mutably.
     pub fn get_tiletype_as_mut_slice(&mut self) -> &mut [c_int] {
         unsafe { core::slice::from_raw_parts_mut(self.tiletype, self.get_tile_alloc_len()) }
     }
 
+    /// The uncompressed data of each cached tile.
     pub fn get_tiledata_as_slice(&self) -> &[*mut c_void] {
         unsafe { core::slice::from_raw_parts(self.tiledata, self.get_tile_alloc_len()) }
     }
 
+    /// The uncompressed data of each cached tile, mutably.
     pub fn get_tiledata_as_mut_slice(&mut self) -> &mut [*mut c_void] {
         unsafe { core::slice::from_raw_parts_mut(self.tiledata, self.get_tile_alloc_len()) }
     }
 
+    /// The optional null-value flags of each cached tile.
     pub fn get_tilenullarray_as_slice(&self) -> &[*mut c_void] {
         unsafe { core::slice::from_raw_parts(self.tilenullarray, self.get_tile_alloc_len()) }
     }
 
+    /// The optional null-value flags of each cached tile, mutably.
     pub fn get_tilenullarray_as_mut_slice(&mut self) -> &mut [*mut c_void] {
         unsafe { core::slice::from_raw_parts_mut(self.tilenullarray, self.get_tile_alloc_len()) }
     }
@@ -905,14 +1266,17 @@ impl FITSfile {
     }
     */
 
+    /// Whether each cached tile contains any null values.
     pub fn get_tileanynull_as_slice(&self) -> &[c_int] {
         unsafe { core::slice::from_raw_parts(self.tileanynull, self.get_tile_alloc_len()) }
     }
 
+    /// Whether each cached tile contains any null values, mutably.
     pub fn get_tileanynull_as_mut_slice(&mut self) -> &mut [c_int] {
         unsafe { core::slice::from_raw_parts_mut(self.tileanynull, self.get_tile_alloc_len()) }
     }
 
+    /// The file name as a borrowed C string.
     pub fn get_filename_as_cstr(&self) -> &CStr {
         unsafe { CStr::from_ptr(self.filename) }
     }
@@ -1153,19 +1517,21 @@ impl DerefMut for FptrRef {
 // interior mutability of its own.
 unsafe impl Send for FptrRef {}
 
+/// Stores basic HDU information. This is the handle every routine in the API
+/// takes.
 #[repr(C)]
-/// Structure used to store basic HDU information
 pub struct fitsfile {
-    /// HDU position in file; 0 = first HDU
+    /// HDU position in the file; 0 = the first HDU.
     pub HDUposition: c_int,
 
-    /// Pointer to FITS file structure
+    /// The file this HDU belongs to.
     pub Fptr: FptrRef,
 }
 
-/// Do not change this as it is part of the public API
-/// structure for the iterator function column information
-/// elements required as input to fits_iterate_data:
+/// Describes one column to the iterator function, as input to
+/// `fits_iterate_data`.
+///
+/// Do not change the layout: it is part of the public API.
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct iteratorCol {
@@ -1211,60 +1577,46 @@ impl Default for iteratorCol {
     }
 }
 
-/*=============================================================================
-*
-*       The following wtbarr typedef is used in the fits_read_wcstab() routine,
-*       which is intended for use with the WCSLIB library written by Mark
-*       Calabretta, http://www.atnf.csiro.au/~mcalabre/index.html
-*
-*       In order to maintain WCSLIB and CFITSIO as independent libraries it
-*       was not permissible for any CFITSIO library code to include WCSLIB
-*       header files, or vice versa.  However, the CFITSIO function
-*       fits_read_wcstab() accepts an array of structs defined by wcs.h within
-*       WCSLIB.  The problem then was to define this struct within fitsio.h
-*       without including wcs.h, especially noting that wcs.h will often (but
-*       not always) be included together with fitsio.h in an applications
-*       program that uses fits_read_wcstab().
-*
-*       Of the various possibilities, the solution adopted was for WCSLIB to
-*       define "struct wtbarr" while fitsio.h defines "typedef wtbarr", a
-*       untagged struct with identical members.  This allows both wcs.h and
-*       fitsio.h to define a wtbarr data type without conflict by virtue of
-*       the fact that structure tags and typedef names share different
-*       namespaces in C. Therefore, declarations within WCSLIB look like
-*
-*          struct wtbarr *w;
-*
-*       while within CFITSIO they are simply
-*
-*          wtbarr *w;
-*
-*       but as suggested by the commonality of the names, these are really the
-*       same aggregate data type.  However, in passing a (struct wtbarr *) to
-*       fits_read_wcstab() a cast to (wtbarr *) is formally required.
-*===========================================================================*/
+/// Describes an array to be extracted from a binary table by
+/// `fits_read_wcstab()`, for use with Mark Calabretta's WCSLIB.
+///
+/// In order to keep WCSLIB and CFITSIO independent of one another, neither
+/// library's headers may include the other's. WCSLIB therefore defines
+/// `struct wtbarr` while `fitsio.h` defines an untagged `typedef wtbarr` with
+/// identical members — legal in C because structure tags and typedef names live
+/// in different namespaces. Despite the two spellings these are the same
+/// aggregate type, though passing a `struct wtbarr *` to `fits_read_wcstab()`
+/// formally requires a cast.
+///
+/// See <http://www.atnf.csiro.au/~mcalabre/index.html>.
 #[repr(C)]
 pub struct wtbarr {
-    pub i: c_int,             /* Image axis number.                       */
-    pub m: c_int,             /* Array axis number for index vectors.     */
-    pub kind: c_int,          /* Array type, 'c' (coord) or 'i' (index).  */
-    pub extnam: [c_char; 72], /* EXTNAME of binary table extension.       */
-    pub extver: c_int,        /* EXTVER  of binary table extension.       */
-    pub extlev: c_int,        /* EXTLEV  of binary table extension.       */
-    pub ttype: [c_char; 72],  /* TTYPEn of column containing the array.   */
-    pub row: c_long,          /* Table row number.                        */
-    pub ndim: c_int,          /* Expected array dimensionality.           */
-    pub dimlen: *mut c_int,   /* Where to write the array axis lengths.   */
-    pub arrayp: *mut *mut f64, /* Where to write the address of the array  */
-                              /* allocated to store the array.            */
+    /// Image axis number.
+    pub i: c_int,
+    /// Array axis number for index vectors.
+    pub m: c_int,
+    /// Array type: `'c'` (coord) or `'i'` (index).
+    pub kind: c_int,
+    /// `EXTNAME` of the binary table extension.
+    pub extnam: [c_char; 72],
+    /// `EXTVER` of the binary table extension.
+    pub extver: c_int,
+    /// `EXTLEV` of the binary table extension.
+    pub extlev: c_int,
+    /// `TTYPEn` of the column containing the array.
+    pub ttype: [c_char; 72],
+    /// Table row number.
+    pub row: c_long,
+    /// Expected array dimensionality.
+    pub ndim: c_int,
+    /// Where to write the array axis lengths.
+    pub dimlen: *mut c_int,
+    /// Where to write the address of the array allocated to store the array.
+    pub arrayp: *mut *mut f64,
 }
 
-/// We need to implement the Drop trait for wtbarr to ensure that the memory
-/// allocated for the dimlen and arrayp fields is properly freed when the
-/// wtbarr struct is dropped. This is necessary because these fields are
-/// pointers to dynamically allocated memory, and Rust's default behavior
-/// does not automatically free memory allocated with malloc or similar
-/// functions.
+// `dimlen` and `arrayp` point at dynamically allocated memory, which Rust will
+// not free on its own, so `wtbarr` frees them itself.
 impl Drop for wtbarr {
     fn drop(&mut self) {
         unsafe {
@@ -1278,19 +1630,30 @@ impl Drop for wtbarr {
     }
 }
 
-// Do not change this as it is exposed via extern functions
+/// Inputs to, and output control for, the pixel filtering routines.
+///
+/// Do not change the layout: it is exposed through the `extern "C"` entry
+/// points.
 #[repr(C)]
 pub struct PixelFilter {
-    /* input(s) */
+    /// Number of input files.
     pub count: c_int,
+    /// Paths of the input files.
     pub path: *mut *mut c_char,
+    /// Tag naming each input file within the expression.
     pub tag: *mut *mut c_char,
+    /// Open file pointer for each input file.
     pub ifptr: *mut *mut fitsfile,
+    /// The filtering expression to evaluate.
     pub expression: *mut c_char,
-    /* output control */
+    /// `BITPIX` of the output image.
     pub bitpix: c_int,
+    /// `BLANK` value of the output image.
     pub blank: c_long,
+    /// Open file pointer for the output file.
     pub ofptr: *mut fitsfile,
+    /// Keyword to record the expression under in the output header.
     pub keyword: [c_char; FLEN_KEYWORD],
+    /// Comment for that keyword.
     pub comment: [c_char; FLEN_COMMENT],
 }

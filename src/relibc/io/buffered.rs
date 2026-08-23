@@ -9,6 +9,8 @@
 // except according to those terms.
 
 //! Buffering wrappers for I/O traits
+// Vendored from the Rust project's std::io; documented in upstream's style.
+#![allow(missing_docs)]
 
 use core::{cmp, fmt};
 
@@ -204,7 +206,8 @@ impl<R: Seek> Seek for BufReader<R> {
     /// `.into_inner()` immediately after a seek yields the underlying reader
     /// at the same position.
     ///
-    /// To seek without discarding the internal buffer, use [`Seek::seek_relative`].
+    /// To seek without discarding the internal buffer, use
+    /// [`Seek::seek_relative`](std::io::Seek::seek_relative).
     ///
     /// See [`std::io::Seek`] for more details.
     ///

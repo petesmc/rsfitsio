@@ -1,8 +1,17 @@
-/*  This file, fitscore.rs, contains the core set of FITSIO routines.       */
+//! The core FITSIO routines.
+//!
+//! This is the largest module in the crate and the one the others lean on. It
+//! holds the error message stack, the HDU structure machinery -- reading an
+//! HDU's required keywords, working out the column layout of a table, moving
+//! between HDUs and rewriting the header when the structure changes -- the
+//! `TFORMn` / `TDISPn` format parsers, the column name matching, and the
+//! string-to-number conversions the keyword routines are built from.
+//!
+//! Ported from CFITSIO's `fitscore.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
 /*
 
 Copyright (Unpublished--all rights reserved under the copyright laws of
@@ -68,15 +77,24 @@ use crate::{atoi, bb, cs, int_snprintf};
 use crate::{buffers::*, raw_to_slice};
 use crate::{slice_to_str, wrappers::*};
 
+/// Maximum number of messages the error stack holds.
 pub const ERRMSGSIZ: usize = 25;
-pub const ESMARKER: c_char = 27; /* Escape character is used as error stack marker */
+/// Escape character, used as the error stack marker.
+pub const ESMARKER: c_char = 27;
 
-pub const DEL_ALL: c_int = 1; /* delete all messages on the error stack */
-pub const DEL_MARK: c_int = 2; /* delete newest messages back to and including marker */
-pub const DEL_NEWEST: c_int = 3; /* delete the newest message from the stack */
-pub const GET_MESG: c_int = 4; /* pop and return oldest message, ignoring marks */
-pub const PUT_MESG: c_int = 5; /* add a new message to the stack */
-pub const PUT_MARK: c_int = 6; /* add a marker to the stack */
+/// `ffxmsg` action: delete all messages on the error stack.
+pub const DEL_ALL: c_int = 1;
+/// `ffxmsg` action: delete the newest messages back to and including the
+/// marker.
+pub const DEL_MARK: c_int = 2;
+/// `ffxmsg` action: delete the newest message from the stack.
+pub const DEL_NEWEST: c_int = 3;
+/// `ffxmsg` action: pop and return the oldest message, ignoring marks.
+pub const GET_MESG: c_int = 4;
+/// `ffxmsg` action: add a new message to the stack.
+pub const PUT_MESG: c_int = 5;
+/// `ffxmsg` action: add a marker to the stack.
+pub const PUT_MARK: c_int = 6;
 
 // Use this to keep track of allocations so we can deallocate with the same `Layout` used for allocation.
 pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
@@ -84,7 +102,6 @@ pub(crate) static ALLOCATIONS: LazyLock<Mutex<HashMap<usize, (usize, usize)>>> =
 
 static ERROR_STACK: LazyLock<Mutex<ErrorStack>> = LazyLock::new(|| Mutex::new(ErrorStack::new()));
 
-/*--------------------------------------------------------------------------*/
 /// return the current version number of the FITSIO software
 ///
 ///  Note that this method of calculation limits minor/micro fields to < 100.
@@ -102,6 +119,14 @@ pub unsafe extern "C" fn ffvers(version: *mut f32 /* IO - version number */) -> 
     }
 }
 
+/// Return the current version number of the FITSIO software.
+///
+/// Note that this method of calculation limits the minor and micro fields to
+/// less than 100.
+///
+/// # Parameters
+///
+/// * `version` — (O) version number
 pub fn ffvers_safe(version: &mut f32) -> f32 {
     *version = (CFITSIO_MAJOR as f32)
         + (0.01 * (CFITSIO_MINOR as f32))
@@ -235,13 +260,18 @@ pub fn ffvers_safe(version: &mut f32) -> f32 {
     *version
 }
 
-/*--------------------------------------------------------------------------*/
 ///  return the name of the FITS file
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filename` — (O) name of the file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffflnm(
-    fptr: *mut fitsfile,   /* I - FITS file pointer  */
-    filename: *mut c_char, /* O - name of the file   */
-    status: *mut c_int,    /* IO - error status      */
+    fptr: *mut fitsfile,
+    filename: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -253,6 +283,13 @@ pub unsafe extern "C" fn ffflnm(
     }
 }
 
+/// Return the name of the FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filename` — (O) name of the file
+/// * `status`   — (IO) error status
 pub fn ffflnm_safe(fptr: &mut fitsfile, filename: &mut [c_char], status: &mut c_int) -> c_int {
     strcpy_safe(
         filename,
@@ -261,13 +298,18 @@ pub fn ffflnm_safe(fptr: &mut fitsfile, filename: &mut [c_char], status: &mut c_
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the access mode of the FITS file
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filemode` — (O) open mode of the file
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffflmd(
-    fptr: *mut fitsfile,  /* I - FITS file pointer  */
-    filemode: *mut c_int, /* O - open mode of the file  */
-    status: *mut c_int,   /* IO - error status      */
+    fptr: *mut fitsfile,
+    filemode: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -278,20 +320,28 @@ pub unsafe extern "C" fn ffflmd(
     }
 }
 
+/// Return the I/O mode of the FITS file: [`READONLY`] or [`READWRITE`].
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `filemode` — (O) file mode
+/// * `status`   — (IO) error status
 pub fn ffflmd_safe(fptr: &mut fitsfile, filemode: &mut c_int, status: &mut c_int) -> c_int {
     *filemode = fptr.Fptr.writemode;
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return a short descriptive error message that corresponds to the input
 /// error status value.  The message may be up to 30 characters long, plus
 /// the terminating null character.
+///
+/// # Parameters
+///
+/// * `status`  — (I) error status value
+/// * `errtext` — (O) error message (max 30 char long + null)
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffgerr(
-    status: c_int,        /* I - error status value */
-    errtext: *mut c_char, /* O - error message (max 30 char long + null) */
-) {
+pub unsafe extern "C" fn ffgerr(status: c_int, errtext: *mut c_char) {
     // FFI WRAPPER
     unsafe {
         let errtext = slice::from_raw_parts_mut(errtext, 31);
@@ -300,14 +350,15 @@ pub unsafe extern "C" fn ffgerr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return a short descriptive error message that corresponds to the input
 /// error status value.  The message may be up to 30 characters long, plus
 /// the terminating null character.
-pub fn ffgerr_safe(
-    status: c_int,          /* I - error status value */
-    errtext: &mut [c_char], /* O - error message (max 30 char long + null) */
-) {
+///
+/// # Parameters
+///
+/// * `status`  — (I) error status value
+/// * `errtext` — (O) error message (max 30 char long + null)
+pub fn ffgerr_safe(status: c_int, errtext: &mut [c_char]) {
     errtext[0] = 0;
     let t = if status >= 0 && status < 300 {
         match status {
@@ -573,7 +624,6 @@ impl ErrorStack {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// put message on to error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
@@ -581,13 +631,16 @@ pub unsafe extern "C" fn ffpmsg(err_message: *const c_char) {
     ffxmsg(PUT_MESG, err_message.cast_mut());
 }
 
-/*--------------------------------------------------------------------------*/
 /// put message on to error stack
 pub fn ffpmsg_safe(err_message: &[c_char]) {
     let mut stack = ERROR_STACK.lock().unwrap();
     stack.push_message(cstr_bytes(err_message));
 }
 
+/// Push a message onto the error stack, taking it as a `CStr`.
+///
+/// See `ffpmsg_str` and `ffpmsg_slice` for the other spellings; those are
+/// crate-private.
 pub fn ffpmsg_cstr(err_message: &CStr) {
     let mut stack = ERROR_STACK.lock().unwrap();
     stack.push_message(err_message.to_bytes());
@@ -610,7 +663,6 @@ pub(crate) fn ffpmsg_str(err_message: &str) {
     stack.push_message(err_message.as_bytes());
 }
 
-/*--------------------------------------------------------------------------*/
 ///  write a marker to the stack.  It is then possible to pop only those
 ///  messages following the marker off of the stack, leaving the previous
 ///  messages unaffected.
@@ -622,7 +674,6 @@ pub unsafe extern "C" fn ffpmrk() {
     ffpmrk_safe();
 }
 
-/*--------------------------------------------------------------------------*/
 ///  write a marker to the stack.  It is then possible to pop only those
 ///  messages following the marker off of the stack, leaving the previous
 ///  messages unaffected.
@@ -633,7 +684,6 @@ pub fn ffpmrk_safe() {
     stack.push_marker();
 }
 
-/*--------------------------------------------------------------------------*/
 /// get oldest message from error stack, ignoring markers
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
@@ -644,7 +694,6 @@ pub unsafe extern "C" fn ffgmsg(err_message: *mut c_char) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get oldest message from error stack, ignoring markers
 pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
     let mut stack = ERROR_STACK.lock().unwrap();
@@ -666,7 +715,6 @@ pub fn ffgmsg_safe(err_message: &mut [c_char; FLEN_ERRMSG]) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  erase all messages in the error stack
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmsg() {
@@ -675,14 +723,12 @@ pub unsafe extern "C" fn ffcmsg() {
     ffxmsg(DEL_ALL, dummy);
 }
 
-/*--------------------------------------------------------------------------*/
 ///  erase all messages in the error stack
 pub fn ffcmsg_safe() {
     let mut stack = ERROR_STACK.lock().unwrap();
     stack.clear_all();
 }
 
-/*--------------------------------------------------------------------------*/
 /// erase newest messages in the error stack, stopping if a marker is found.
 /// The marker is also erased in this case.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
@@ -691,7 +737,6 @@ pub unsafe extern "C" fn ffcmrk() {
     ffcmrk_safe();
 }
 
-/*--------------------------------------------------------------------------*/
 /// erase newest messages in the error stack, stopping if a marker is found.
 /// The marker is also erased in this case.
 pub fn ffcmrk_safe() {
@@ -699,7 +744,6 @@ pub fn ffcmrk_safe() {
     stack.clear_to_marker();
 }
 
-/*--------------------------------------------------------------------------*/
 /// general routine to get, put, or clear the error message stack.
 /// Use a static array rather than allocating memory as needed for
 /// the error messages because it is likely to be more efficient
@@ -750,7 +794,6 @@ pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// general routine to get, put, or clear the error message stack.
 /// Thread-safe implementation using Mutex-protected VecDeque.
 ///
@@ -812,7 +855,6 @@ pub(crate) fn ffxmsg(action: c_int, errmsg: *mut c_char) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the number of bytes per pixel associated with the datatype
 pub(crate) fn ffpxsz(datatype: c_int) -> usize {
     if datatype == TBYTE {
@@ -840,17 +882,18 @@ pub(crate) fn ffpxsz(datatype: c_int) -> usize {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that the keyword name conforms to the FITS standard.  Must contain
 /// only capital letters, digits, minus or underscore chars.  Trailing spaces
 /// are allowed.  If the input status value is less than zero, then the test
 /// is modified so that upper or lower case letters are allowed, and no
 /// error messages are printed if the keyword is not legal.
+///
+/// # Parameters
+///
+/// * `keyword` — (I) keyword name
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fftkey(
-    keyword: *const c_char, /* I -  keyword name */
-    status: *mut c_int,     /* IO - error status */
-) -> c_int {
+pub unsafe extern "C" fn fftkey(keyword: *const c_char, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -860,16 +903,17 @@ pub unsafe extern "C" fn fftkey(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that the keyword name conforms to the FITS standard.  Must contain
 /// only capital letters, digits, minus or underscore chars.  Trailing spaces
 /// are allowed.  If the input status value is less than zero, then the test
 /// is modified so that upper or lower case letters are allowed, and no
 /// error messages are printed if the keyword is not legal.
-pub fn fftkey_safe(
-    keyword: &[c_char], /* I -  keyword name */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `keyword` — (I) keyword name
+/// * `status`  — (IO) error status
+pub fn fftkey_safe(keyword: &[c_char], status: &mut c_int) -> c_int {
     let mut maxchr: usize;
     let mut spaces: c_int = 0;
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -943,14 +987,15 @@ pub fn fftkey_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that the keyword card conforms to the FITS standard.  Must contain
 /// only printable ASCII characters;
+///
+/// # Parameters
+///
+/// * `card`   — (I) keyword card to test
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn fftrec(
-    card: *mut c_char,  /* I -  keyword card to test */
-    status: *mut c_int, /* IO - error status */
-) -> c_int {
+pub unsafe extern "C" fn fftrec(card: *mut c_char, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -960,13 +1005,14 @@ pub unsafe extern "C" fn fftrec(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Test that the keyword card conforms to the FITS standard.  Must contain
 /// only printable ASCII characters;
-pub fn fftrec_safe(
-    card: &[c_char],    /* I -  keyword card to test */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `card`   — (I) keyword card to test
+/// * `status` — (IO) error status
+pub fn fftrec_safe(card: &[c_char], status: &mut c_int) -> c_int {
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
     if *status > 0 {
@@ -1016,7 +1062,6 @@ pub fn fftrec_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert string to upper case, in place.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffupch(string: *mut c_char) {
@@ -1032,7 +1077,6 @@ pub unsafe extern "C" fn ffupch(string: *mut c_char) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert string to upper case, in place.
 pub fn ffupch_safe(string: &mut [c_char]) {
     let len = strlen_safe(string);
@@ -1041,16 +1085,23 @@ pub fn ffupch_safe(string: &mut [c_char]) {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Make a complete FITS 80-byte keyword card from the input name, value and
 /// comment strings. Output card is null terminated without any trailing blanks.
+///
+/// # Parameters
+///
+/// * `keyname` — (I) keyword name
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `card`    — (O) constructed keyword card
+/// * `status`  — (IO) status value
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffmkky(
-    keyname: *const c_char, /* I - keyword name    */
-    value: *const c_char,   /* I - keyword value   */
-    comm: *const c_char,    /* I - keyword comment */
-    card: *mut c_char,      /* O - constructed keyword card */
-    status: *mut c_int,     /* IO - status value   */
+    keyname: *const c_char,
+    value: *const c_char,
+    comm: *const c_char,
+    card: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1073,15 +1124,22 @@ pub unsafe extern "C" fn ffmkky(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Make a complete FITS 80-byte keyword card from the input name, value and
 /// comment strings. Output card is null terminated without any trailing blanks.
+///
+/// # Parameters
+///
+/// * `keyname` — (I) keyword name
+/// * `value`   — (I) keyword value
+/// * `comm`    — (I) keyword comment
+/// * `card`    — (O) constructed keyword card
+/// * `status`  — (IO) status value
 pub fn ffmkky_safe(
-    keyname: &[c_char],      /* I - keyword name    */
-    value: &[c_char],        /* I - keyword value   */
-    comm: Option<&[c_char]>, /* I - keyword comment */
-    card: &mut [c_char],     /* O - constructed keyword card */
-    status: &mut c_int,      /* IO - status value   */
+    keyname: &[c_char],
+    value: &[c_char],
+    comm: Option<&[c_char]>,
+    card: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut namelen: usize;
     let mut len: usize;
@@ -1319,14 +1377,15 @@ pub fn ffmkky_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// replace the previously read card (i.e. starting 80 bytes before the
 /// fptr.Fptr.nextkey position) with the contents of the input card.
-pub(crate) fn ffmkey(
-    fptr: &mut fitsfile, /* I - FITS file pointer  */
-    card: &[c_char],     /* I - card string value  */
-    status: &mut c_int,  /* IO - error status      */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `card`   — (I) card string value
+/// * `status` — (IO) error status
+pub(crate) fn ffmkey(fptr: &mut fitsfile, card: &[c_char], status: &mut c_int) -> c_int {
     let mut tcard: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut keylength;
 
@@ -1390,14 +1449,20 @@ pub(crate) fn ffmkey(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Construct a keyword name string by appending the index number to the root.
 /// e.g., if root = "TTYPE" and value = 12 then keyname = "TTYPE12".
+///
+/// # Parameters
+///
+/// * `keyroot` — (I) root string for keyword name
+/// * `value`   — (I) index number to be appended to root name
+/// * `keyname` — (O) output root + index keyword name
+/// * `status`  — (IO) error status
 pub fn ffkeyn_safe(
-    keyroot: &[c_char],     /* I - root string for keyword name */
-    value: c_int,           /* I - index number to be appended to root name */
-    keyname: &mut [c_char], /* O - output root + index keyword name */
-    status: &mut c_int,     /* IO - error status  */
+    keyroot: &[c_char],
+    value: c_int,
+    keyname: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut suffix: [c_char; 16] = [0; 16]; /* initialize output name to null */
 
@@ -1426,15 +1491,21 @@ pub fn ffkeyn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Construct a keyword name string by appending the index number to the root.
 /// e.g., if root = "TTYPE" and value = 12 then keyname = "TTYPE12".
+///
+/// # Parameters
+///
+/// * `keyroot` — (I) root string for keyword name
+/// * `value`   — (I) index number to be appended to root name
+/// * `keyname` — (O) output root + index keyword name
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffkeyn(
-    keyroot: *const c_char, /* I - root string for keyword name */
-    value: c_int,           /* I - index number to be appended to root name */
-    keyname: *mut c_char,   /* O - output root + index keyword name */
-    status: *mut c_int,     /* IO - error status  */
+    keyroot: *const c_char,
+    value: c_int,
+    keyname: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1447,15 +1518,21 @@ pub unsafe extern "C" fn ffkeyn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Construct a keyword name string by appending the root string to the index
 /// number. e.g., if root = "TTYPE" and value = 12 then keyname = "12TTYPE".
+///
+/// # Parameters
+///
+/// * `value`   — (I) index number to be appended to root name
+/// * `keyroot` — (I) root string for keyword name
+/// * `keyname` — (O) output root + index keyword name
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffnkey(
-    value: c_int,           /* I - index number to be appended to root name */
-    keyroot: *const c_char, /* I - root string for keyword name */
-    keyname: *mut c_char,   /* O - output root + index keyword name */
-    status: *mut c_int,     /* IO - error status  */
+    value: c_int,
+    keyroot: *const c_char,
+    keyname: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1467,14 +1544,20 @@ pub unsafe extern "C" fn ffnkey(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Construct a keyword name string by appending the root string to the index
 /// number. e.g., if root = "TTYPE" and value = 12 then keyname = "12TTYPE".
+///
+/// # Parameters
+///
+/// * `value`   — (I) index number to be appended to root name
+/// * `keyroot` — (I) root string for keyword name
+/// * `keyname` — (O) output root + index keyword name
+/// * `status`  — (IO) error status
 pub fn ffnkey_safe(
-    value: c_int,           /* I - index number to be appended to root name */
-    keyroot: &[c_char],     /* I - root string for keyword name */
-    keyname: &mut [c_char], /* O - output root + index keyword name */
-    status: &mut c_int,     /* IO - error status  */
+    value: c_int,
+    keyroot: &[c_char],
+    keyname: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     keyname[0] = 0; /* initialize output name to null */
     let rootlen = strlen_safe(keyroot);
@@ -1495,18 +1578,24 @@ pub fn ffnkey_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// ParSe the Value and Comment strings from the input header card string.
 ///
 /// If the card contains a quoted string value, the returned value string
 /// includes the enclosing quote characters.  If comm = NULL, don't return
 /// the comment string.
+///
+/// # Parameters
+///
+/// * `card`   — (I) FITS header card (nominally 80 bytes long)
+/// * `value`  — (O) value string parsed from the card
+/// * `comm`   — (O) comment string parsed from the card
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpsvc(
-    card: *const c_char, /* I - FITS header card (nominally 80 bytes long) */
-    value: *mut c_char,  /* O - value string parsed from the card */
-    comm: *mut c_char,   /* O - comment string parsed from the card */
-    status: *mut c_int,  /* IO - error status   */
+    card: *const c_char,
+    value: *mut c_char,
+    comm: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1527,16 +1616,22 @@ pub unsafe extern "C" fn ffpsvc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// ParSe the Value and Comment strings from the input header card string.
 /// If the card contains a quoted string value, the returned value string
 /// includes the enclosing quote characters.  If comm = NULL, don't return
 /// the comment string.
+///
+/// # Parameters
+///
+/// * `card`   — (I) FITS header card (nominally 80 bytes long)
+/// * `value`  — (O) value string parsed from the card
+/// * `comm`   — (O) comment string parsed from the card
+/// * `status` — (IO) error status
 pub fn ffpsvc_safe(
-    card: &[c_char],      /* I - FITS header card (nominally 80 bytes long) */
-    value: &mut [c_char], /* O - value string parsed from the card */
-    comm: Option<&mut [c_char; FLEN_COMMENT]>, /* O - comment string parsed from the card */
-    status: &mut c_int,   /* IO - error status   */
+    card: &[c_char],
+    value: &mut [c_char],
+    comm: Option<&mut [c_char; FLEN_COMMENT]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut valpos: usize;
     let mut strbuf: [c_char; 21] = [0; 21];
@@ -1756,15 +1851,21 @@ pub fn ffpsvc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// 'Get Template HeaDer'
 /// parse a template header line and create a formated
 /// character string which is suitable for appending to a FITS header
+///
+/// # Parameters
+///
+/// * `tmplt`  — (I) input header template string
+/// * `card`   — (O) returned FITS header record
+/// * `hdtype` — (O) how to interpreter the returned card string
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgthd(
-    tmplt: *const c_char, /* I - input header template string */
-    card: *mut c_char,    /* O - returned FITS header record */
-    hdtype: *mut c_int,   /* O - how to interpreter the returned card string */
+    tmplt: *const c_char,
+    card: *mut c_char,
+    hdtype: *mut c_int,
     /*
       -2 = modify the name of a keyword; the old keyword name
            is returned starting at address chars[0]; the new name
@@ -1777,7 +1878,7 @@ pub unsafe extern "C" fn ffgthd(
            'COMMENT', or blank keyword name)
        2  =  this is the END keyword; do not write it to the header
     */
-    status: *mut c_int, /* IO - error status   */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1793,14 +1894,20 @@ pub unsafe extern "C" fn ffgthd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// 'Get Template HeaDer'
 /// parse a template header line and create a formated
 /// character string which is suitable for appending to a FITS header
+///
+/// # Parameters
+///
+/// * `tmplt`  — (I) input header template string
+/// * `card`   — (O) returned FITS header record
+/// * `hdtype` — (O) how to interpreter the returned card string
+/// * `status` — (IO) error status
 pub fn ffgthd_safe(
-    tmplt: &[c_char],               /* I - input header template string */
-    card: &mut [c_char; FLEN_CARD], /* O - returned FITS header record */
-    hdtype: &mut c_int,             /* O - how to interpreter the returned card string */
+    tmplt: &[c_char],
+    card: &mut [c_char; FLEN_CARD],
+    hdtype: &mut c_int,
     /*
       -2 = modify the name of a keyword; the old keyword name
            is returned starting at address chars[0]; the new name
@@ -1813,7 +1920,7 @@ pub fn ffgthd_safe(
            'COMMENT', or blank keyword name)
        2  =  this is the END keyword; do not write it to the header
     */
-    status: &mut c_int, /* IO - error status   */
+    status: &mut c_int,
 ) -> c_int {
     let mut keyname: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut value: [c_char; 140] = [0; 140];
@@ -2130,12 +2237,11 @@ pub fn ffgthd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Translate a keyword name to a new name, based on a set of patterns.
 ///
 /// The user passes an array of patterns to be matched.  Input pattern
-/// number i is pattern[i][0], and output pattern number i is
-/// pattern[i][1].  Keywords are matched against the input patterns.  If a
+/// number `i` is `pattern[i][0]`, and output pattern number `i` is
+/// `pattern[i][1]`.  Keywords are matched against the input patterns.  If a
 /// match is found then the keyword is re-written according to the output
 /// pattern.
 ///
@@ -2178,27 +2284,43 @@ pub fn ffgthd_safe(
 /// then values of 'n' less than or equal to n_value will match.
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `inrec`    — (I) input string
+/// * `outrec`   — (O) output converted string, or
+/// * `patterns` — (I) pointer to input / output string
+/// * `npat`     — (I) number of templates passed
+/// * `n_value`  — (I) base 'n' template value of interest
+/// * `n_offset` — (I) offset to be applied to the 'n'
+/// * `n_range`  — (I) controls range of 'n' template
+/// * `pat_num`  — (O) matched pattern number (0 based) or -1
+/// * `i`        — (O) value of i, if any, else 0
+/// * `j`        — (O) value of j, if any, else 0
+/// * `m`        — (O) value of m, if any, else 0
+/// * `n`        — (O) value of n, if any, else 0
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_translate_keyword(
-    inrec: *mut c_char,  /* I - input string */
-    outrec: *mut c_char, /* O - output converted string, or */
+    inrec: *mut c_char,
+    outrec: *mut c_char,
     /*     a null string if input does not  */
     /*     match any of the patterns */
-    patterns: *const [*const c_char; 2], /* I - pointer to input / output string */
+    patterns: *const [*const c_char; 2],
     /*     templates */
-    npat: c_int,     /* I - number of templates passed */
-    n_value: c_int,  /* I - base 'n' template value of interest */
-    n_offset: c_int, /* I - offset to be applied to the 'n' */
+    npat: c_int,
+    n_value: c_int,
+    n_offset: c_int,
     /*     value in the output string */
-    n_range: c_int, /* I - controls range of 'n' template */
+    n_range: c_int,
     /*     values of interest (-1,0, or +1) */
-    pat_num: *mut c_int, /* O - matched pattern number (0 based) or -1 */
-    i: *mut c_int,       /* O - value of i, if any, else 0 */
-    j: *mut c_int,       /* O - value of j, if any, else 0 */
-    m: *mut c_int,       /* O - value of m, if any, else 0 */
-    n: *mut c_int,       /* O - value of n, if any, else 0 */
+    pat_num: *mut c_int,
+    i: *mut c_int,
+    j: *mut c_int,
+    m: *mut c_int,
+    n: *mut c_int,
 
-    status: *mut c_int, /* IO - error status */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2245,27 +2367,41 @@ pub unsafe extern "C" fn fits_translate_keyword(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `inrec`    — (I) input string
+/// * `outrec`   — (O) output converted string, or
+/// * `patterns` — (I) pointer to input / output string
+/// * `npat`     — (I) number of templates passed
+/// * `n_value`  — (I) base 'n' template value of interest
+/// * `n_offset` — (I) offset to be applied to the 'n'
+/// * `n_range`  — (I) controls range of 'n' template
+/// * `pat_num`  — (O) matched pattern number (0 based) or -1
+/// * `i`        — (O) value of i, if any, else 0
+/// * `j`        — (O) value of j, if any, else 0
+/// * `m`        — (O) value of m, if any, else 0
+/// * `n`        — (O) value of n, if any, else 0
+/// * `status`   — (IO) error status
 pub fn fits_translate_keyword_safer(
-    inrec: &mut [c_char],  /* I - input string */
-    outrec: &mut [c_char], /* O - output converted string, or */
+    inrec: &mut [c_char],
+    outrec: &mut [c_char],
     /*     a null string if input does not  */
     /*     match any of the patterns */
-    patterns: &[[&CStr; 2]], /* I - pointer to input / output string */
+    patterns: &[[&CStr; 2]],
     /*     templates */
-    npat: c_int,     /* I - number of templates passed */
-    n_value: c_int,  /* I - base 'n' template value of interest */
-    n_offset: c_int, /* I - offset to be applied to the 'n' */
+    npat: c_int,
+    n_value: c_int,
+    n_offset: c_int,
     /*     value in the output string */
-    n_range: c_int, /* I - controls range of 'n' template */
+    n_range: c_int,
     /*     values of interest (-1,0, or +1) */
-    pat_num: Option<&mut c_int>, /* O - matched pattern number (0 based) or -1 */
-    i: Option<&mut c_int>,       /* O - value of i, if any, else 0 */
-    j: Option<&mut c_int>,       /* O - value of j, if any, else 0 */
-    m: Option<&mut c_int>,       /* O - value of m, if any, else 0 */
-    n: Option<&mut c_int>,       /* O - value of n, if any, else 0 */
+    pat_num: Option<&mut c_int>,
+    i: Option<&mut c_int>,
+    j: Option<&mut c_int>,
+    m: Option<&mut c_int>,
+    n: Option<&mut c_int>,
 
-    status: &mut c_int, /* IO - error status */
+    status: &mut c_int,
 ) -> c_int {
     let mut i1: c_int = 0;
     let mut j1: c_int = 0;
@@ -2523,7 +2659,6 @@ pub fn fits_translate_keyword_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy relevant keywords from the table header into the newly
 /// created primary array header.  Convert names of keywords where
 /// appropriate.  See fits_translate_keyword() for the definitions.
@@ -2532,17 +2667,29 @@ pub fn fits_translate_keyword_safer(
 /// continues to the end of the header.
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) pointer to input HDU
+/// * `outfptr`  — (I) pointer to output HDU
+/// * `firstkey` — (I) first HDU record number to start with
+/// * `patterns` — (I) pointer to input / output keyword templates
+/// * `npat`     — (I) number of templates passed
+/// * `n_value`  — (I) base 'n' template value of interest
+/// * `n_offset` — (I) offset to be applied to the 'n' value in the output string
+/// * `n_range`  — (I) controls range of 'n' template values of interest (-1,0, or +1)
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_translate_keywords(
-    infptr: *mut fitsfile,               /* I - pointer to input HDU */
-    outfptr: *mut fitsfile,              /* I - pointer to output HDU */
-    firstkey: c_int,                     /* I - first HDU record number to start with */
-    patterns: *const [*const c_char; 2], /* I - pointer to input / output keyword templates */
-    npat: c_int,                         /* I - number of templates passed */
-    n_value: c_int,                      /* I - base 'n' template value of interest */
-    n_offset: c_int, /* I - offset to be applied to the 'n' value in the output string */
-    n_range: c_int,  /* I - controls range of 'n' template values of interest (-1,0, or +1) */
-    status: *mut c_int, /* IO - error status */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    firstkey: c_int,
+    patterns: *const [*const c_char; 2],
+    npat: c_int,
+    n_value: c_int,
+    n_offset: c_int,
+    n_range: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2571,7 +2718,6 @@ pub unsafe extern "C" fn fits_translate_keywords(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy relevant keywords from the table header into the newly
 /// created primary array header.  Convert names of keywords where
 /// appropriate.  See fits_translate_keyword() for the definitions.
@@ -2580,16 +2726,28 @@ pub unsafe extern "C" fn fits_translate_keywords(
 /// continues to the end of the header.
 ///
 /// This routine was written by Craig Markwardt, GSFC
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) pointer to input HDU
+/// * `outfptr`  — (I) pointer to output HDU
+/// * `firstkey` — (I) first HDU record number to start with
+/// * `patterns` — (I) pointer to input / output keyword templates
+/// * `npat`     — (I) number of templates passed
+/// * `n_value`  — (I) base 'n' template value of interest
+/// * `n_offset` — (I) offset to be applied to the 'n' value in the output string
+/// * `n_range`  — (I) controls range of 'n' template values of interest (-1,0, or +1)
+/// * `status`   — (IO) error status
 pub fn fits_translate_keywords_safe(
-    infptr: &mut fitsfile,   /* I - pointer to input HDU */
-    outfptr: &mut fitsfile,  /* I - pointer to output HDU */
-    firstkey: c_int,         /* I - first HDU record number to start with */
-    patterns: &[[&CStr; 2]], /* I - pointer to input / output keyword templates */
-    npat: c_int,             /* I - number of templates passed */
-    n_value: c_int,          /* I - base 'n' template value of interest */
-    n_offset: c_int,         /* I - offset to be applied to the 'n' value in the output string */
-    n_range: c_int, /* I - controls range of 'n' template values of interest (-1,0, or +1) */
-    status: &mut c_int, /* IO - error status */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    firstkey: c_int,
+    patterns: &[[&CStr; 2]],
+    npat: c_int,
+    n_value: c_int,
+    n_offset: c_int,
+    n_range: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nmore: c_int = 0;
@@ -2679,21 +2837,29 @@ pub fn fits_translate_keywords_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy relevant keywords from the pixel list table header into a newly
 /// created primary array header.  Convert names of keywords where
 /// appropriate.  See fits_translate_pixkeyword() for the definitions.
 ///
 /// Translation begins at header record number 'firstkey', and
 /// continues to the end of the header.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) pointer to input HDU
+/// * `outfptr`  — (I) pointer to output HDU
+/// * `firstkey` — (I) first HDU record number to start with
+/// * `naxis`    — (I) number of axes in the image
+/// * `colnum`   — (I) numbers of the columns to be binned
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_copy_pixlist2image(
-    infptr: *mut fitsfile,  /* I - pointer to input HDU */
-    outfptr: *mut fitsfile, /* I - pointer to output HDU */
-    firstkey: c_int,        /* I - first HDU record number to start with */
-    naxis: c_int,           /* I - number of axes in the image */
-    colnum: *const c_int,   /* I - numbers of the columns to be binned  */
-    status: *mut c_int,     /* IO - error status */
+    infptr: *mut fitsfile,
+    outfptr: *mut fitsfile,
+    firstkey: c_int,
+    naxis: c_int,
+    colnum: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -2706,20 +2872,28 @@ pub unsafe extern "C" fn fits_copy_pixlist2image(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy relevant keywords from the pixel list table header into a newly
 /// created primary array header.  Convert names of keywords where
 /// appropriate.  See fits_translate_pixkeyword() for the definitions.
 ///
 /// Translation begins at header record number 'firstkey', and
 /// continues to the end of the header.
+///
+/// # Parameters
+///
+/// * `infptr`   — (I) pointer to input HDU
+/// * `outfptr`  — (I) pointer to output HDU
+/// * `firstkey` — (I) first HDU record number to start with
+/// * `naxis`    — (I) number of axes in the image
+/// * `colnum`   — (I) numbers of the columns to be binned
+/// * `status`   — (IO) error status
 pub fn fits_copy_pixlist2image_safe(
-    infptr: &mut fitsfile,  /* I - pointer to input HDU */
-    outfptr: &mut fitsfile, /* I - pointer to output HDU */
-    firstkey: c_int,        /* I - first HDU record number to start with */
-    naxis: c_int,           /* I - number of axes in the image */
-    colnum: &[c_int],       /* I - numbers of the columns to be binned  */
-    status: &mut c_int,     /* IO - error status */
+    infptr: &mut fitsfile,
+    outfptr: &mut fitsfile,
+    firstkey: c_int,
+    naxis: c_int,
+    colnum: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let mut nkeys: c_int = 0;
     let mut nmore: c_int = 0;
@@ -2877,11 +3051,10 @@ pub fn fits_copy_pixlist2image_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Translate a keyword name to a new name, based on a set of patterns.
 /// The user passes an array of patterns to be matched.  Input pattern
-/// number i is pattern[i][0], and output pattern number i is
-/// pattern[i][1].  Keywords are matched against the input patterns.  If a
+/// number `i` is `pattern[i][0]`, and output pattern number `i` is
+/// `pattern[i][1]`.  Keywords are matched against the input patterns.  If a
 /// match is found then the keyword is re-written according to the output
 /// pattern.
 ///
@@ -2922,23 +3095,34 @@ pub fn fits_copy_pixlist2image_safe(
 /// considered as a pattern match.  If n_range = +1, then all values of
 /// 'n' greater than or equal to n_value will be a match, and if -1,
 /// then values of 'n' less than or equal to n_value will match.
+///
+/// # Parameters
+///
+/// * `inrec`    — (I) input string
+/// * `outrec`   — (O) output converted string, or
+/// * `patterns` — (I) pointer to input / output string
+/// * `npat`     — (I) number of templates passed
+/// * `_naxis`   — (I) number of columns to be binned
+/// * `colnum`   — (I) numbers of the columns to be binned
+/// * `pat_num`  — (O) matched pattern number (0 based) or -1
+/// * `status`   — (IO) error status
 pub(crate) fn fits_translate_pixkeyword(
-    inrec: &[c_char],      /* I - input string */
-    outrec: &mut [c_char], /* O - output converted string, or */
+    inrec: &[c_char],
+    outrec: &mut [c_char],
     /*     a null string if input does not  */
     /*     match any of the patterns */
-    patterns: &[[*const c_char; 2]], /* I - pointer to input / output string */
+    patterns: &[[*const c_char; 2]],
     /*     templates */
-    npat: usize,         /* I - number of templates passed */
-    _naxis: c_int,       /* I - number of columns to be binned */
-    colnum: &[c_int],    /* I - numbers of the columns to be binned */
-    pat_num: &mut c_int, /* O - matched pattern number (0 based) or -1 */
+    npat: usize,
+    _naxis: c_int,
+    colnum: &[c_int],
+    pat_num: &mut c_int,
     i: &mut c_int,
     j: &mut c_int,
     n: &mut c_int,
     m: &mut c_int,
     l: &mut c_int,
-    status: &mut c_int, /* IO - error status */
+    status: &mut c_int,
 ) -> c_int {
     let mut i1: c_int = 0;
     let mut j1: c_int = 0;
@@ -3210,16 +3394,23 @@ pub(crate) fn fits_translate_pixkeyword(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the ASCII table TFORM column format to determine the data
 /// type, the field width, and number of decimal places (if relevant)
+///
+/// # Parameters
+///
+/// * `tform`    — (I) format code from the TFORMn keyword
+/// * `dtcode`   — (O) numerical datatype code
+/// * `twidth`   — (O) width of the field, in chars
+/// * `decimals` — (O) number of decimal places (F, E, D format)
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffasfm(
-    tform: *const c_char, /* I - format code from the TFORMn keyword */
-    dtcode: *mut c_int,   /* O - numerical datatype code */
-    twidth: *mut c_long,  /* O - width of the field, in chars */
-    decimals: *mut c_int, /* O - number of decimal places (F, E, D format) */
-    status: *mut c_int,   /* IO - error status      */
+    tform: *const c_char,
+    dtcode: *mut c_int,
+    twidth: *mut c_long,
+    decimals: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3234,15 +3425,22 @@ pub unsafe extern "C" fn ffasfm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the ASCII table TFORM column format to determine the data
 /// type, the field width, and number of decimal places (if relevant)
+///
+/// # Parameters
+///
+/// * `tform`    — (I) format code from the TFORMn keyword
+/// * `dtcode`   — (O) numerical datatype code
+/// * `twidth`   — (O) width of the field, in chars
+/// * `decimals` — (O) number of decimal places (F, E, D format)
+/// * `status`   — (IO) error status
 pub fn ffasfm_safe(
-    tform: &[c_char],             /* I - format code from the TFORMn keyword */
-    dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
-    twidth: Option<&mut c_long>,  /* O - width of the field, in chars */
-    decimals: Option<&mut c_int>, /* O - number of decimal places (F, E, D format) */
-    status: &mut c_int,           /* IO - error status      */
+    tform: &[c_char],
+    dtcode: Option<&mut c_int>,
+    twidth: Option<&mut c_long>,
+    decimals: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut datacode;
     let mut longval: c_long = 0;
@@ -3294,9 +3492,7 @@ pub fn ffasfm_safe(
         return *status;
     }
 
-    /*-----------------------------------------------*/
     /*       determine default datatype code         */
-    /*-----------------------------------------------*/
     if temp[form] == bb(b'A') {
         datacode = TSTRING;
     } else if temp[form] == bb(b'I') {
@@ -3324,9 +3520,7 @@ pub fn ffasfm_safe(
     form += 1; /* point to the start of field width */
 
     if datacode == TSTRING || datacode == TLONG {
-        /*-----------------------------------------------*/
         /*              A or I data formats:             */
-        /*-----------------------------------------------*/
 
         if ffc2ii(&temp[form..], &mut width, status) <= 0 {
             /* read the width field */
@@ -3341,9 +3535,7 @@ pub fn ffasfm_safe(
             }
         }
     } else {
-        /*-----------------------------------------------*/
         /*              F, E or D data formats:          */
-        /*-----------------------------------------------*/
 
         if ffc2rr(&temp[form..], &mut fwidth, status) <= 0 {
             /* read ww.dd width field */
@@ -3407,16 +3599,23 @@ pub fn ffasfm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the binary table TFORM column format to determine the data
 /// type, repeat count, and the field width (if it is an ASCII (A) field)
+///
+/// # Parameters
+///
+/// * `tform`   — (I) format code from the TFORMn keyword
+/// * `dtcode`  — (O) numerical datatype code
+/// * `trepeat` — (O) repeat count of the field
+/// * `twidth`  — (O) width of the field, in chars
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffbnfm(
-    tform: *const c_char, /* I - format code from the TFORMn keyword */
-    dtcode: *mut c_int,   /* O - numerical datatype code */
-    trepeat: *mut c_long, /* O - repeat count of the field  */
-    twidth: *mut c_long,  /* O - width  of the field, in chars */
-    status: *mut c_int,   /* IO - error status      */
+    tform: *const c_char,
+    dtcode: *mut c_int,
+    trepeat: *mut c_long,
+    twidth: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3431,15 +3630,22 @@ pub unsafe extern "C" fn ffbnfm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the binary table TFORM column format to determine the data
 /// type, repeat count, and the field width (if it is an ASCII (A) field)
+///
+/// # Parameters
+///
+/// * `tform`   — (I) format code from the TFORMn keyword
+/// * `dtcode`  — (O) numerical datatype code
+/// * `trepeat` — (O) repeat count of the field
+/// * `twidth`  — (O) width of the field, in chars
+/// * `status`  — (IO) error status
 pub fn ffbnfm_safe(
-    tform: &[c_char],                 /* I - format code from the TFORMn keyword */
-    mut dtcode: Option<&mut c_int>,   /* O - numerical datatype code */
-    mut trepeat: Option<&mut c_long>, /* O - repeat count of the field  */
-    mut twidth: Option<&mut c_long>,  /* O - width  of the field, in chars */
-    status: &mut c_int,               /* IO - error status      */
+    tform: &[c_char],
+    mut dtcode: Option<&mut c_int>,
+    mut trepeat: Option<&mut c_long>,
+    mut twidth: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut datacode; /* flag variable cols w/ neg type code */
     let variable;
@@ -3490,9 +3696,7 @@ pub fn ffbnfm_safe(
     strcpy_safe(&mut temp, &tform[ii..]); /* copy format string */
     ffupch_safe(&mut temp); /* make sure it is in upper case */
 
-    /*-----------------------------------------------*/
     /*       get the repeat count                    */
-    /*-----------------------------------------------*/
 
     let mut ii = 0;
     while isdigit_safe(temp[ii]) {
@@ -3530,9 +3734,7 @@ pub fn ffbnfm_safe(
         */
     }
 
-    /*-----------------------------------------------*/
     /*             determine datatype code           */
-    /*-----------------------------------------------*/
     let mut fi = ii;
     /* skip over the repeat field */
 
@@ -3656,16 +3858,23 @@ pub fn ffbnfm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the binary table TFORM column format to determine the data
 /// type, repeat count, and the field width (if it is an ASCII (A) field)
+///
+/// # Parameters
+///
+/// * `tform`   — (I) format code from the TFORMn keyword
+/// * `dtcode`  — (O) numerical datatype code
+/// * `trepeat` — (O) repeat count of the field
+/// * `twidth`  — (O) width of the field, in chars
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffbnfmll(
-    tform: *const c_char,   /* I - format code from the TFORMn keyword */
-    dtcode: *mut c_int,     /* O - numerical datatype code */
-    trepeat: *mut LONGLONG, /* O - repeat count of the field  */
-    twidth: *mut c_long,    /* O - width of the field, in chars */
-    status: *mut c_int,     /* IO - error status      */
+    tform: *const c_char,
+    dtcode: *mut c_int,
+    trepeat: *mut LONGLONG,
+    twidth: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -3679,15 +3888,22 @@ pub unsafe extern "C" fn ffbnfmll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// parse the binary table TFORM column format to determine the data
 /// type, repeat count, and the field width (if it is an ASCII (A) field)
+///
+/// # Parameters
+///
+/// * `tform`   — (I) format code from the TFORMn keyword
+/// * `dtcode`  — (O) numerical datatype code
+/// * `trepeat` — (O) repeat count of the field
+/// * `twidth`  — (O) width of the field, in chars
+/// * `status`  — (IO) error status
 pub fn ffbnfmll_safe(
-    tform: &[c_char],                   /* I - format code from the TFORMn keyword */
-    mut dtcode: Option<&mut c_int>,     /* O - numerical datatype code */
-    mut trepeat: Option<&mut LONGLONG>, /* O - repeat count of the field  */
-    mut twidth: Option<&mut c_long>,    /* O - width of the field, in chars */
-    status: &mut c_int,                 /* IO - error status      */
+    tform: &[c_char],
+    mut dtcode: Option<&mut c_int>,
+    mut trepeat: Option<&mut LONGLONG>,
+    mut twidth: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut datacode: c_int;
     let variable: c_int;
@@ -3739,9 +3955,7 @@ pub fn ffbnfmll_safe(
     ffupch_safe(&mut temp); /* make sure it is in upper case */
     let mut fi: usize = 0; /* point to start of format string */
 
-    /*-----------------------------------------------*/
     /*       get the repeat count                    */
-    /*-----------------------------------------------*/
 
     let mut ii = 0;
     while isdigit_safe(temp[fi + ii]) {
@@ -3759,9 +3973,7 @@ pub fn ffbnfmll_safe(
         sscanf_lf(&temp[fi..], cs!(c"%lf"), &raw mut drepeat);
         repeat = (drepeat + 0.1) as LONGLONG;
     }
-    /*-----------------------------------------------*/
     /*             determine datatype code           */
-    /*-----------------------------------------------*/
 
     fi += ii; /* skip over the repeat field */
 
@@ -3876,14 +4088,15 @@ pub fn ffbnfmll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert the FITS format string for an ASCII Table extension column into the
 /// equivalent C format string that can be used in a printf statement, after
 /// the values have been read as a double.
-pub(crate) fn ffcfmt(
-    tform: &[c_char],     /* value of an ASCII table TFORMn keyword */
-    cform: &mut [c_char], /* equivalent format code in C language syntax */
-) {
+///
+/// # Parameters
+///
+/// * `tform` — value of an ASCII table TFORMn keyword
+/// * `cform` — equivalent format code in C language syntax
+pub(crate) fn ffcfmt(tform: &[c_char], cform: &mut [c_char]) {
     cform[0] = 0;
     let mut ii = 0;
     while tform[ii] != 0 && tform[ii] == bb(b' ') {
@@ -3947,13 +4160,14 @@ pub(crate) fn ffcfmt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert the FITS TDISPn display format into the equivalent C format
 /// suitable for use in a printf statement.
-pub(crate) fn ffcdsp(
-    tform: &[c_char],     /* value of an ASCII table TFORMn keyword */
-    cform: &mut [c_char], /* equivalent format code in C language syntax */
-) {
+///
+/// # Parameters
+///
+/// * `tform` — value of an ASCII table TFORMn keyword
+/// * `cform` — equivalent format code in C language syntax
+pub(crate) fn ffcdsp(tform: &[c_char], cform: &mut [c_char]) {
     let mut ii: usize;
 
     cform[0] = 0;
@@ -4002,17 +4216,24 @@ pub(crate) fn ffcdsp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Determine the column number corresponding to an input column name.
 /// The first column of the table = column 1;  
 /// This supports the * and ? wild cards in the input template.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pionter
+/// * `casesen` — (I) case sensitive string comparison? 0=no
+/// * `templt`  — (I) input name of column (w/wildcards)
+/// * `colnum`  — (O) number of the named column; 1=first col
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcno(
-    fptr: *mut fitsfile,   /* I - FITS file pionter                       */
-    casesen: c_int,        /* I - case sensitive string comparison? 0=no  */
-    templt: *const c_char, /* I - input name of column (w/wildcards)      */
-    colnum: *mut c_int,    /* O - number of the named column; 1=first col */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    casesen: c_int,
+    templt: *const c_char,
+    colnum: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4025,16 +4246,23 @@ pub unsafe extern "C" fn ffgcno(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Determine the column number corresponding to an input column name.
 /// The first column of the table = column 1;  
 /// This supports the * and ? wild cards in the input template.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pionter
+/// * `casesen` — (I) case sensitive string comparison? 0=no
+/// * `templt`  — (I) input name of column (w/wildcards)
+/// * `colnum`  — (O) number of the named column; 1=first col
+/// * `status`  — (IO) error status
 pub fn ffgcno_safe(
-    fptr: &mut fitsfile, /* I - FITS file pionter                       */
-    casesen: c_int,      /* I - case sensitive string comparison? 0=no  */
-    templt: &[c_char],   /* I - input name of column (w/wildcards)      */
-    colnum: &mut c_int,  /* O - number of the named column; 1=first col */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    casesen: c_int,
+    templt: &[c_char],
+    colnum: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut colname: [c_char; FLEN_VALUE] = [0; FLEN_VALUE]; /*  temporary string to hold column name  */
 
@@ -4043,21 +4271,29 @@ pub fn ffgcno_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the full column name and column number of the next column whose
 /// TTYPEn keyword value matches the input template string.
 /// The template may contain the * and ? wildcards.  Status = 237 is
 /// returned if the match is not unique.  If so, one may call this routine
 /// again with input status=237  to get the next match.  A status value of
 /// 219 is returned when there are no more matching columns.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `casesen` — (I) case sensitive string comparison? 0=no
+/// * `templt`  — (I) input name of column (w/wildcards)
+/// * `colname` — (O) full column name up to 68 + 1 chars long
+/// * `colnum`  — (O) number of the named column; 1=first col
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcnn(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    casesen: c_int,        /* I - case sensitive string comparison? 0=no  */
-    templt: *const c_char, /* I - input name of column (w/wildcards)      */
-    colname: *mut c_char,  /* O - full column name up to 68 + 1 chars long*/
-    colnum: *mut c_int,    /* O - number of the named column; 1=first col */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    casesen: c_int,
+    templt: *const c_char,
+    colname: *mut c_char,
+    colnum: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4072,20 +4308,28 @@ pub unsafe extern "C" fn ffgcnn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the full column name and column number of the next column whose
 /// TTYPEn keyword value matches the input template string.
 /// The template may contain the * and ? wildcards.  Status = 237 is
 /// returned if the match is not unique.  If so, one may call this routine
 /// again with input status=237  to get the next match.  A status value of
 /// 219 is returned when there are no more matching columns.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `casesen` — (I) case sensitive string comparison? 0=no
+/// * `templt`  — (I) input name of column (w/wildcards)
+/// * `colname` — (O) full column name up to 68 + 1 chars long
+/// * `colnum`  — (O) number of the named column; 1=first col
+/// * `status`  — (IO) error status
 pub fn ffgcnn_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                       */
-    casesen: c_int,         /* I - case sensitive string comparison? 0=no  */
-    templt: &[c_char],      /* I - input name of column (w/wildcards)      */
-    colname: &mut [c_char], /* O - full column name up to 68 + 1 chars long*/
-    colnum: &mut c_int,     /* O - number of the named column; 1=first col */
-    status: &mut c_int,     /* IO - error status                           */
+    fptr: &mut fitsfile,
+    casesen: c_int,
+    templt: &[c_char],
+    colname: &mut [c_char],
+    colnum: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut errmsg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut tstatus: c_int;
@@ -4197,7 +4441,6 @@ pub fn ffgcnn_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  compare the template to the string and test if they match.
 ///
 ///  The strings are limited to 68 characters or less (the max. length
@@ -4212,13 +4455,21 @@ pub fn ffgcnn_safe(
 ///  is considered to be an exact rather than a wild card match to
 ///  the string 'AB*DE'.  The '#' wild card in the template string will
 ///  match any consecutive string of decimal digits in the colname.
+///
+/// # Parameters
+///
+/// * `templt`  — (I) input template (may have wildcards)
+/// * `colname` — (I) full column name up to 68 + 1 chars long
+/// * `casesen` — (I) case sensitive string comparison? 1=yes
+/// * `matchi`  — (O) do template and colname match? 1=yes
+/// * `exact`   — (O) do strings exactly match, or wildcards
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcmps(
-    templt: *const c_char,  /* I - input template (may have wildcards)      */
-    colname: *const c_char, /* I - full column name up to 68 + 1 chars long */
-    casesen: c_int,         /* I - case sensitive string comparison? 1=yes  */
-    matchi: *mut c_int,     /* O - do template and colname match? 1=yes     */
-    exact: *mut c_int,      /* O - do strings exactly match, or wildcards   */
+    templt: *const c_char,
+    colname: *const c_char,
+    casesen: c_int,
+    matchi: *mut c_int,
+    exact: *mut c_int,
 ) {
     // FFI WRAPPER
     unsafe {
@@ -4232,7 +4483,6 @@ pub unsafe extern "C" fn ffcmps(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  compare the template to the string and test if they match.
 ///
 ///  The strings are limited to 68 characters or less (the max. length
@@ -4247,12 +4497,20 @@ pub unsafe extern "C" fn ffcmps(
 ///  is considered to be an exact rather than a wild card match to
 ///  the string 'AB*DE'.  The '#' wild card in the template string will
 ///  match any consecutive string of decimal digits in the colname.
+///
+/// # Parameters
+///
+/// * `templt`  — (I) input template (may have wildcards)
+/// * `colname` — (I) full column name up to 68 + 1 chars long
+/// * `casesen` — (I) case sensitive string comparison? 1=yes
+/// * `matchi`  — (O) do template and colname match? 1=yes
+/// * `exact`   — (O) do strings exactly match, or wildcards
 pub fn ffcmps_safe(
-    templt: &[c_char],  /* I - input template (may have wildcards)      */
-    colname: &[c_char], /* I - full column name up to 68 + 1 chars long */
-    casesen: c_int,     /* I - case sensitive string comparison? 1=yes  */
-    matchi: &mut c_int, /* O - do template and colname match? 1=yes     */
-    exact: &mut c_int,  /* O - do strings exactly match, or wildcards   */
+    templt: &[c_char],
+    colname: &[c_char],
+    casesen: c_int,
+    matchi: &mut c_int,
+    exact: &mut c_int,
 ) {
     let mut found;
     let mut t1;
@@ -4390,7 +4648,6 @@ pub fn ffcmps_safe(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Type of table column.
 ///
 /// Returns the datatype code of the column, as well as the vector
@@ -4398,14 +4655,23 @@ pub fn ffcmps_safe(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtcl(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    colnum: c_int,        /* I - column number                           */
-    typecode: *mut c_int, /* O - datatype code (21 = short, etc)         */
-    repeat: *mut c_long,  /* O - repeat count of field                   */
-    width: *mut c_long,   /* O - if ASCII, width of field or unit string */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    typecode: *mut c_int,
+    repeat: *mut c_long,
+    width: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4419,7 +4685,6 @@ pub unsafe extern "C" fn ffgtcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Type of table column.
 ///
 /// Returns the datatype code of the column, as well as the vector
@@ -4427,13 +4692,22 @@ pub unsafe extern "C" fn ffgtcl(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 pub fn ffgtcl_safe(
-    fptr: &mut fitsfile,          /* I - FITS file pointer                       */
-    colnum: c_int,                /* I - column number                           */
-    typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
-    repeat: Option<&mut c_long>,  /* O - repeat count of field                   */
-    width: Option<&mut c_long>,   /* O - if ASCII, width of field or unit string */
-    status: &mut c_int,           /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    typecode: Option<&mut c_int>,
+    repeat: Option<&mut c_long>,
+    width: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut trepeat: LONGLONG = 0;
     let mut twidth: LONGLONG = 0;
@@ -4462,7 +4736,6 @@ pub fn ffgtcl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Type of table column.
 ///
 /// Returns the datatype code of the column, as well as the vector
@@ -4470,14 +4743,23 @@ pub fn ffgtcl_safe(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtclll(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - column number                           */
-    typecode: *mut c_int,  /* O - datatype code (21 = short, etc)         */
-    repeat: *mut LONGLONG, /* O - repeat count of field                   */
-    width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    typecode: *mut c_int,
+    repeat: *mut LONGLONG,
+    width: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4492,7 +4774,6 @@ pub unsafe extern "C" fn ffgtclll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Type of table column.
 ///
 /// Returns the datatype code of the column, as well as the vector
@@ -4500,13 +4781,22 @@ pub unsafe extern "C" fn ffgtclll(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 pub fn ffgtclll_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                       */
-    colnum: c_int,                 /* I - column number                           */
-    typecode: Option<&mut c_int>,  /* O - datatype code (21 = short, etc)         */
-    repeat: Option<&mut LONGLONG>, /* O - repeat count of field                   */
-    width: Option<&mut LONGLONG>,  /* O - if ASCII, width of field or unit string */
-    status: &mut c_int,            /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    typecode: Option<&mut c_int>,
+    repeat: Option<&mut LONGLONG>,
+    width: Option<&mut LONGLONG>,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype = 0;
     let mut decims = 0;
@@ -4567,7 +4857,6 @@ pub fn ffgtclll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the 'equivalent' table column type.
 ///
 /// This routine is similar to the ffgtcl routine (which returns the physical
@@ -4582,14 +4871,23 @@ pub fn ffgtclll_safe(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffeqty(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                       */
-    colnum: c_int,        /* I - column number                           */
-    typecode: *mut c_int, /* O - datatype code (21 = short, etc)         */
-    repeat: *mut c_long,  /* O - repeat count of field                   */
-    width: *mut c_long,   /* O - if ASCII, width of field or unit string */
-    status: *mut c_int,   /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    typecode: *mut c_int,
+    repeat: *mut c_long,
+    width: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4603,7 +4901,6 @@ pub unsafe extern "C" fn ffeqty(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the 'equivalent' table column type.
 ///
 /// This routine is similar to the ffgtcl routine (which returns the physical
@@ -4618,13 +4915,22 @@ pub unsafe extern "C" fn ffeqty(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 pub fn ffeqty_safe(
-    fptr: &mut fitsfile,          /* I - FITS file pointer                       */
-    colnum: c_int,                /* I - column number                           */
-    typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
-    repeat: Option<&mut c_long>,  /* O - repeat count of field                   */
-    width: Option<&mut c_long>,   /* O - if ASCII, width of field or unit string */
-    status: &mut c_int,           /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    typecode: Option<&mut c_int>,
+    repeat: Option<&mut c_long>,
+    width: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut trepeat: LONGLONG = 0;
     let mut twidth: LONGLONG = 0;
@@ -4649,7 +4955,6 @@ pub fn ffeqty_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the 'equivalent' table column type.
 ///
 /// This routine is similar to the ffgtcl routine (which returns the physical
@@ -4664,14 +4969,23 @@ pub fn ffeqty_safe(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffeqtyll(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - column number                           */
-    typecode: *mut c_int,  /* O - datatype code (21 = short, etc)         */
-    repeat: *mut LONGLONG, /* O - repeat count of field                   */
-    width: *mut LONGLONG,  /* O - if ASCII, width of field or unit string */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    typecode: *mut c_int,
+    repeat: *mut LONGLONG,
+    width: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4686,7 +5000,6 @@ pub unsafe extern "C" fn ffeqtyll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the 'equivalent' table column type.
 ///
 /// This routine is similar to the ffgtcl routine (which returns the physical
@@ -4701,13 +5014,22 @@ pub unsafe extern "C" fn ffeqtyll(
 /// width of the field or a unit string within the field.  This supports the
 /// TFORMn = 'rAw' syntax for specifying arrays of substrings, so
 /// if TFORMn = '60A12' then repeat = 60 and width = 12.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number
+/// * `typecode` — (O) datatype code (21 = short, etc)
+/// * `repeat`   — (O) repeat count of field
+/// * `width`    — (O) if ASCII, width of field or unit string
+/// * `status`   — (IO) error status
 pub fn ffeqtyll_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - column number                           */
-    mut typecode: Option<&mut c_int>, /* O - datatype code (21 = short, etc)         */
-    repeat: Option<&mut LONGLONG>, /* O - repeat count of field                   */
-    width: Option<&mut LONGLONG>, /* O - if ASCII, width of field or unit string */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    mut typecode: Option<&mut c_int>,
+    repeat: Option<&mut LONGLONG>,
+    width: Option<&mut LONGLONG>,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype: c_int = 0;
     let mut decims: c_int = 0;
@@ -4873,13 +5195,18 @@ pub fn ffeqtyll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of columns in the table (= TFIELDS keyword)
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ncols`  — (O) number of columns in the table
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgncl(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    ncols: *mut c_int,   /* O - number of columns in the table          */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    ncols: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4891,13 +5218,14 @@ pub unsafe extern "C" fn ffgncl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of columns in the table (= TFIELDS keyword)
-pub fn ffgncl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    ncols: &mut c_int,   /* O - number of columns in the table          */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `ncols`  — (O) number of columns in the table
+/// * `status` — (IO) error status
+pub fn ffgncl_safe(fptr: &mut fitsfile, ncols: &mut c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -4921,13 +5249,18 @@ pub fn ffgncl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of rows in the table (= NAXIS2 keyword)
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrows`  — (O) number of rows in the table
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgnrw(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    nrows: *mut c_long,  /* O - number of rows in the table             */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    nrows: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4939,13 +5272,14 @@ pub unsafe extern "C" fn ffgnrw(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of rows in the table (= NAXIS2 keyword)
-pub fn ffgnrw_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    nrows: &mut c_long,  /* O - number of rows in the table             */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrows`  — (O) number of rows in the table
+/// * `status` — (IO) error status
+pub fn ffgnrw_safe(fptr: &mut fitsfile, nrows: &mut c_long, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -4970,13 +5304,18 @@ pub fn ffgnrw_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of rows in the table (= NAXIS2 keyword)
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrows`  — (O) number of rows in the table
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgnrwll(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                     */
-    nrows: *mut LONGLONG, /* O - number of rows in the table           */
-    status: *mut c_int,   /* IO - error status                         */
+    fptr: *mut fitsfile,
+    nrows: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -4988,13 +5327,14 @@ pub unsafe extern "C" fn ffgnrwll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the number of rows in the table (= NAXIS2 keyword)
-pub fn ffgnrwll_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                     */
-    nrows: &mut LONGLONG, /* O - number of rows in the table           */
-    status: &mut c_int,   /* IO - error status                         */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nrows`  — (O) number of rows in the table
+/// * `status` — (IO) error status
+pub fn ffgnrwll_safe(fptr: &mut fitsfile, nrows: &mut LONGLONG, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -5018,21 +5358,34 @@ pub fn ffgnrwll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get ASCII table column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tbcol`  — (O) TBCOLn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `tform`  — (O) TFORMn keyword value
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgacl(
-    fptr: *mut fitsfile, /* I - FITS file pointer                      */
-    colnum: c_int,       /* I - column number                          */
-    ttype: *mut c_char,  /* O - TTYPEn keyword value                   */
-    tbcol: *mut c_long,  /* O - TBCOLn keyword value                   */
-    tunit: *mut c_char,  /* O - TUNITn keyword value                   */
-    tform: *mut c_char,  /* O - TFORMn keyword value                   */
-    tscal: *mut f64,     /* O - TSCALn keyword value                   */
-    tzero: *mut f64,     /* O - TZEROn keyword value                   */
-    tnull: *mut c_char,  /* O - TNULLn keyword value                   */
-    tdisp: *mut c_char,  /* O - TDISPn keyword value                   */
-    status: *mut c_int,  /* IO - error status                          */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    ttype: *mut c_char,
+    tbcol: *mut c_long,
+    tunit: *mut c_char,
+    tform: *mut c_char,
+    tscal: *mut f64,
+    tzero: *mut f64,
+    tnull: *mut c_char,
+    tdisp: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5074,20 +5427,33 @@ pub unsafe extern "C" fn ffgacl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get ASCII table column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tbcol`  — (O) TBCOLn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `tform`  — (O) TFORMn keyword value
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 pub fn ffgacl_safer(
-    fptr: &mut fitsfile,          /* I - FITS file pointer                      */
-    colnum: c_int,                /* I - column number                          */
-    ttype: Option<&mut [c_char]>, /* O - TTYPEn keyword value                   */
-    tbcol: Option<&mut c_long>,   /* O - TBCOLn keyword value                   */
-    tunit: Option<&mut [c_char]>, /* O - TUNITn keyword value                   */
-    tform: Option<&mut [c_char]>, /* O - TFORMn keyword value                   */
-    tscal: Option<&mut f64>,      /* O - TSCALn keyword value                   */
-    tzero: Option<&mut f64>,      /* O - TZEROn keyword value                   */
-    tnull: Option<&mut [c_char]>, /* O - TNULLn keyword value                   */
-    tdisp: Option<&mut [c_char]>, /* O - TDISPn keyword value                   */
-    status: &mut c_int,           /* IO - error status                          */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    ttype: Option<&mut [c_char]>,
+    tbcol: Option<&mut c_long>,
+    tunit: Option<&mut [c_char]>,
+    tform: Option<&mut [c_char]>,
+    tscal: Option<&mut f64>,
+    tzero: Option<&mut f64>,
+    tnull: Option<&mut [c_char]>,
+    tdisp: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -5157,21 +5523,34 @@ pub fn ffgacl_safer(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get BINTABLE column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `dtype`  — (O) datatype char: I, J, E, D, etc.
+/// * `repeat` — (O) vector column repeat count
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value integer cols only
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgbcl(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
-    colnum: c_int,           /* I - column number                          */
-    ttype: *mut c_char,      /* O - TTYPEn keyword value                   */
-    tunit: *mut c_char,      /* O - TUNITn keyword value                   */
-    dtype: *mut [c_char; 2], /* O - datatype char: I, J, E, D, etc.        */
-    repeat: *mut c_long,     /* O - vector column repeat count             */
-    tscal: *mut f64,         /* O - TSCALn keyword value                   */
-    tzero: *mut f64,         /* O - TZEROn keyword value                   */
-    tnull: *mut c_long,      /* O - TNULLn keyword value integer cols only */
-    tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
-    status: *mut c_int,      /* IO - error status                          */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    ttype: *mut c_char,
+    tunit: *mut c_char,
+    dtype: *mut [c_char; 2],
+    repeat: *mut c_long,
+    tscal: *mut f64,
+    tzero: *mut f64,
+    tnull: *mut c_long,
+    tdisp: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5208,20 +5587,33 @@ pub unsafe extern "C" fn ffgbcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get BINTABLE column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `dtype`  — (O) datatype char: I, J, E, D, etc.
+/// * `repeat` — (O) vector column repeat count
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value integer cols only
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 pub fn ffgbcl_safe(
-    fptr: &mut fitsfile,             /* I - FITS file pointer                      */
-    colnum: c_int,                   /* I - column number                          */
-    ttype: Option<&mut [c_char]>,    /* O - TTYPEn keyword value                   */
-    tunit: Option<&mut [c_char]>,    /* O - TUNITn keyword value                   */
-    dtype: Option<&mut [c_char; 2]>, /* O - datatype char: I, J, E, D, etc.        */
-    repeat: Option<&mut c_long>,     /* O - vector column repeat count             */
-    tscal: Option<&mut f64>,         /* O - TSCALn keyword value                   */
-    tzero: Option<&mut f64>,         /* O - TZEROn keyword value                   */
-    tnull: Option<&mut c_long>,      /* O - TNULLn keyword value integer cols only */
-    tdisp: Option<&mut [c_char]>,    /* O - TDISPn keyword value                   */
-    status: &mut c_int,              /* IO - error status                          */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    ttype: Option<&mut [c_char]>,
+    tunit: Option<&mut [c_char]>,
+    dtype: Option<&mut [c_char; 2]>,
+    repeat: Option<&mut c_long>,
+    tscal: Option<&mut f64>,
+    tzero: Option<&mut f64>,
+    tnull: Option<&mut c_long>,
+    tdisp: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut trepeat = 0;
     let mut ttnull = 0;
@@ -5255,21 +5647,34 @@ pub fn ffgbcl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get BINTABLE column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `dtype`  — (O) datatype char: I, J, E, D, etc.
+/// * `repeat` — (O) vector column repeat count
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value integer cols only
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgbclll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
-    colnum: c_int,           /* I - column number                          */
-    ttype: *mut c_char,      /* O - TTYPEn keyword value                   */
-    tunit: *mut c_char,      /* O - TUNITn keyword value                   */
-    dtype: *mut [c_char; 2], /* O - datatype char: I, J, E, D, etc.        */
-    repeat: *mut LONGLONG,   /* O - vector column repeat count             */
-    tscal: *mut f64,         /* O - TSCALn keyword value                   */
-    tzero: *mut f64,         /* O - TZEROn keyword value                   */
-    tnull: *mut LONGLONG,    /* O - TNULLn keyword value integer cols only */
-    tdisp: *mut c_char,      /* O - TDISPn keyword value                   */
-    status: *mut c_int,      /* IO - error status                          */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    ttype: *mut c_char,
+    tunit: *mut c_char,
+    dtype: *mut [c_char; 2],
+    repeat: *mut LONGLONG,
+    tscal: *mut f64,
+    tzero: *mut f64,
+    tnull: *mut LONGLONG,
+    tdisp: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5306,20 +5711,33 @@ pub unsafe extern "C" fn ffgbclll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get BINTABLE column keyword values
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number
+/// * `ttype`  — (O) TTYPEn keyword value
+/// * `tunit`  — (O) TUNITn keyword value
+/// * `dtype`  — (O) datatype char: I, J, E, D, etc.
+/// * `repeat` — (O) vector column repeat count
+/// * `tscal`  — (O) TSCALn keyword value
+/// * `tzero`  — (O) TZEROn keyword value
+/// * `tnull`  — (O) TNULLn keyword value integer cols only
+/// * `tdisp`  — (O) TDISPn keyword value
+/// * `status` — (IO) error status
 pub fn ffgbclll_safe(
-    fptr: &mut fitsfile,             /* I - FITS file pointer                      */
-    colnum: c_int,                   /* I - column number                          */
-    ttype: Option<&mut [c_char]>,    /* O - TTYPEn keyword value                   */
-    tunit: Option<&mut [c_char]>,    /* O - TUNITn keyword value                   */
-    dtype: Option<&mut [c_char; 2]>, /* O - datatype char: I, J, E, D, etc.        */
-    repeat: Option<&mut LONGLONG>,   /* O - vector column repeat count             */
-    tscal: Option<&mut f64>,         /* O - TSCALn keyword value                   */
-    tzero: Option<&mut f64>,         /* O - TZEROn keyword value                   */
-    tnull: Option<&mut LONGLONG>,    /* O - TNULLn keyword value integer cols only */
-    tdisp: Option<&mut [c_char]>,    /* O - TDISPn keyword value                   */
-    status: &mut c_int,              /* IO - error status                          */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    ttype: Option<&mut [c_char]>,
+    tunit: Option<&mut [c_char]>,
+    dtype: Option<&mut [c_char; 2]>,
+    repeat: Option<&mut LONGLONG>,
+    tscal: Option<&mut f64>,
+    tzero: Option<&mut f64>,
+    tnull: Option<&mut LONGLONG>,
+    tdisp: Option<&mut [c_char]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
     let mut comm: [c_char; FLEN_COMMENT] = [0; FLEN_COMMENT];
@@ -5424,15 +5842,16 @@ pub fn ffgbclll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the number of the Current HDU in the FITS file.  The primary array
 /// is HDU number 1.  Note that this is one of the few cfitsio routines that
 /// does not return the error status value as the value of the function.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `chdunum` — (O) number of the CHDU; 1 = primary array
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffghdn(
-    fptr: *mut fitsfile, /* I - FITS file pointer                      */
-    chdunum: *mut c_int, /* O - number of the CHDU; 1 = primary array  */
-) -> c_int {
+pub unsafe extern "C" fn ffghdn(fptr: *mut fitsfile, chdunum: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -5442,28 +5861,36 @@ pub unsafe extern "C" fn ffghdn(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the number of the Current HDU in the FITS file.  The primary array
 /// is HDU number 1.  Note that this is one of the few cfitsio routines that
 /// does not return the error status value as the value of the function.
-pub fn ffghdn_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    chdunum: &mut c_int, /* O - number of the CHDU; 1 = primary array  */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `chdunum` — (O) number of the CHDU; 1 = primary array
+pub fn ffghdn_safe(fptr: &mut fitsfile, chdunum: &mut c_int) -> c_int {
     *chdunum = (fptr.HDUposition) + 1;
     *chdunum
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghadll(
-    fptr: *mut fitsfile,      /* I - FITS file pointer                     */
-    headstart: *mut LONGLONG, /* O - byte offset to beginning of CHDU      */
-    datastart: *mut LONGLONG, /* O - byte offset to beginning of next HDU  */
-    dataend: *mut LONGLONG,   /* O - byte offset to beginning of next HDU  */
-    status: *mut c_int,       /* IO - error status     */
+    fptr: *mut fitsfile,
+    headstart: *mut LONGLONG,
+    datastart: *mut LONGLONG,
+    dataend: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5477,15 +5904,22 @@ pub unsafe extern "C" fn ffghadll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 pub fn ffghadll_safe(
-    fptr: &mut fitsfile,              /* I - FITS file pointer                     */
-    headstart: Option<&mut LONGLONG>, /* O - byte offset to beginning of CHDU      */
-    datastart: Option<&mut LONGLONG>, /* O - byte offset to beginning of next HDU  */
-    dataend: Option<&mut LONGLONG>,   /* O - byte offset to beginning of next HDU  */
-    status: &mut c_int,               /* IO - error status     */
+    fptr: &mut fitsfile,
+    headstart: Option<&mut LONGLONG>,
+    datastart: Option<&mut LONGLONG>,
+    dataend: Option<&mut LONGLONG>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -5514,16 +5948,23 @@ pub fn ffghadll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghof(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                     */
-    headstart: *mut off_t, /* O - byte offset to beginning of CHDU      */
-    datastart: *mut off_t, /* O - byte offset to beginning of next HDU  */
-    dataend: *mut off_t,   /* O - byte offset to beginning of next HDU  */
-    status: *mut c_int,    /* IO - error status     */
+    fptr: *mut fitsfile,
+    headstart: *mut off_t,
+    datastart: *mut off_t,
+    dataend: *mut off_t,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5537,15 +5978,22 @@ pub unsafe extern "C" fn ffghof(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 pub fn ffghof_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                     */
-    headstart: Option<&mut off_t>, /* O - byte offset to beginning of CHDU      */
-    datastart: Option<&mut off_t>, /* O - byte offset to beginning of next HDU  */
-    dataend: Option<&mut off_t>,   /* O - byte offset to beginning of next HDU  */
-    status: &mut c_int,            /* IO - error status     */
+    fptr: &mut fitsfile,
+    headstart: Option<&mut off_t>,
+    datastart: Option<&mut off_t>,
+    dataend: Option<&mut off_t>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -5577,16 +6025,23 @@ pub fn ffghof_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghad(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                     */
-    headstart: *mut c_long, /* O - byte offset to beginning of CHDU      */
-    datastart: *mut c_long, /* O - byte offset to beginning of next HDU  */
-    dataend: *mut c_long,   /* O - byte offset to beginning of next HDU  */
-    status: *mut c_int,     /* IO - error status     */
+    fptr: *mut fitsfile,
+    headstart: *mut c_long,
+    datastart: *mut c_long,
+    dataend: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5600,15 +6055,22 @@ pub unsafe extern "C" fn ffghad(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the address (= byte offset) in the FITS file to the beginning of
 /// the current HDU, the beginning of the data unit, and the end of the data unit.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `headstart` — (O) byte offset to beginning of CHDU
+/// * `datastart` — (O) byte offset to beginning of next HDU
+/// * `dataend`   — (O) byte offset to beginning of next HDU
+/// * `status`    — (IO) error status
 pub fn ffghad_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                     */
-    headstart: Option<&mut c_long>, /* O - byte offset to beginning of CHDU      */
-    datastart: Option<&mut c_long>, /* O - byte offset to beginning of next HDU  */
-    dataend: Option<&mut c_long>,   /* O - byte offset to beginning of next HDU  */
-    status: &mut c_int,             /* IO - error status     */
+    fptr: &mut fitsfile,
+    headstart: Option<&mut c_long>,
+    datastart: Option<&mut c_long>,
+    dataend: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -5653,14 +6115,19 @@ pub fn ffghad_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read the required keywords of the CHDU and initialize the corresponding
 /// structure elements that describe the format of the HDU
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdutype` — (O) type of HDU
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffrhdu(
-    fptr: *mut fitsfile, /* I - FITS file pointer */
-    hdutype: *mut c_int, /* O - type of HDU       */
-    status: *mut c_int,  /* IO - error status     */
+    fptr: *mut fitsfile,
+    hdutype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -5671,14 +6138,15 @@ pub unsafe extern "C" fn ffrhdu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// read the required keywords of the CHDU and initialize the corresponding
 /// structure elements that describe the format of the HDU
-pub fn ffrhdu_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer */
-    hdutype: Option<&mut c_int>, /* O - type of HDU       */
-    status: &mut c_int,          /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdutype` — (O) type of HDU
+/// * `status`  — (IO) error status
+pub fn ffrhdu_safe(fptr: &mut fitsfile, hdutype: Option<&mut c_int>, status: &mut c_int) -> c_int {
     let mut tstatus;
     let mut card: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut name: [c_char; FLEN_KEYWORD] = [0; FLEN_KEYWORD];
@@ -5812,13 +6280,14 @@ pub fn ffrhdu_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of the primary array
 /// or an Image extension
-pub(crate) fn ffpinit(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffpinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     unsafe {
         let mut simple: c_int = 0;
         let mut bitpix: c_int = 0;
@@ -6091,12 +6560,13 @@ pub(crate) fn ffpinit(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of an ASCII table
-pub(crate) fn ffainit(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffainit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     unsafe {
         let mut nspace: c_int;
         let mut tfield: c_long = 0;
@@ -6364,12 +6834,13 @@ pub(crate) fn ffainit(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// initialize the parameters defining the structure of a binary table
-pub(crate) fn ffbinit(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffbinit(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     unsafe {
         let mut tfield: c_long = 0;
         let mut pcount: LONGLONG = 0;
@@ -6602,18 +7073,26 @@ pub(crate) fn ffbinit(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// calculate the starting byte offset of each column of an ASCII table
 /// and the total length of a row, in bytes.  The input space value determines
 /// how many blank spaces to leave between each column (1 is recommended).
+///
+/// # Parameters
+///
+/// * `tfields` — (I) number of columns in the table
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `space`   — (I) number of spaces to leave between cols
+/// * `rowlen`  — (O) total width of a table row
+/// * `tbcol`   — (O) starting byte in row for each column
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgabc(
-    tfields: c_int,              /* I - number of columns in the table           */
-    tform: *const *const c_char, /* I - value of TFORMn keyword for each column  */
-    space: c_int,                /* I - number of spaces to leave between cols   */
-    rowlen: *mut c_long,         /* O - total width of a table row               */
-    tbcol: *mut c_long,          /* O - starting byte in row for each column     */
-    status: *mut c_int,          /* IO - error status                            */
+    tfields: c_int,
+    tform: *const *const c_char,
+    space: c_int,
+    rowlen: *mut c_long,
+    tbcol: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -6634,17 +7113,25 @@ pub unsafe extern "C" fn ffgabc(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// calculate the starting byte offset of each column of an ASCII table
 /// and the total length of a row, in bytes.  The input space value determines
 /// how many blank spaces to leave between each column (1 is recommended).
+///
+/// # Parameters
+///
+/// * `tfields` — (I) number of columns in the table
+/// * `tform`   — (I) value of TFORMn keyword for each column
+/// * `space`   — (I) number of spaces to leave between cols
+/// * `rowlen`  — (O) total width of a table row
+/// * `tbcol`   — (O) starting byte in row for each column
+/// * `status`  — (IO) error status
 pub fn ffgabc_safe(
-    tfields: c_int,       /* I - number of columns in the table           */
-    tform: &[&[c_char]],  /* I - value of TFORMn keyword for each column  */
-    space: c_int,         /* I - number of spaces to leave between cols   */
-    rowlen: &mut c_long,  /* O - total width of a table row               */
-    tbcol: &mut [c_long], /* O - starting byte in row for each column     */
-    status: &mut c_int,   /* IO - error status                            */
+    tfields: c_int,
+    tform: &[&[c_char]],
+    space: c_int,
+    rowlen: &mut c_long,
+    tbcol: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     let mut datacode = 0;
     let mut decims = 0;
@@ -6680,15 +7167,16 @@ pub fn ffgabc_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// calculate the starting byte offset of each column of a binary table.
 /// Use the values of the datatype code and repeat counts in the
 /// column structure. Return the total length of a row, in bytes.
-pub(crate) fn ffgtbc(
-    fptr: &mut fitsfile,       /* I - FITS file pointer          */
-    totalwidth: &mut LONGLONG, /* O - total width of a table row */
-    status: &mut c_int,        /* IO - error status              */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`       — (I) FITS file pointer
+/// * `totalwidth` — (O) total width of a table row
+/// * `status`     — (IO) error status
+pub(crate) fn ffgtbc(fptr: &mut fitsfile, totalwidth: &mut LONGLONG, status: &mut c_int) -> c_int {
     let mut nbytes: LONGLONG;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
 
@@ -6754,16 +7242,22 @@ pub(crate) fn ffgtbc(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get TaBle Parameter.  The input keyword name begins with the letter T.
 /// Test if the keyword is one of the table column definition keywords
 /// of an ASCII or binary table. If so, decode it and update the value
 /// in the structure.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `name`   — (I) name of the keyword
+/// * `value`  — (I) value string of the keyword
+/// * `status` — (IO) error status
 pub(crate) fn ffgtbp(
-    fptr: &mut fitsfile, /* I - FITS file pointer   */
-    name: &[c_char],     /* I - name of the keyword */
-    value: &[c_char],    /* I - value string of the keyword */
-    status: &mut c_int,  /* IO - error status       */
+    fptr: &mut fitsfile,
+    name: &[c_char],
+    value: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int;
     let mut datacode: c_int = 0;
@@ -7076,38 +7570,61 @@ pub(crate) fn ffgtbp(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Column PaRameters, and test starting row and element numbers for
 /// validity.  This is a workhorse routine that is call by nearly every
 /// other routine that reads or writes to FITS files.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) column number (1 = 1st column of table)
+/// * `firstrow`  — (I) first row (1 = 1st row of table)
+/// * `firstelem` — (I) first element within vector (1 = 1st)
+/// * `nelem`     — (I) number of elements to read or write
+/// * `writemode` — (I) = 1 if writing data, = 0 if reading data
+/// * `scale`     — (O) FITS scaling factor (TSCALn keyword value)
+/// * `zero`      — (O) FITS scaling zero pt (TZEROn keyword value)
+/// * `tform`     — (O) ASCII column format: value of TFORMn keyword
+/// * `twidth`    — (O) width of ASCII column (characters)
+/// * `tcode`     — (O) abs(column datatype code): I*4=41, R*4=42, etc
+/// * `maxelem`   — (O) max number of elements that fit in buffer
+/// * `startpos`  — (O) offset in file to starting row & column
+/// * `elemnum`   — (O) starting element number ( 0 = 1st element)
+/// * `incre`     — (O) byte offset between elements within a row
+/// * `repeat`    — (O) number of elements in a row (vector column)
+/// * `rowlen`    — (O) length of a row, in bytes
+/// * `hdutype`   — (O) HDU type: 0, 1, 2 = primary, table, bintable
+/// * `tnull`     — (O) null value for integer columns
+/// * `snull`     — (O) null value for ASCII table columns
+/// * `status`    — (IO) error status
 pub(crate) fn ffgcprll(
-    fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    colnum: c_int,       /* I - column number (1 = 1st column of table)      */
-    firstrow: LONGLONG,  /* I - first row (1 = 1st row of table)         */
-    firstelem: LONGLONG, /* I - first element within vector (1 = 1st)    */
-    nelem: LONGLONG,     /* I - number of elements to read or write          */
-    writemode: c_int,    /* I - = 1 if writing data, = 0 if reading data     */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    writemode: c_int,
     /*     If = 2, then writing data, but don't modify  */
     /*     the returned values of repeat and incre.     */
     /*     If = -1, then reading data in reverse        */
     /*     direction.                                   */
     /*     If writemode has 16 added, then treat        */
     /*        TSTRING column as TBYTE vector            */
-    scale: &mut f64,         /* O - FITS scaling factor (TSCALn keyword value)   */
-    zero: &mut f64,          /* O - FITS scaling zero pt (TZEROn keyword value)  */
-    tform: &mut [c_char],    /* O - ASCII column format: value of TFORMn keyword */
-    twidth: &mut c_long,     /* O - width of ASCII column (characters)           */
-    tcode: &mut c_int,       /* O - abs(column datatype code): I*4=41, R*4=42, etc */
-    maxelem: &mut c_int,     /* O - max number of elements that fit in buffer    */
-    startpos: &mut LONGLONG, /* O - offset in file to starting row & column      */
-    elemnum: &mut LONGLONG,  /* O - starting element number ( 0 = 1st element)   */
-    incre: &mut c_long,      /* O - byte offset between elements within a row    */
-    repeat: &mut LONGLONG,   /* O - number of elements in a row (vector column)  */
-    rowlen: &mut LONGLONG,   /* O - length of a row, in bytes                    */
-    hdutype: &mut c_int,     /* O - HDU type: 0, 1, 2 = primary, table, bintable */
-    tnull: &mut LONGLONG,    /* O - null value for integer columns               */
-    snull: &mut [c_char],    /* O - null value for ASCII table columns           */
-    status: &mut c_int,      /* IO - error status                                */
+    scale: &mut f64,
+    zero: &mut f64,
+    tform: &mut [c_char],
+    twidth: &mut c_long,
+    tcode: &mut c_int,
+    maxelem: &mut c_int,
+    startpos: &mut LONGLONG,
+    elemnum: &mut LONGLONG,
+    incre: &mut c_long,
+    repeat: &mut LONGLONG,
+    rowlen: &mut LONGLONG,
+    hdutype: &mut c_int,
+    tnull: &mut LONGLONG,
+    snull: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut writemode = writemode;
 
@@ -7683,7 +8200,6 @@ pub(crate) fn ffgcprll(
     *status
 }
 
-/*---------------------------------------------------------------------------*/
 /// Tests the contents of the binary table variable length array heap.
 ///
 /// Returns the number of bytes that are currently not pointed to by any
@@ -7691,14 +8207,23 @@ pub(crate) fn ffgcprll(
 /// by more than one descriptor.  It returns valid = FALSE if any of the
 /// descriptors point to addresses that are out of the bounds of the
 /// heap.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `heapsz`  — (O) current size of the heap
+/// * `unused`  — (O) no. of unused bytes in the heap
+/// * `overlap` — (O) no. of bytes shared by > 1 descriptors
+/// * `valid`   — (O) are all the heap addresses valid?
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftheap(
-    fptr: *mut fitsfile,    /* I - FITS file pointer                         */
-    heapsz: *mut LONGLONG,  /* O - current size of the heap               */
-    unused: *mut LONGLONG,  /* O - no. of unused bytes in the heap        */
-    overlap: *mut LONGLONG, /* O - no. of bytes shared by > 1 descriptors */
-    valid: *mut c_int,      /* O - are all the heap addresses valid?         */
-    status: *mut c_int,     /* IO - error status                             */
+    fptr: *mut fitsfile,
+    heapsz: *mut LONGLONG,
+    unused: *mut LONGLONG,
+    overlap: *mut LONGLONG,
+    valid: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -7714,7 +8239,6 @@ pub unsafe extern "C" fn fftheap(
     }
 }
 
-/*---------------------------------------------------------------------------*/
 /// Tests the contents of the binary table variable length array heap.
 ///
 /// Returns the number of bytes that are currently not pointed to by any
@@ -7722,13 +8246,22 @@ pub unsafe extern "C" fn fftheap(
 /// by more than one descriptor.  It returns valid = FALSE if any of the
 /// descriptors point to addresses that are out of the bounds of the
 /// heap.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `heapsz`  — (O) current size of the heap
+/// * `unused`  — (O) no. of unused bytes in the heap
+/// * `overlap` — (O) no. of bytes shared by > 1 descriptors
+/// * `valid`   — (O) are all the heap addresses valid?
+/// * `status`  — (IO) error status
 pub fn fftheap_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    mut heapsz: Option<&mut LONGLONG>, /* O - current size of the heap               */
-    mut unused: Option<&mut LONGLONG>, /* O - no. of unused bytes in the heap        */
-    mut overlap: Option<&mut LONGLONG>, /* O - no. of bytes shared by > 1 descriptors */
-    mut valid: Option<&mut c_int>, /* O - are all the heap addresses valid?         */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    mut heapsz: Option<&mut LONGLONG>,
+    mut unused: Option<&mut LONGLONG>,
+    mut overlap: Option<&mut LONGLONG>,
+    mut valid: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut typecode = 0;
     let mut pixsize;
@@ -7865,14 +8398,15 @@ pub fn fftheap_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// compress the binary table heap by reordering the contents heap and
 /// recovering any unused space
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffcmph(
-    fptr: *mut fitsfile, /* I -FITS file pointer                         */
-    status: *mut c_int,  /* IO - error status                            */
-) -> c_int {
+pub unsafe extern "C" fn ffcmph(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -7882,13 +8416,14 @@ pub unsafe extern "C" fn ffcmph(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// compress the binary table heap by reordering the contents heap and
 /// recovering any unused space
-pub fn ffcmph_safe(
-    fptr: &mut fitsfile, /* I -FITS file pointer                         */
-    status: &mut c_int,  /* IO - error status                            */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffcmph_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut typecode = 0;
     let mut pixsize;
     let mut valid = 0;
@@ -8120,16 +8655,24 @@ pub fn ffcmph_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the variable length vector descriptor from the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgdes(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                         */
-    colnum: c_int,         /* I - column number (1 = 1st column of table)   */
-    rownum: LONGLONG,      /* I - row number (1 = 1st row of table)         */
-    length: *mut c_long,   /* O - number of elements in the row             */
-    heapaddr: *mut c_long, /* O - heap pointer to the data                  */
-    status: *mut c_int,    /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: *mut c_long,
+    heapaddr: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8142,15 +8685,23 @@ pub unsafe extern "C" fn ffgdes(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the variable length vector descriptor from the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 pub fn ffgdes_safe(
-    fptr: &mut fitsfile,           /* I - FITS file pointer                         */
-    colnum: c_int,                 /* I - column number (1 = 1st column of table)   */
-    rownum: LONGLONG,              /* I - row number (1 = 1st row of table)         */
-    length: Option<&mut c_long>,   /* O - number of elements in the row             */
-    heapaddr: Option<&mut c_long>, /* O - heap pointer to the data                  */
-    status: &mut c_int,            /* IO - error status                             */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: Option<&mut c_long>,
+    heapaddr: Option<&mut c_long>,
+    status: &mut c_int,
 ) -> c_int {
     let mut lengthjj: LONGLONG = 0; /* convert the temporary 8-byte values to 4-byte values */
     let mut heapaddrjj: LONGLONG = 0; /* check for overflow */
@@ -8187,19 +8738,27 @@ pub fn ffgdes_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the variable length vector descriptor from the binary table.
 ///
 /// This is similar to ffgdes, except it supports the full 8-byte range of the
 /// length and offset values in 'Q' columns, as well as 'P' columns.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgdesll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - column number (1 = 1st column of table) */
-    rownum: LONGLONG,        /* I - row number (1 = 1st row of table)       */
-    length: *mut LONGLONG,   /* O - number of elements in the row           */
-    heapaddr: *mut LONGLONG, /* O - heap pointer to the data                */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: *mut LONGLONG,
+    heapaddr: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8212,18 +8771,26 @@ pub unsafe extern "C" fn ffgdesll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) the variable length vector descriptor from the binary table.
 ///
 /// This is similar to ffgdes, except it supports the full 8-byte range of the
 /// length and offset values in 'Q' columns, as well as 'P' columns.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 pub fn ffgdesll_safe(
-    fptr: &mut fitsfile,             /* I - FITS file pointer                       */
-    colnum: c_int,                   /* I - column number (1 = 1st column of table) */
-    rownum: LONGLONG,                /* I - row number (1 = 1st row of table)       */
-    length: Option<&mut LONGLONG>,   /* O - number of elements in the row           */
-    heapaddr: Option<&mut LONGLONG>, /* O - heap pointer to the data                */
-    status: &mut c_int,              /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: Option<&mut LONGLONG>,
+    heapaddr: Option<&mut LONGLONG>,
+    status: &mut c_int,
 ) -> c_int {
     let mut descript4: [c_uint; 2] = [0, 0];
     let mut descript8: [LONGLONG; 2] = [0, 0];
@@ -8275,17 +8842,26 @@ pub fn ffgdesll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  get (read) a range of variable length vector descriptors from the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `firstrow` — (I) first row (1 = 1st row of table)
+/// * `nrows`    — (I) number or rows to read
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgdess(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                        */
-    colnum: c_int,         /* I - column number (1 = 1st column of table)   */
-    firstrow: LONGLONG,    /* I - first row  (1 = 1st row of table)         */
-    nrows: LONGLONG,       /* I - number or rows to read                    */
-    length: *mut c_long,   /* O - number of elements in the row             */
-    heapaddr: *mut c_long, /* O - heap pointer to the data                  */
-    status: *mut c_int,    /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    length: *mut c_long,
+    heapaddr: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8306,16 +8882,25 @@ pub unsafe extern "C" fn ffgdess(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  get (read) a range of variable length vector descriptors from the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `firstrow` — (I) first row (1 = 1st row of table)
+/// * `nrows`    — (I) number or rows to read
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 pub fn ffgdess_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                        */
-    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
-    firstrow: LONGLONG,  /* I - first row  (1 = 1st row of table)         */
-    nrows: LONGLONG,     /* I - number or rows to read                    */
-    mut length: Option<&mut [c_long]>, /* O - number of elements in the row             */
-    mut heapaddr: Option<&mut [c_long]>, /* O - heap pointer to the data                  */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    mut length: Option<&mut [c_long]>,
+    mut heapaddr: Option<&mut [c_long]>,
+    status: &mut c_int,
 ) -> c_int {
     let mut ii: c_long;
     let mut descript4: [INT32BIT; 2] = [0, 0];
@@ -8409,17 +8994,26 @@ pub fn ffgdess_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// get (read) a range of variable length vector descriptors from the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `firstrow` — (I) first row (1 = 1st row of table)
+/// * `nrows`    — (I) number or rows to read
+/// * `length`   — (O) number of elements in the row
+/// * `heapaddr` — (O) heap pointer to the data
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgdessll(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                      */
-    colnum: c_int,           /* I - column number (1 = 1st column of table)   */
-    firstrow: LONGLONG,      /* I - first row  (1 = 1st row of table)         */
-    nrows: LONGLONG,         /* I - number or rows to read                    */
-    length: *mut LONGLONG,   /* O - number of elements in the row         */
-    heapaddr: *mut LONGLONG, /* O - heap pointer to the data              */
-    status: *mut c_int,      /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    length: *mut LONGLONG,
+    heapaddr: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8444,6 +9038,18 @@ pub unsafe extern "C" fn ffgdessll(
     }
 }
 
+/// Get the descriptors -- element count and heap offset -- for a range of rows
+/// of a variable length array column, as 64-bit values.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number, the first column is 1
+/// * `firstrow` — (I) first row, the first row is 1
+/// * `nrows`    — (I) number of rows to read
+/// * `length`   — (O) number of elements in each row's array
+/// * `heapaddr` — (O) heap offset of each row's array
+/// * `status`   — (IO) error status
 pub fn ffgdessll_safe(
     fptr: &mut fitsfile,
     colnum: c_int,
@@ -8537,16 +9143,24 @@ pub fn ffgdessll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  put (write) the variable length vector descriptor to the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (I) number of elements in the row
+/// * `heapaddr` — (I) heap pointer to the data
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpdes(
-    fptr: *mut fitsfile, /* I - FITS file pointer                         */
-    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
-    rownum: LONGLONG,    /* I - row number (1 = 1st row of table)         */
-    length: LONGLONG,    /* I - number of elements in the row             */
-    heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
-    status: *mut c_int,  /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: LONGLONG,
+    heapaddr: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -8557,15 +9171,23 @@ pub unsafe extern "C" fn ffpdes(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  put (write) the variable length vector descriptor to the table.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number (1 = 1st column of table)
+/// * `rownum`   — (I) row number (1 = 1st row of table)
+/// * `length`   — (I) number of elements in the row
+/// * `heapaddr` — (I) heap pointer to the data
+/// * `status`   — (IO) error status
 pub fn ffpdes_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    colnum: c_int,       /* I - column number (1 = 1st column of table)   */
-    rownum: LONGLONG,    /* I - row number (1 = 1st row of table)         */
-    length: LONGLONG,    /* I - number of elements in the row             */
-    heapaddr: LONGLONG,  /* I - heap pointer to the data                  */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    rownum: LONGLONG,
+    length: LONGLONG,
+    heapaddr: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut descript4: [c_uint; 2] = [0; 2];
     let mut descript8: [LONGLONG; 2] = [0; 2];
@@ -8624,14 +9246,15 @@ pub fn ffpdes_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// close the current HDU.  If we have write access to the file, then:
 /// - write the END keyword and pad header with blanks if necessary
 /// - check the data fill values, and rewrite them if not correct
-pub(crate) fn ffchdu(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffchdu(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut stdriver = -1; // -1 so that if stream driver not found, it doesn't default
 
@@ -8703,14 +9326,15 @@ pub(crate) fn ffchdu(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Update the value of the TFORM keywords for the variable length array
 /// columns to make sure they all have the form 1Px(len) or Px(len) where
 /// 'len' is the maximum length of the vector in the table (e.g., '1PE(400)')
-pub(crate) fn ffuptf(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffuptf(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut tflds: c_long = 0;
     let mut length: LONGLONG = 0;
     let mut addr: LONGLONG = 0;
@@ -8812,15 +9436,16 @@ pub(crate) fn ffuptf(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// ReDEFine the structure of a data unit.  This routine re-reads
 /// the CHDU header keywords to determine the structure and length of the
 /// current data unit.  This redefines the start of the next HDU.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffrdef(
-    fptr: *mut fitsfile, /* I - FITS file pointer */
-    status: *mut c_int,  /* IO - error status     */
-) -> c_int {
+pub unsafe extern "C" fn ffrdef(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -8830,14 +9455,15 @@ pub unsafe extern "C" fn ffrdef(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// ReDEFine the structure of a data unit.  This routine re-reads
 /// the CHDU header keywords to determine the structure and length of the
 /// current data unit.  This redefines the start of the next HDU.
-pub fn ffrdef_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffrdef_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut dummy: c_int = 0;
     let mut tstatus = 0;
     let mut naxis2: LONGLONG = 0;
@@ -8920,7 +9546,6 @@ pub fn ffrdef_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// based on the number of keywords which have already been written,
 /// plus the number of keywords to reserve space for, we then can
 /// define where the data unit should start (it must start at the
@@ -8931,12 +9556,14 @@ pub fn ffrdef_safe(
 /// it is always possible to add more keywords to the header even if the
 /// data has already been written.  It is just more efficient to reserve
 /// the space in advance.
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `morekeys` — (I) reserve space for this many keywords
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffhdef(
-    fptr: *mut fitsfile, /* I - FITS file pointer                    */
-    morekeys: c_int,     /* I - reserve space for this many keywords */
-    status: *mut c_int,  /* IO - error status                        */
-) -> c_int {
+pub unsafe extern "C" fn ffhdef(fptr: *mut fitsfile, morekeys: c_int, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let status = status.as_mut().expect(NULL_MSG);
@@ -8946,7 +9573,6 @@ pub unsafe extern "C" fn ffhdef(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// based on the number of keywords which have already been written,
 /// plus the number of keywords to reserve space for, we then can
 /// define where the data unit should start (it must start at the
@@ -8957,11 +9583,13 @@ pub unsafe extern "C" fn ffhdef(
 /// it is always possible to add more keywords to the header even if the
 /// data has already been written.  It is just more efficient to reserve
 /// the space in advance.
-pub fn ffhdef_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    morekeys: c_int,     /* I - reserve space for this many keywords */
-    status: &mut c_int,  /* IO - error status                        */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `morekeys` — (I) reserve space for this many keywords
+/// * `status`   — (IO) error status
+pub fn ffhdef_safe(fptr: &mut fitsfile, morekeys: c_int, status: &mut c_int) -> c_int {
     let delta: LONGLONG;
 
     if *status > 0 || morekeys < 1 {
@@ -8990,12 +9618,13 @@ pub fn ffhdef_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// write the END card and following fill (space chars) in the current header
-pub(crate) fn ffwend(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffwend(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut blankkey: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut endkey: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut keyrec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
@@ -9089,15 +9718,16 @@ pub(crate) fn ffwend(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write the Data Unit Fill values if they are not already correct.
 /// The fill values are used to fill out the last 2880 byte block of the HDU.
 /// Fill the data unit with zeros or blanks depending on the type of HDU
 /// from the end of the data to the end of the current FITS 2880 byte block
-pub(crate) fn ffpdfl(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub(crate) fn ffpdfl(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let chfill: u8;
     let mut fill: [u8; IOBUFLEN as usize] = [0; IOBUFLEN as usize];
     let mut fillstart: LONGLONG;
@@ -9178,18 +9808,17 @@ pub(crate) fn ffpdfl(
     *status
 }
 
-/**********************************************************************
-   ffchfl : Check Header Fill values
-
-      Check that the header unit is correctly filled with blanks from
-      the END card to the end of the current FITS 2880-byte block
-
-         Function parameters:
-            fptr     Fits file pointer
-            status   output error status
-
-    Translated ftchfl into C by Peter Wilson, Oct. 1997
-**********************************************************************/
+/// Check the header fill values.
+///
+/// Checks that the header unit is correctly filled with blanks from the END
+/// card to the end of the current FITS 2880-byte block.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (O) error status
+///
+/// Translated from `ftchfl` into C by Peter Wilson, Oct. 1997.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     if fptr.is_null() || status.is_null() {
@@ -9199,6 +9828,15 @@ pub unsafe extern "C" fn ffchfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
     unsafe { ffchfl_safe(&mut *fptr, &mut *status) }
 }
 
+/// Check the header fill values.
+///
+/// Checks that the header unit is correctly filled with blanks from the END
+/// card to the end of the current FITS 2880-byte block.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (O) error status
 pub fn ffchfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut rec: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let blanks = [bb(b' '); 80]; /*  80 spaces  */
@@ -9252,19 +9890,17 @@ pub fn ffchfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     *status
 }
 
-/**********************************************************************
-   ffcdfl : Check Data Unit Fill values
-
-      Check that the data unit is correctly filled with zeros or
-      blanks from the end of the data to the end of the current
-      FITS 2880 byte block
-
-         Function parameters:
-            fptr     Fits file pointer
-            status   output error status
-
-    Translated ftcdfl into C by Peter Wilson, Oct. 1997
-**********************************************************************/
+/// Check the data unit fill values.
+///
+/// Checks that the data unit is correctly filled with zeros or blanks from the
+/// end of the data to the end of the current FITS 2880-byte block.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (O) error status
+///
+/// Translated from `ftcdfl` into C by Peter Wilson, Oct. 1997.
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
@@ -9276,6 +9912,15 @@ pub unsafe extern "C" fn ffcdfl(fptr: *mut fitsfile, status: *mut c_int) -> c_in
     }
 }
 
+/// Check the data unit fill values.
+///
+/// Checks that the data unit is correctly filled with zeros or blanks from the
+/// end of the data to the end of the current FITS 2880-byte block.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (O) error status
 pub fn ffcdfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut chbuff: [c_char; BL!()] = [0; BL!()];
 
@@ -9335,7 +9980,6 @@ pub fn ffcdfl_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Grow the headstart array by 1000 entries.
 ///
 /// `headstart` is a raw pointer owned by `FITSfile`, so growing it means
@@ -9380,14 +10024,15 @@ fn grow_headstart(fptr: &mut fitsfile) -> Result<(), c_int> {
     Ok(())
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create Header Data unit:  Create, initialize, and move the i/o pointer
 /// to a new extension appended to the end of the FITS file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffcrhd(
-    fptr: *mut fitsfile, /* I - FITS file pointer */
-    status: *mut c_int,  /* IO - error status     */
-) -> c_int {
+pub unsafe extern "C" fn ffcrhd(fptr: *mut fitsfile, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -9397,13 +10042,14 @@ pub unsafe extern "C" fn ffcrhd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create Header Data unit:  Create, initialize, and move the i/o pointer
 /// to a new extension appended to the end of the FITS file.
-pub fn ffcrhd_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
+pub fn ffcrhd_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     let mut tstatus: c_int = 0;
     let bytepos: LONGLONG;
 
@@ -9455,15 +10101,16 @@ pub fn ffcrhd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Delete the specified number of 2880-byte blocks from the end
 /// of the CHDU by shifting all following extensions up this
 /// number of blocks.
-pub(crate) fn ffdblk(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    nblocks: c_long,     /* I - number of 2880-byte blocks to delete */
-    status: &mut c_int,  /* IO - error status                        */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `nblocks` — (I) number of 2880-byte blocks to delete
+/// * `status`  — (IO) error status
+pub(crate) fn ffdblk(fptr: &mut fitsfile, nblocks: c_long, status: &mut c_int) -> c_int {
     let mut buffer: [c_char; BL!()] = [0; BL!()];
 
     if *status > 0 || nblocks <= 0 {
@@ -9525,17 +10172,22 @@ pub(crate) fn ffdblk(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the type of the CHDU. This returns the 'logical' type of the HDU,
 /// not necessarily the physical type, so in the case of a compressed image
 /// stored in a binary table, this will return the type as an Image, not a
 /// binary table.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffghdt(
-    fptr: *mut fitsfile, /* I - FITS file pointer             */
-    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2 */
+    fptr: *mut fitsfile,
+    exttype: *mut c_int,
     /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
-    status: *mut c_int, /* IO - error status                 */
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9547,16 +10199,21 @@ pub unsafe extern "C" fn ffghdt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the type of the CHDU. This returns the 'logical' type of the HDU,
 /// not necessarily the physical type, so in the case of a compressed image
 /// stored in a binary table, this will return the type as an Image, not a
 /// binary table.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 pub fn ffghdt_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer             */
-    exttype: &mut c_int, /* O - type of extension, 0, 1, or 2 */
+    fptr: &mut fitsfile,
+    exttype: &mut c_int,
     /*  for IMAGE_HDU, ASCII_TBL, or BINARY_TBL */
-    status: &mut c_int, /* IO - error status                 */
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -9586,7 +10243,6 @@ pub fn ffghdt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Was CFITSIO compiled with the -D_REENTRANT flag?  1 = yes, 0 = no.
 ///
 /// Note that specifying the -D_REENTRANT flag is required, but may not be
@@ -9598,6 +10254,12 @@ pub unsafe extern "C" fn fits_is_reentrant() -> c_int {
     fits_is_reentrant_safe()
 }
 
+/// Whether this build of the library is reentrant.
+///
+/// # Returns
+///
+/// Always 1: unlike the C, which compiles the thread-safe paths only under
+/// `-D_REENTRANT`, this port is always built that way.
 pub fn fits_is_reentrant_safe() -> c_int {
     /*
     #ifdef _REENTRANT
@@ -9610,12 +10272,16 @@ pub fn fits_is_reentrant_safe() -> c_int {
     1
 }
 
-/*--------------------------------------------------------------------------*/
 /// Returns TRUE if the CHDU is a compressed image, else returns zero.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_is_compressed_image(
-    fptr: *mut fitsfile, /* I - FITS file pointer  */
-    status: *mut c_int,  /* IO - error status      */
+    fptr: *mut fitsfile,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9626,7 +10292,6 @@ pub unsafe extern "C" fn fits_is_compressed_image(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Returns TRUE if the CHDU is a compressed image, else returns zero.
 pub fn fits_is_compressed_image_safe(fptr: &mut fitsfile, status: &mut c_int) -> c_int {
     if *status > 0 {
@@ -9646,16 +10311,24 @@ pub fn fits_is_compressed_image_safe(fptr: &mut fitsfile, status: &mut c_int) ->
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// get the datatype and size of the input image
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer
+/// * `maxaxis` — (I) max number of axes to return
+/// * `bitpix`  — (O) image data type
+/// * `naxis`   — (O) image dimension (NAXIS value)
+/// * `naxes`   — (O) size of image dimensions
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgipr(
-    infptr: *mut fitsfile, /* I - FITS file pointer                     */
-    maxaxis: c_int,        /* I - max number of axes to return          */
-    bitpix: *mut c_int,    /* O - image data type                       */
-    naxis: *mut c_int,     /* O - image dimension (NAXIS value)         */
-    naxes: *mut c_long,    /* O - size of image dimensions              */
-    status: *mut c_int,    /* IO - error status      */
+    infptr: *mut fitsfile,
+    maxaxis: c_int,
+    bitpix: *mut c_int,
+    naxis: *mut c_int,
+    naxes: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9673,15 +10346,23 @@ pub unsafe extern "C" fn ffgipr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// get the datatype and size of the input image
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer
+/// * `maxaxis` — (I) max number of axes to return
+/// * `bitpix`  — (O) image data type
+/// * `naxis`   — (O) image dimension (NAXIS value)
+/// * `naxes`   — (O) size of image dimensions
+/// * `status`  — (IO) error status
 pub fn ffgipr_safe(
-    infptr: &mut fitsfile,        /* I - FITS file pointer                     */
-    maxaxis: c_int,               /* I - max number of axes to return          */
-    bitpix: Option<&mut c_int>,   /* O - image data type                       */
-    naxis: Option<&mut c_int>,    /* O - image dimension (NAXIS value)         */
-    naxes: Option<&mut [c_long]>, /* O - size of image dimensions              */
-    status: &mut c_int,           /* IO - error status      */
+    infptr: &mut fitsfile,
+    maxaxis: c_int,
+    bitpix: Option<&mut c_int>,
+    naxis: Option<&mut c_int>,
+    naxes: Option<&mut [c_long]>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -9704,16 +10385,24 @@ pub fn ffgipr_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the datatype and size of the input image
+///
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer
+/// * `maxaxis` — (I) max number of axes to return
+/// * `bitpix`  — (O) image data type
+/// * `naxis`   — (O) image dimension (NAXIS value)
+/// * `naxes`   — (O) size of image dimensions
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgiprll(
-    infptr: *mut fitsfile, /* I - FITS file pointer                   */
-    maxaxis: c_int,        /* I - max number of axes to return          */
-    bitpix: *mut c_int,    /* O - image data type                       */
-    naxis: *mut c_int,     /* O - image dimension (NAXIS value)         */
-    naxes: *mut LONGLONG,  /* O - size of image dimensions              */
-    status: *mut c_int,    /* IO - error status      */
+    infptr: *mut fitsfile,
+    maxaxis: c_int,
+    bitpix: *mut c_int,
+    naxis: *mut c_int,
+    naxes: *mut LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9731,14 +10420,21 @@ pub unsafe extern "C" fn ffgiprll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `infptr`  — (I) FITS file pointer
+/// * `maxaxis` — (I) max number of axes to return
+/// * `bitpix`  — (O) image data type
+/// * `naxis`   — (O) image dimension (NAXIS value)
+/// * `naxes`   — (O) size of image dimensions
+/// * `status`  — (IO) error status
 pub fn ffgiprll_safe(
-    infptr: &mut fitsfile,          /* I - FITS file pointer                   */
-    maxaxis: c_int,                 /* I - max number of axes to return          */
-    bitpix: Option<&mut c_int>,     /* O - image data type                       */
-    naxis: Option<&mut c_int>,      /* O - image dimension (NAXIS value)         */
-    naxes: Option<&mut [LONGLONG]>, /* O - size of image dimensions              */
-    status: &mut c_int,             /* IO - error status      */
+    infptr: &mut fitsfile,
+    maxaxis: c_int,
+    bitpix: Option<&mut c_int>,
+    naxis: Option<&mut c_int>,
+    naxes: Option<&mut [LONGLONG]>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status; /* get NAXISn values */
@@ -9761,14 +10457,19 @@ pub fn ffgiprll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the datatype of the image (= BITPIX keyword for normal image, or
 /// ZBITPIX for a compressed image)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `imgtype` — (O) image data type
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgidt(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    imgtype: *mut c_int, /* O - image data type                         */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    imgtype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9780,14 +10481,15 @@ pub unsafe extern "C" fn ffgidt(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the datatype of the image (= BITPIX keyword for normal image, or
 /// ZBITPIX for a compressed image)
-pub fn ffgidt_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    imgtype: &mut c_int, /* O - image data type                         */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `imgtype` — (O) image data type
+/// * `status`  — (IO) error status
+pub fn ffgidt_safe(fptr: &mut fitsfile, imgtype: &mut c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -9826,14 +10528,19 @@ pub fn ffgidt_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the effective datatype of the image (= BITPIX keyword for normal image,
 /// or ZBITPIX for a compressed image)
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `imgtype` — (O) image data type
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgiet(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    imgtype: *mut c_int, /* O - image data type                         */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    imgtype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -9845,14 +10552,15 @@ pub unsafe extern "C" fn ffgiet(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the effective datatype of the image (= BITPIX keyword for normal image,
 /// or ZBITPIX for a compressed image)
-pub fn ffgiet_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    imgtype: &mut c_int, /* O - image data type                         */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `imgtype` — (O) image data type
+/// * `status`  — (IO) error status
+pub fn ffgiet_safe(fptr: &mut fitsfile, imgtype: &mut c_int, status: &mut c_int) -> c_int {
     let mut tstatus: c_int;
 
     let mut lngzero: c_long = 0;
@@ -9986,15 +10694,20 @@ pub fn ffgiet_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the dimension of the image (= NAXIS keyword for normal image, or
 /// ZNAXIS for a compressed image)
 /// These values are cached for faster access.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `naxis`  — (O) image dimension (NAXIS value)
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgidm(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    naxis: *mut c_int,   /* O - image dimension (NAXIS value)           */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    naxis: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -10007,15 +10720,16 @@ pub unsafe extern "C" fn ffgidm(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the dimension of the image (= NAXIS keyword for normal image, or
 /// ZNAXIS for a compressed image)
 /// These values are cached for faster access.
-pub fn ffgidm_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    naxis: &mut c_int,   /* O - image dimension (NAXIS value)           */
-    status: &mut c_int,  /* IO - error status                           */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `naxis`  — (O) image dimension (NAXIS value)
+/// * `status` — (IO) error status
+pub fn ffgidm_safe(fptr: &mut fitsfile, naxis: &mut c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -10038,16 +10752,22 @@ pub fn ffgidm_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the size of the image dimensions (= NAXISn keywords for normal image, or
 /// ZNAXISn for a compressed image)
 /// These values are cached for faster access.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nlen`   — (I) number of axes to return
+/// * `naxes`  — (O) size of image dimensions
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgisz(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    nlen: c_int,         /* I - number of axes to return                */
-    naxes: *mut c_long,  /* O - size of image dimensions                */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    nlen: c_int,
+    naxes: *mut c_long,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -10086,15 +10806,21 @@ pub unsafe extern "C" fn ffgisz(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the size of the image dimensions (= NAXISn keywords for normal image, or
 /// ZNAXISn for a compressed image)
 /// These values are cached for faster access.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nlen`   — (I) number of axes to return
+/// * `naxes`  — (O) size of image dimensions
+/// * `status` — (IO) error status
 pub fn ffgisz_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    nlen: c_int,          /* I - number of axes to return                */
-    naxes: &mut [c_long], /* O - size of image dimensions                */
-    status: &mut c_int,   /* IO - error status                           */
+    fptr: &mut fitsfile,
+    nlen: c_int,
+    naxes: &mut [c_long],
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -10126,14 +10852,19 @@ pub fn ffgisz_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the size of the image dimensions (= NAXISn keywords for normal image, or
 /// ZNAXISn for a compressed image)
+///
+/// # Parameters
+///
+/// * `fptr`  — (I) FITS file pointer
+/// * `nlen`  — (I) number of axes to return
+/// * `naxes` — (O) size of image dimensions
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgiszll(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                     */
-    nlen: c_int,          /* I - number of axes to return              */
-    naxes: *mut LONGLONG, /* O - size of image dimensions              */
+    fptr: *mut fitsfile,
+    nlen: c_int,
+    naxes: *mut LONGLONG,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -10147,13 +10878,18 @@ pub unsafe extern "C" fn ffgiszll(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get the size of the image dimensions (= NAXISn keywords for normal image, or
 /// ZNAXISn for a compressed image)
+///
+/// # Parameters
+///
+/// * `fptr`  — (I) FITS file pointer
+/// * `nlen`  — (I) number of axes to return
+/// * `naxes` — (O) size of image dimensions
 pub fn ffgiszll_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                     */
-    nlen: c_int,            /* I - number of axes to return              */
-    naxes: &mut [LONGLONG], /* O - size of image dimensions              */
+    fptr: &mut fitsfile,
+    nlen: c_int,
+    naxes: &mut [LONGLONG],
     status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
@@ -10191,16 +10927,22 @@ pub fn ffgiszll_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move to Absolute Header Data unit.  Move to the specified HDU
 /// and read the header to initialize the table structure.  Note that extnum
 /// is one based, so the primary array is extnum = 1.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdunum`  — (I) number of the HDU to move to
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffmahd(
-    fptr: *mut fitsfile, /* I - FITS file pointer             */
-    hdunum: c_int,       /* I - number of the HDU to move to  */
-    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2 */
-    status: *mut c_int,  /* IO - error status                 */
+    fptr: *mut fitsfile,
+    hdunum: c_int,
+    exttype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -10212,15 +10954,21 @@ pub unsafe extern "C" fn ffmahd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move to Absolute Header Data unit.  Move to the specified HDU
 /// and read the header to initialize the table structure.  Note that extnum
 /// is one based, so the primary array is extnum = 1.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdunum`  — (I) number of the HDU to move to
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 pub fn ffmahd_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer             */
-    hdunum: c_int,               /* I - number of the HDU to move to  */
-    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2 */
-    status: &mut c_int,          /* IO - error status                 */
+    fptr: &mut fitsfile,
+    hdunum: c_int,
+    exttype: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut moveto;
     let mut tstatus;
@@ -10294,15 +11042,21 @@ pub fn ffmahd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move a Relative number of Header Data units.  Offset to the specified
 /// extension and read the header to initialize the HDU structure.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdumov`  — (I) rel. no. of HDUs to move by (+ or -)
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffmrhd(
-    fptr: *mut fitsfile, /* I - FITS file pointer                    */
-    hdumov: c_int,       /* I - rel. no. of HDUs to move by (+ or -) */
-    exttype: *mut c_int, /* O - type of extension, 0, 1, or 2        */
-    status: *mut c_int,  /* IO - error status                        */
+    fptr: *mut fitsfile,
+    hdumov: c_int,
+    exttype: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -10314,14 +11068,20 @@ pub unsafe extern "C" fn ffmrhd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move a Relative number of Header Data units.  Offset to the specified
 /// extension and read the header to initialize the HDU structure.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdumov`  — (I) rel. no. of HDUs to move by (+ or -)
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 pub fn ffmrhd_safe(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                    */
-    hdumov: c_int,               /* I - rel. no. of HDUs to move by (+ or -) */
-    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2        */
-    status: &mut c_int,          /* IO - error status                        */
+    fptr: &mut fitsfile,
+    hdumov: c_int,
+    exttype: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status;
@@ -10333,7 +11093,6 @@ pub fn ffmrhd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move to the next HDU with a given extension type (IMAGE_HDU, ASCII_TBL,
 /// BINARY_TBL, or ANY_HDU), extension name (EXTNAME or HDUNAME keyword),
 /// and EXTVERS keyword values.  If hduvers = 0, then move to the first HDU
@@ -10358,7 +11117,6 @@ pub unsafe extern "C" fn ffmnhd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Move to the next HDU with a given extension type (IMAGE_HDU, ASCII_TBL,
 /// BINARY_TBL, or ANY_HDU), extension name (EXTNAME or HDUNAME keyword),
 /// and EXTVERS keyword values.  If hduvers = 0, then move to the first HDU
@@ -10512,13 +11270,18 @@ pub fn ffmnhd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///  Return the number of HDUs that currently exist in the file.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nhdu`   — (O) number of HDUs in the file
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffthdu(
-    fptr: *mut fitsfile, /* I - FITS file pointer                    */
-    nhdu: *mut c_int,    /* O - number of HDUs in the file           */
-    status: *mut c_int,  /* IO - error status                        */
+    fptr: *mut fitsfile,
+    nhdu: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -10530,13 +11293,14 @@ pub unsafe extern "C" fn ffthdu(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Count the total number of HDUs in the file.
-pub fn ffthdu_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                    */
-    nhdu: &mut c_int,    /* O - number of HDUs in the file           */
-    status: &mut c_int,  /* IO - error status                        */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `nhdu`   — (O) number of HDUs in the file
+/// * `status` — (IO) error status
+pub fn ffthdu_safe(fptr: &mut fitsfile, nhdu: &mut c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         return *status;
     }
@@ -10560,14 +11324,20 @@ pub fn ffthdu_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Get Extension.  Move to the specified extension and initialize the
 /// HDU structure.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `hdunum`  — (I) no. of HDU to move get (0 based)
+/// * `exttype` — (O) type of extension, 0, 1, or 2
+/// * `status`  — (IO) error status
 pub(crate) fn ffgext(
-    fptr: &mut fitsfile,         /* I - FITS file pointer                */
-    hdunum: c_int,               /* I - no. of HDU to move get (0 based) */
-    exttype: Option<&mut c_int>, /* O - type of extension, 0, 1, or 2    */
-    status: &mut c_int,          /* IO - error status                    */
+    fptr: &mut fitsfile,
+    hdunum: c_int,
+    exttype: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let xcurhdu: c_int;
     let xmaxhdu: c_int;
@@ -10602,14 +11372,20 @@ pub(crate) fn ffgext(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Insert 2880-byte blocks at the end of the current header or data unit
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nblock`   — (I) no. of blocks to insert
+/// * `headdata` — (I) insert where? 0=header, 1=data
+/// * `status`   — (IO) error status
 pub(crate) fn ffiblk(
-    fptr: &mut fitsfile, /* I - FITS file pointer               */
-    nblock: c_long,      /* I - no. of blocks to insert         */
-    headdata: c_int,     /* I - insert where? 0=header, 1=data  */
+    fptr: &mut fitsfile,
+    nblock: c_long,
+    headdata: c_int,
     /*     -1=beginning of file            */
-    status: &mut c_int, /* IO - error status                   */
+    status: &mut c_int,
 ) -> c_int {
     let mut typhdu: c_int = 0;
     let mut insertpt: LONGLONG;
@@ -10756,7 +11532,6 @@ pub(crate) fn ffiblk(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Return the type classification of the input header record
 /// ```text
 /// TYP_STRUC_KEY: SIMPLE, BITPIX, NAXIS, NAXISn, EXTEND, BLOCKED,
@@ -10821,9 +11596,19 @@ pub unsafe extern "C" fn ffgkcl(tcard: *mut c_char) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// Return the classification code of a header keyword, given its 80-character
+/// card image.
+///
+/// # Parameters
+///
+/// * `tcard` — (I) the keyword card to classify
+///
+/// # Returns
+///
+/// One of the `TYP_*_KEY` codes, e.g. [`TYP_STRUC_KEY`] for `SIMPLE` or
+/// [`TYP_USER_KEY`] for anything unrecognized.
 pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
     let mut card: [c_char; 20] = [0; 20];
 
@@ -11351,15 +12136,20 @@ pub fn ffgkcl_safe(tcard: &[c_char]) -> c_int {
     TYP_USER_KEY /* by default all others are user keywords */
 }
 
-/*--------------------------------------------------------------------------*/
 /// determine implicit datatype of input string.
 /// This assumes that the string conforms to the FITS standard
 /// for keyword values, so may not detect all invalid formats.
+///
+/// # Parameters
+///
+/// * `cval`   — (I) formatted string representation of the value
+/// * `dtype`  — (O) datatype code: C, L, F, I, or X
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffdtyp(
-    cval: *const c_char, /* I - formatted string representation of the value */
-    dtype: *mut c_char,  /* O - datatype code: C, L, F, I, or X */
-    status: *mut c_int,  /* IO - error status */
+    cval: *const c_char,
+    dtype: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -11371,15 +12161,16 @@ pub unsafe extern "C" fn ffdtyp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// determine implicit datatype of input string.
 /// This assumes that the string conforms to the FITS standard
 /// for keyword values, so may not detect all invalid formats.
-pub fn ffdtyp_safe(
-    cval: &[c_char],    /* I - formatted string representation of the value */
-    dtype: &mut c_char, /* O - datatype code: C, L, F, I, or X */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) formatted string representation of the value
+/// * `dtype`  — (O) datatype code: C, L, F, I, or X
+/// * `status` — (IO) error status
+pub fn ffdtyp_safe(cval: &[c_char], dtype: &mut c_char, status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -11404,16 +12195,22 @@ pub fn ffdtyp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// determine implicit datatype of input integer string.
 /// This assumes that the string conforms to the FITS standard
 /// for integer keyword value, so may not detect all invalid formats.
+///
+/// # Parameters
+///
+/// * `cval`     — (I) formatted string representation of the integer
+/// * `dtype`    — (O) datatype code: TBYTE, TSHORT, TUSHORT, etc
+/// * `negative` — (O) is cval negative?
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffinttyp(
-    cval: *const c_char,  /* I - formatted string representation of the integer */
-    dtype: *mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
-    negative: *mut c_int, /* O - is cval negative? */
-    status: *mut c_int,   /* IO - error status */
+    cval: *const c_char,
+    dtype: *mut c_int,
+    negative: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -11425,11 +12222,17 @@ pub unsafe extern "C" fn ffinttyp(
     }
 }
 
+/// # Parameters
+///
+/// * `cval`     — (I) formatted string representation of the integer
+/// * `dtype`    — (O) datatype code: TBYTE, TSHORT, TUSHORT, etc
+/// * `negative` — (O) is cval negative?
+/// * `status`   — (IO) error status
 pub fn ffinttyp_safe(
-    cval: &[c_char],      /* I - formatted string representation of the integer */
-    dtype: &mut c_int,    /* O - datatype code: TBYTE, TSHORT, TUSHORT, etc */
-    negative: &mut c_int, /* O - is cval negative? */
-    status: &mut c_int,   /* IO - error status */
+    cval: &[c_char],
+    dtype: &mut c_int,
+    negative: &mut c_int,
+    status: &mut c_int,
 ) -> c_int {
     if *status > 0 {
         return *status; /* inherit input status value if > 0 */
@@ -11549,18 +12352,27 @@ pub fn ffinttyp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// high level routine to convert formatted character string to its
 /// intrinsic data type
+///
+/// # Parameters
+///
+/// * `cval`   — (I) formatted string representation of the value
+/// * `dtype`  — (O) datatype code: C, L, F, I or X
+/// * `ival`   — (O) integer value
+/// * `lval`   — (O) logical value
+/// * `sval`   — (O) string value
+/// * `dval`   — (O) double value
+/// * `status` — (IO) error status
 pub(crate) fn ffc2x(
-    cval: &[c_char],    /* I - formatted string representation of the value */
-    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+    cval: &[c_char],
+    dtype: &mut c_char,
     /* Only one of the following will be defined, depending on datatype */
-    ival: &mut c_long,   /* O - integer value       */
-    lval: &mut c_int,    /* O - logical value       */
-    sval: &mut [c_char], /* O - string value        */
-    dval: &mut f64,      /* O - double value        */
-    status: &mut c_int,  /* IO - error status */
+    ival: &mut c_long,
+    lval: &mut c_int,
+    sval: &mut [c_char],
+    dval: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     ffdtyp_safe(cval, dtype, status); /* determine the datatype */
 
@@ -11577,19 +12389,28 @@ pub(crate) fn ffc2x(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// high level routine to convert formatted character string to its
 /// intrinsic data type
+///
+/// # Parameters
+///
+/// * `cval`   — (I) formatted string representation of the value
+/// * `dtype`  — (O) datatype code: C, L, F, I or X
+/// * `ival`   — (O) integer value
+/// * `lval`   — (O) logical value
+/// * `sval`   — (O) string value
+/// * `dval`   — (O) double value
+/// * `status` — (IO) error status
 pub(crate) fn ffc2xx(
-    cval: &[c_char],    /* I - formatted string representation of the value */
-    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+    cval: &[c_char],
+    dtype: &mut c_char,
 
     /* Only one of the following will be defined, depending on datatype */
-    ival: &mut LONGLONG, /* O - integer value       */
-    lval: &mut c_int,    /* O - logical value       */
-    sval: &mut [c_char], /* O - string value        */
-    dval: &mut f64,      /* O - double value        */
-    status: &mut c_int,  /* IO - error status */
+    ival: &mut LONGLONG,
+    lval: &mut c_int,
+    sval: &mut [c_char],
+    dval: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     ffdtyp_safe(cval, dtype, status); /* determine the datatype */
 
@@ -11605,18 +12426,27 @@ pub(crate) fn ffc2xx(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// High level routine to convert formatted character string to its
 /// intrinsic data type
+///
+/// # Parameters
+///
+/// * `cval`   — (I) formatted string representation of the value
+/// * `dtype`  — (O) datatype code: C, L, F, I or X
+/// * `ival`   — (O) integer value
+/// * `lval`   — (O) logical value
+/// * `sval`   — (O) string value
+/// * `dval`   — (O) double value
+/// * `status` — (IO) error status
 pub(crate) fn ffc2uxx(
-    cval: &[c_char],    /* I - formatted string representation of the value */
-    dtype: &mut c_char, /* O - datatype code: C, L, F, I or X  */
+    cval: &[c_char],
+    dtype: &mut c_char,
     /* Only one of the following will be defined, depending on datatype */
-    ival: &mut ULONGLONG, /* O - integer value       */
-    lval: &mut c_int,     /* O - logical value       */
-    sval: &mut [c_char],  /* O - string value        */
-    dval: &mut f64,       /* O - double value        */
-    status: &mut c_int,   /* IO - error status */
+    ival: &mut ULONGLONG,
+    lval: &mut c_int,
+    sval: &mut [c_char],
+    dval: &mut f64,
+    status: &mut c_int,
 ) -> c_int {
     ffdtyp_safe(cval, dtype, status); /* determine the datatype */
 
@@ -11632,14 +12462,15 @@ pub(crate) fn ffc2uxx(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert formatted string to an integer value, doing implicit
 /// datatype conversion if necessary.
-pub(crate) fn ffc2i(
-    cval: &[c_char],    /* I - string representation of the value */
-    ival: &mut c_long,  /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2i(cval: &[c_char], ival: &mut c_long, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; 81] = [0; 81];
 
@@ -11699,14 +12530,15 @@ pub(crate) fn ffc2i(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert formatted string to a LONGLONG integer value, doing implicit
 /// datatype conversion if necessary.
-pub(crate) fn ffc2j(
-    cval: &[c_char],     /* I - string representation of the value */
-    ival: &mut LONGLONG, /* O - numerical value of the input string */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2j(cval: &[c_char], ival: &mut LONGLONG, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; 81] = [0; 81];
     let mut msg: [c_char; 81] = [0; 81];
@@ -11763,14 +12595,15 @@ pub(crate) fn ffc2j(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert formatted string to a ULONGLONG integer value, doing implicit
 /// datatype conversion if necessary.
-pub(crate) fn ffc2uj(
-    cval: &[c_char],      /* I - string representation of the value */
-    ival: &mut ULONGLONG, /* O - numerical value of the input string */
-    status: &mut c_int,   /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2uj(cval: &[c_char], ival: &mut ULONGLONG, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -11828,14 +12661,15 @@ pub(crate) fn ffc2uj(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert formatted string to a logical value, doing implicit
 /// datatype conversion if necessary
-pub(crate) fn ffc2l(
-    cval: &[c_char],    /* I - string representation of the value */
-    lval: &mut c_int,   /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `lval`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2l(cval: &[c_char], lval: &mut c_int, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -11890,14 +12724,15 @@ pub(crate) fn ffc2l(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert formatted string to a real float value, doing implicit
 /// datatype conversion if necessary
-pub(crate) fn ffc2r(
-    cval: &[c_char],    /* I - string representation of the value */
-    fval: &mut f32,     /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `fval`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2r(cval: &[c_char], fval: &mut f32, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -11942,14 +12777,15 @@ pub(crate) fn ffc2r(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert formatted string to a double value, doing implicit
 /// datatype conversion if necessary
-pub(crate) fn ffc2d(
-    cval: &[c_char],    /* I - string representation of the value */
-    dval: &mut f64,     /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `dval`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2d(cval: &[c_char], dval: &mut f64, status: &mut c_int) -> c_int {
     let mut dtype: c_char = 0;
     let mut sval: [c_char; FLEN_CARD] = [0; FLEN_CARD];
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -11996,13 +12832,14 @@ pub(crate) fn ffc2d(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert null-terminated formatted string to an integer value
-pub(crate) fn ffc2ii(
-    cval: &[c_char],    /* I - string representation of the value */
-    ival: &mut c_long,  /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2ii(cval: &[c_char], ival: &mut c_long, status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12045,13 +12882,14 @@ pub(crate) fn ffc2ii(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert null-terminated formatted string to an long long integer value
-pub(crate) fn ffc2jj(
-    cval: &[c_char],     /* I - string representation of the value */
-    ival: &mut LONGLONG, /* O - numerical value of the input string */
-    status: &mut c_int,  /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2jj(cval: &[c_char], ival: &mut LONGLONG, status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12094,13 +12932,14 @@ pub(crate) fn ffc2jj(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Convert null-terminated formatted string to an unsigned long long integer value
-pub(crate) fn ffc2ujj(
-    cval: &[c_char],      /* I - string representation of the value */
-    ival: &mut ULONGLONG, /* O - numerical value of the input string */
-    status: &mut c_int,   /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `ival`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2ujj(cval: &[c_char], ival: &mut ULONGLONG, status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12144,13 +12983,14 @@ pub(crate) fn ffc2ujj(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert null-terminated formatted string to a logical value
-pub(crate) fn ffc2ll(
-    cval: &[c_char],    /* I - string representation of the value: T or F */
-    lval: &mut c_int,   /* O - numerical value of the input string: 1 or 0 */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value: T or F
+/// * `lval`   — (O) numerical value of the input string: 1 or 0
+/// * `status` — (IO) error status
+pub(crate) fn ffc2ll(cval: &[c_char], lval: &mut c_int, status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12165,17 +13005,18 @@ pub(crate) fn ffc2ll(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert an input quoted string to an unquoted string by removing
 /// the leading and trailing quote character.  Also, replace any
 /// pairs of single quote characters with just a single quote
 /// character (FITS used a pair of single quotes to represent
 /// a literal quote character within the string).
-pub(crate) fn ffc2s(
-    instr: &[c_char],      /* I - null terminated quoted input string */
-    outstr: &mut [c_char], /* O - null terminated output string without quotes */
-    status: &mut c_int,    /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `instr`  — (I) null terminated quoted input string
+/// * `outstr` — (O) null terminated output string without quotes
+/// * `status` — (IO) error status
+pub(crate) fn ffc2s(instr: &[c_char], outstr: &mut [c_char], status: &mut c_int) -> c_int {
     if *status > 0 {
         /* inherit input status value if > 0 */
         return *status;
@@ -12233,13 +13074,14 @@ pub(crate) fn ffc2s(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert null-terminated formatted string to a float value
-pub(crate) fn ffc2rr(
-    cval: &[c_char],    /* I - string representation of the value */
-    fval: &mut f32,     /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `fval`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2rr(cval: &[c_char], fval: &mut f32, status: &mut c_int) -> c_int {
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut tval: [c_char; 73] = [0; 73];
     let decimalpt: c_char = 0;
@@ -12337,13 +13179,14 @@ pub(crate) fn ffc2rr(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// convert null-terminated formatted string to a double value
-pub(crate) fn ffc2dd(
-    cval: &[c_char],    /* I - string representation of the value */
-    dval: &mut f64,     /* O - numerical value of the input string */
-    status: &mut c_int, /* IO - error status */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `cval`   — (I) string representation of the value
+/// * `dval`   — (O) numerical value of the input string
+/// * `status` — (IO) error status
+pub(crate) fn ffc2dd(cval: &[c_char], dval: &mut f64, status: &mut c_int) -> c_int {
     let mut msg: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
     let mut tval: [c_char; 73] = [0; 73];
     let decimalpt: c_char = 0;

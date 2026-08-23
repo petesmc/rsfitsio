@@ -1,3 +1,9 @@
+//! A one-character-lookahead reader, used by the `scanf` implementation.
+//!
+//! Vendored from relibc; see [`crate::relibc`].
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 struct LookAheadBuffer {
     buf: *const u8,
     pos: isize,

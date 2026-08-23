@@ -1,3 +1,9 @@
+//! The I/O prelude, vendored from the Rust project's `std::io`.
+//!
+//! See [`crate::relibc`]. Copyright notices, where present, are in the file
+//! below.
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
 // Copyright 2015 The Rust Project Developers. See the COPYRIGHT
 // file at the top-level directory of this distribution and at
 // http://rust-lang.org/COPYRIGHT.

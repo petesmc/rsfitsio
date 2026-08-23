@@ -1,9 +1,14 @@
-/*  This file, getcolsb.rs, contains routines that read data elements from   */
-/*  a FITS image or table, with signed char (signed byte) data type.        */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that read data elements from a FITS image or table, with signed
+//! char (signed byte) datatype.
+//!
+//! The [`TSBYTE`] arm of the typed column I/O family. [`crate::getcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::putcolsb`].
+//!
+//! Ported from CFITSIO's `getcolsb.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::slice;
 use core::{cmp, mem};
@@ -25,7 +30,6 @@ use crate::{NullValue, bb};
 use crate::{buffers::*, calculate_subsection_length};
 use crate::{int_snprintf, slice_to_str};
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
@@ -37,16 +41,27 @@ use crate::{int_snprintf, slice_to_str};
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpvsb(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to read (1 = 1st group)           */
-    firstelem: LONGLONG, /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to read                */
-    nulval: i8,          /* I - value for undefined pixels          */
-    array: *mut i8,      /* O - array of values that are returned   */
-    anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: i8,
+    array: *mut i8,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -60,7 +75,6 @@ pub unsafe extern "C" fn ffgpvsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
@@ -72,15 +86,26 @@ pub unsafe extern "C" fn ffgpvsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for undefined pixels
+/// * `array`     — (O) array of values that are returned
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpvsb_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    group: c_long,              /* I - group to read (1 = 1st group)           */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: i8,                 /* I - value for undefined pixels          */
-    array: &mut [i8],           /* O - array of values that are returned   */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: i8,
+    array: &mut [i8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let cdummy = 0;
     let nullcheck = NullCheckType::SetPixel;
@@ -124,7 +149,6 @@ pub fn ffgpvsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
@@ -136,16 +160,27 @@ pub fn ffgpvsb_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nularray`  — (O) array of null pixel flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgpfsb(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    group: c_long,         /* I - group to read (1 = 1st group)           */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    array: *mut i8,        /* O - array of values that are returned   */
-    nularray: *mut c_char, /* O - array of null pixel flags               */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut i8,
+    nularray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -162,7 +197,6 @@ pub unsafe extern "C" fn ffgpfsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being read).
@@ -174,15 +208,26 @@ pub unsafe extern "C" fn ffgpfsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `nularray`  — (O) array of null pixel flags
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgpfsb_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    group: c_long,              /* I - group to read (1 = 1st group)           */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    array: &mut [i8],           /* O - array of values that are returned   */
-    nularray: &mut [c_char],    /* O - array of null pixel flags               */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [i8],
+    nularray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let nullcheck = NullCheckType::SetNullArray;
 
@@ -223,23 +268,34 @@ pub fn ffgpfsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being read).  Any null
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to read (1 = 1st group)
+/// * `nulval` — set undefined pixels equal to this
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffg2dsb(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to read (1 = 1st group)           */
-    nulval: i8,          /* set undefined pixels equal to this     */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value                 */
-    array: *mut i8,      /* O - array to be filled and returned    */
-    anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    nulval: i8,
+    ncols: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    array: *mut i8,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -255,22 +311,33 @@ pub unsafe extern "C" fn ffg2dsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being read).  Any null
 /// values in the array will be set equal to the value of nulval, unless
 /// nulval = 0 in which case no null checking will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to read (1 = 1st group)
+/// * `nulval` — set undefined pixels equal to this
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 pub fn ffg2dsb_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    group: c_long,              /* I - group to read (1 = 1st group)           */
-    nulval: i8,                 /* set undefined pixels equal to this     */
-    ncols: LONGLONG,            /* I - number of pixels in each row of array   */
-    naxis1: LONGLONG,           /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,           /* I - FITS image NAXIS2 value                 */
-    array: &mut [i8],           /* O - array to be filled and returned    */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    nulval: i8,
+    ncols: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    array: &mut [i8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     /* call the 3D reading routine, with the 3rd dimension = 1 */
     ffg3dsb_safe(
@@ -280,7 +347,6 @@ pub fn ffg2dsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an entire 3-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being read).  Any null
@@ -291,19 +357,33 @@ pub fn ffg2dsb_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to read (1 = 1st group)
+/// * `nulval` — set undefined pixels equal to this
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `nrows`  — (I) number of rows in each plane of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `naxis3` — (I) FITS image NAXIS3 value
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffg3dsb(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to read (1 = 1st group)           */
-    nulval: i8,          /* set undefined pixels equal to this     */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array   */
-    nrows: LONGLONG,     /* I - number of rows in each plane of array   */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value                 */
-    naxis3: LONGLONG,    /* I - FITS image NAXIS3 value                 */
-    array: *mut i8,      /* O - array to be filled and returned    */
-    anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    nulval: i8,
+    ncols: LONGLONG,
+    nrows: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    naxis3: LONGLONG,
+    array: *mut i8,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -319,7 +399,6 @@ pub unsafe extern "C" fn ffg3dsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an entire 3-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being read).  Any null
@@ -330,18 +409,32 @@ pub unsafe extern "C" fn ffg3dsb(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to read (1 = 1st group)
+/// * `nulval` — set undefined pixels equal to this
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `nrows`  — (I) number of rows in each plane of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `naxis3` — (I) FITS image NAXIS3 value
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 pub fn ffg3dsb_safe(
-    fptr: &mut fitsfile,            /* I - FITS file pointer                       */
-    group: c_long,                  /* I - group to read (1 = 1st group)           */
-    nulval: i8,                     /* set undefined pixels equal to this     */
-    ncols: LONGLONG,                /* I - number of pixels in each row of array   */
-    nrows: LONGLONG,                /* I - number of rows in each plane of array   */
-    naxis1: LONGLONG,               /* I - FITS image NAXIS1 value                 */
-    naxis2: LONGLONG,               /* I - FITS image NAXIS2 value                 */
-    naxis3: LONGLONG,               /* I - FITS image NAXIS3 value                 */
-    array: &mut [i8],               /* O - array to be filled and returned    */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    nulval: i8,
+    ncols: LONGLONG,
+    nrows: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    naxis3: LONGLONG,
+    array: &mut [i8],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut narray = 0;
     let mut nfits: LONGLONG = 0;
@@ -440,22 +533,35 @@ pub fn ffg3dsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a subsection of data values from an image or a table column.
 /// This routine is set up to handle a maximum of nine dimensions.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read (1 = 1st)
+/// * `naxis`  — (I) number of dimensions in the FITS array
+/// * `naxes`  — (I) size of each dimension
+/// * `blc`    — (I) 'bottom left corner' of the subsection
+/// * `trc`    — (I) 'top right corner' of the subsection
+/// * `inc`    — (I) increment to be applied in each dimension
+/// * `nulval` — (I) value to set undefined pixels
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgsvsb(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                         */
-    colnum: c_int,        /* I - number of the column to read (1 = 1st)    */
-    naxis: c_int,         /* I - number of dimensions in the FITS array    */
-    naxes: *const c_long, /* I - size of each dimension                    */
-    blc: *const c_long,   /* I - 'bottom left corner' of the subsection    */
-    trc: *const c_long,   /* I - 'top right corner' of the subsection      */
-    inc: *const c_long,   /* I - increment to be applied in each dimension */
-    nulval: i8,           /* I - value to set undefined pixels       */
-    array: *mut i8,       /* O - array to be filled and returned     */
-    anynul: *mut c_int,   /* O - set to 1 if any values are null; else 0   */
-    status: *mut c_int,   /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    blc: *const c_long,
+    trc: *const c_long,
+    inc: *const c_long,
+    nulval: i8,
+    array: *mut i8,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -478,21 +584,34 @@ pub unsafe extern "C" fn ffgsvsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a subsection of data values from an image or a table column.
 /// This routine is set up to handle a maximum of nine dimensions.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of the column to read (1 = 1st)
+/// * `naxis`  — (I) number of dimensions in the FITS array
+/// * `naxes`  — (I) size of each dimension
+/// * `blc`    — (I) 'bottom left corner' of the subsection
+/// * `trc`    — (I) 'top right corner' of the subsection
+/// * `inc`    — (I) increment to be applied in each dimension
+/// * `nulval` — (I) value to set undefined pixels
+/// * `array`  — (O) array to be filled and returned
+/// * `anynul` — (O) set to 1 if any values are null; else 0
+/// * `status` — (IO) error status
 pub fn ffgsvsb_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                         */
-    colnum: c_int,       /* I - number of the column to read (1 = 1st)    */
-    naxis: c_int,        /* I - number of dimensions in the FITS array    */
-    naxes: &[c_long],    /* I - size of each dimension                    */
-    blc: &[c_long],      /* I - 'bottom left corner' of the subsection    */
-    trc: &[c_long],      /* I - 'top right corner' of the subsection      */
-    inc: &[c_long],      /* I - increment to be applied in each dimension */
-    nulval: i8,          /* I - value to set undefined pixels       */
-    array: &mut [i8],    /* O - array to be filled and returned     */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
-    status: &mut c_int,  /* IO - error status                             */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    blc: &[c_long],
+    trc: &[c_long],
+    inc: &[c_long],
+    nulval: i8,
+    array: &mut [i8],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
@@ -697,22 +816,35 @@ pub fn ffgsvsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a subsection of data values from an image or a table column.
 /// This routine is set up to handle a maximum of nine dimensions.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `colnum`  — (I) number of the column to read (1 = 1st)
+/// * `naxis`   — (I) number of dimensions in the FITS array
+/// * `naxes`   — (I) size of each dimension
+/// * `blc`     — (I) 'bottom left corner' of the subsection
+/// * `trc`     — (I) 'top right corner' of the subsection
+/// * `inc`     — (I) increment to be applied in each dimension
+/// * `array`   — (O) array to be filled and returned
+/// * `flagval` — (O) set to 1 if corresponding value is null
+/// * `anynul`  — (O) set to 1 if any values are null; else 0
+/// * `status`  — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgsfsb(
-    fptr: *mut fitsfile,  /* I - FITS file pointer                         */
-    colnum: c_int,        /* I - number of the column to read (1 = 1st)    */
-    naxis: c_int,         /* I - number of dimensions in the FITS array    */
-    naxes: *const c_long, /* I - size of each dimension                    */
-    blc: *const c_long,   /* I - 'bottom left corner' of the subsection    */
-    trc: *const c_long,   /* I - 'top right corner' of the subsection      */
-    inc: *const c_long,   /* I - increment to be applied in each dimension */
-    array: *mut i8,       /* O - array to be filled and returned     */
-    flagval: *mut c_char, /* O - set to 1 if corresponding value is null   */
-    anynul: *mut c_int,   /* O - set to 1 if any values are null; else 0   */
-    status: *mut c_int,   /* IO - error status                             */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    blc: *const c_long,
+    trc: *const c_long,
+    inc: *const c_long,
+    array: *mut i8,
+    flagval: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -736,21 +868,34 @@ pub unsafe extern "C" fn ffgsfsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a subsection of data values from an image or a table column.
 /// This routine is set up to handle a maximum of nine dimensions.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) FITS file pointer
+/// * `colnum`  — (I) number of the column to read (1 = 1st)
+/// * `naxis`   — (I) number of dimensions in the FITS array
+/// * `naxes`   — (I) size of each dimension
+/// * `blc`     — (I) 'bottom left corner' of the subsection
+/// * `trc`     — (I) 'top right corner' of the subsection
+/// * `inc`     — (I) increment to be applied in each dimension
+/// * `array`   — (O) array to be filled and returned
+/// * `flagval` — (O) set to 1 if corresponding value is null
+/// * `anynul`  — (O) set to 1 if any values are null; else 0
+/// * `status`  — (IO) error status
 pub fn ffgsfsb_safe(
-    fptr: &mut fitsfile,    /* I - FITS file pointer                         */
-    colnum: c_int,          /* I - number of the column to read (1 = 1st)    */
-    naxis: c_int,           /* I - number of dimensions in the FITS array    */
-    naxes: &[c_long],       /* I - size of each dimension                    */
-    blc: &[c_long],         /* I - 'bottom left corner' of the subsection    */
-    trc: &[c_long],         /* I - 'top right corner' of the subsection      */
-    inc: &[c_long],         /* I - increment to be applied in each dimension */
-    array: &mut [i8],       /* O - array to be filled and returned     */
-    flagval: &mut [c_char], /* O - set to 1 if corresponding value is null   */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0   */
-    status: &mut c_int,     /* IO - error status                             */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    blc: &[c_long],
+    trc: &[c_long],
+    inc: &[c_long],
+    array: &mut [i8],
+    flagval: &mut [c_char],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut rstr: c_long = 0;
     let mut rstp: c_long = 0;
@@ -937,7 +1082,6 @@ pub fn ffgsfsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 ///Read an array of group parameters from the primary array. Data conversion
 ///and scaling will be performed if necessary (e.g, if the datatype of
 ///the FITS array is not the same as the array being read).
@@ -946,14 +1090,23 @@ pub fn ffgsfsb_safe(
 ///each group of the primary array is a row in the table,
 ///where the first column contains the group parameters
 ///and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffggpsb(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to read (1 = 1st group)           */
-    firstelem: c_long,   /* I - first vector element to read (1 = 1st)  */
-    nelem: c_long,       /* I - number of values to read                */
-    array: *mut i8,      /* O - array of values that are returned   */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: c_long,
+    nelem: c_long,
+    array: *mut i8,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -965,7 +1118,6 @@ pub unsafe extern "C" fn ffggpsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///Read an array of group parameters from the primary array. Data conversion
 ///and scaling will be performed if necessary (e.g, if the datatype of
 ///the FITS array is not the same as the array being read).
@@ -974,13 +1126,22 @@ pub unsafe extern "C" fn ffggpsb(
 ///each group of the primary array is a row in the table,
 ///where the first column contains the group parameters
 ///and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to read (1 = 1st group)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are returned
+/// * `status`    — (IO) error status
 pub fn ffggpsb_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to read (1 = 1st group)           */
-    firstelem: c_long,   /* I - first vector element to read (1 = 1st)  */
-    nelem: c_long,       /* I - number of values to read                */
-    array: &mut [i8],    /* O - array of values that are returned       */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: c_long,
+    nelem: c_long,
+    array: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let cdummy = 0;
     let mut anynul = 0;
@@ -1004,24 +1165,35 @@ pub fn ffggpsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a column in the current FITS HDU. Automatic
 /// datatype conversion will be performed if the datatype of the column does not
 /// match the datatype of the array parameter. The output values will be scaled
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for null pixels
+/// * `array`     — (O) array of values that are read
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcvsb(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,  /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG, /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to read                */
-    nulval: i8,          /* I - value for null pixels               */
-    array: *mut i8,      /* O - array of values that are read       */
-    anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: i8,
+    array: *mut i8,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1037,23 +1209,34 @@ pub unsafe extern "C" fn ffgcvsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a column in the current FITS HDU. Automatic
 /// datatype conversion will be performed if the datatype of the column does not
 /// match the datatype of the array parameter. The output values will be scaled
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for null pixels
+/// * `array`     — (O) array of values that are read
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcvsb_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: i8,                 /* I - value for null pixels               */
-    array: &mut [i8],           /* O - array of values that are read       */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: i8,
+    array: &mut [i8],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut dummy_nularray = vec![0; nelem as usize];
 
@@ -1074,24 +1257,35 @@ pub fn ffgcvsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a column in the current FITS HDU. Automatic
 /// datatype conversion will be performed if the datatype of the column does not
 /// match the datatype of the array parameter. The output values will be scaled
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Nularray will be set = 1 if the corresponding array pixel is undefined,
 /// otherwise nularray will = 0.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags: 1 if null pixel; else 0
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcfsb(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    array: *mut i8,        /* O - array of values that are read       */
-    nularray: *mut c_char, /* O - array of flags: 1 if null pixel; else 0 */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut i8,
+    nularray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1108,23 +1302,34 @@ pub unsafe extern "C" fn ffgcfsb(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a column in the current FITS HDU. Automatic
 /// datatype conversion will be performed if the datatype of the column does not
 /// match the datatype of the array parameter. The output values will be scaled
 /// by the FITS TSCALn and TZEROn values if these values have been defined.
 /// Nularray will be set = 1 if the corresponding array pixel is undefined,
 /// otherwise nularray will = 0.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags: 1 if null pixel; else 0
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcfsb_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    array: &mut [i8],           /* O - array of values that are read       */
-    nularray: &mut [c_char],    /* O - array of flags: 1 if null pixel; else 0 */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [i8],
+    nularray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let dummy: i8 = 0;
 
@@ -1145,7 +1350,6 @@ pub fn ffgcfsb_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of values from a column in the current FITS HDU.
 /// The column number may refer to a real column in an ASCII or binary table,
 /// or it may refer be a virtual column in a 1 or more grouped FITS primary
@@ -1159,21 +1363,35 @@ pub fn ffgcfsb_safe(
 /// and will be scaled by the FITS TSCALn and TZEROn values if necessary.
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `elemincre` — (I) pixel increment; e.g., 2 = every other
+/// * `nultyp`    — (I) null value handling code:
+/// * `nulval`    — (I) value for null pixels if nultyp = 1
+/// * `array`     — (O) array of values that are read
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn ffgclsb(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    elemincre: c_long,     /* I - pixel increment; e.g., 2 = every other  */
-    nultyp: NullCheckType, /* I - null value handling code:               */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    elemincre: c_long,
+    nultyp: NullCheckType,
     /*     1: set undefined pixels = nulval        */
     /*     2: set nularray=1 for undefined pixels  */
-    nulval: i8,                     /* I - value for null pixels if nultyp = 1 */
-    array: &mut [i8],               /* O - array of values that are read       */
-    nularray: &mut [c_char],        /* O - array of flags = 1 if nultyp = 2        */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    nulval: i8,
+    array: &mut [i8],
+    nularray: &mut [c_char],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut scale: f64 = 0.0;
     let mut zero: f64 = 0.0;
@@ -1221,9 +1439,7 @@ pub(crate) fn ffgclsb(
         nularray.fill(0); /* initialize nullarray */
     }
 
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if elemincre < 0 {
         readcheck -= 1; /* don't do range checking in this case */
     }
@@ -1315,9 +1531,7 @@ pub(crate) fn ffgclsb(
             power *= 10.0;
         }
     }
-    /*------------------------------------------------------------------*/
     /*  Decide whether to check for null values in the input FITS file: */
-    /*------------------------------------------------------------------*/
     nulcheck = nultyp; /* by default, check for null values in the FITS file */
 
     if nultyp == NullCheckType::SetPixel && nulval == 0 {
@@ -1337,7 +1551,6 @@ pub(crate) fn ffgclsb(
         nulcheck = NullCheckType::None;
     }
 
-    /*---------------------------------------------------------------------*/
     /*  Now read the pixels from the FITS column. If the column does not   */
     /*  have the same datatype as the output array, then we have to read   */
     /*  the raw values into a temporary buffer (of limited size).  In      */
@@ -1347,7 +1560,6 @@ pub(crate) fn ffgclsb(
     /*  test for undefined values, (2) convert the datatype if necessary,  */
     /*  and (3) scale the values by the FITS TSCALn and TZEROn linear      */
     /*  scaling parameters.                                                */
-    /*---------------------------------------------------------------------*/
 
     remain = nelem; /* remaining number of values to read */
     next = 0; /* next element in array to be read   */
@@ -1573,9 +1785,7 @@ pub(crate) fn ffgclsb(
             }
         } /* End of switch block */
 
-        /*-------------------------*/
         /*  Check for fatal error  */
-        /*-------------------------*/
         if *status > 0 {
             /* test for error during previous read operation */
 
@@ -1603,9 +1813,7 @@ pub(crate) fn ffgclsb(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= ntodo as LONGLONG;
         if remain != 0 {
             next += ntodo as usize;
@@ -1627,9 +1835,7 @@ pub(crate) fn ffgclsb(
         }
     } /*  End of main while Loop  */
 
-    /*--------------------------------*/
     /*  check for numerical overflow  */
-    /*--------------------------------*/
     if *status == OVERFLOW_ERR {
         ffpmsg_str("Numerical overflow during type conversion while reading FITS data.");
         *status = NUM_OVERFLOW;
@@ -1638,7 +1844,6 @@ pub(crate) fn ffgclsb(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -1650,20 +1855,34 @@ pub(crate) fn ffgclsb(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `tnull`     — (I) value of FITS TNULLn keyword if any
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffi1s1(
-    input: &[u8],             /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[u8],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: u8,                   /* I - value of FITS TNULLn keyword if any */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: u8,
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
 
@@ -1766,7 +1985,6 @@ pub(crate) fn fffi1s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -1778,20 +1996,34 @@ pub(crate) fn fffi1s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `tnull`     — (I) value of FITS TNULLn keyword if any
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffi2s1(
-    input: &[c_short],        /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[c_short],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: c_short,              /* I - value of FITS TNULLn keyword if any */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: c_short,
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
 
@@ -1883,7 +2115,6 @@ pub(crate) fn fffi2s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -1895,20 +2126,34 @@ pub(crate) fn fffi2s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `tnull`     — (I) value of FITS TNULLn keyword if any
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffi4s1(
-    input: &[INT32BIT],       /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[INT32BIT],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: INT32BIT,             /* I - value of FITS TNULLn keyword if any */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: INT32BIT,
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
 
@@ -2001,7 +2246,6 @@ pub(crate) fn fffi4s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -2013,20 +2257,34 @@ pub(crate) fn fffi4s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `tnull`     — (I) value of FITS TNULLn keyword if any
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffi8s1(
-    input: &[LONGLONG],       /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[LONGLONG],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    tnull: LONGLONG,             /* I - value of FITS TNULLn keyword if any */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    tnull: LONGLONG,
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut ulltemp: ULONGLONG = 0;
@@ -2158,7 +2416,6 @@ pub(crate) fn fffi8s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -2170,19 +2427,32 @@ pub(crate) fn fffi8s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffr4s1(
-    input: &[f32],            /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[f32],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
@@ -2305,7 +2575,6 @@ pub(crate) fn fffr4s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file.
 /// Check for null values and do datatype conversion and scaling if required.
 /// The nullcheck code value determines how any null values in the input array
@@ -2317,19 +2586,32 @@ pub(crate) fn fffr4s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`     — (I) array of values to be converted
+/// * `ntodo`     — (I) number of elements in the array
+/// * `scale`     — (I) FITS TSCALn or BSCALE value
+/// * `zero`      — (I) FITS TZEROn or BZERO value
+/// * `nullcheck` — (I) null checking code; 0 = don't check
+/// * `nullval`   — (I) set null pixels, if nullcheck = 1
+/// * `nullarray` — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`   — (O) set to 1 if any pixels are null
+/// * `output`    — (O) array of converted pixels
+/// * `status`    — (IO) error status
 pub(crate) fn fffr8s1(
-    input: &[f64],            /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &[f64],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    nullval: i8,                 /* I - set null pixels, if nullcheck = 1   */
-    nullarray: &mut [c_char],    /* O - bad pixel array, if nullcheck = 2   */
-    anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],           /* O - array of converted pixels           */
-    status: &mut c_int,          /* IO - error status                       */
+    nullval: i8,
+    nullarray: &mut [c_char],
+    anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut sptr = 0;
@@ -2452,7 +2734,6 @@ pub(crate) fn fffr8s1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output following reading of the input from a FITS file. Check
 /// for null values and do scaling if required. The nullcheck code value
 /// determines how any null values in the input array are treated. A null
@@ -2463,22 +2744,38 @@ pub(crate) fn fffr8s1(
 /// nullarray will be set to 1; the value of nullarray for non-null pixels
 /// will = 0.  The anynull parameter will be set = 1 if any of the returned
 /// pixels are null, otherwise anynull will be returned with a value = 0;
+///
+/// # Parameters
+///
+/// * `input`      — (I) array of values to be converted
+/// * `ntodo`      — (I) number of elements in the array
+/// * `scale`      — (I) FITS TSCALn or BSCALE value
+/// * `zero`       — (I) FITS TZEROn or BZERO value
+/// * `twidth`     — (I) width of each substring of chars
+/// * `implipower` — (I) power of 10 of implied decimal
+/// * `nullcheck`  — (I) null checking code; 0 = don't check
+/// * `snull`      — (I) value of FITS null string, if any
+/// * `nullval`    — (I) set null pixels, if nullcheck = 1
+/// * `nullarray`  — (O) bad pixel array, if nullcheck = 2
+/// * `anynull`    — (O) set to 1 if any pixels are null
+/// * `output`     — (O) array of converted pixels
+/// * `status`     — (IO) error status
 pub(crate) fn fffstrs1(
-    input: &mut [c_char],     /* I - array of values to be converted     */
-    ntodo: c_long,            /* I - number of elements in the array     */
-    scale: f64,               /* I - FITS TSCALn or BSCALE value         */
-    zero: f64,                /* I - FITS TZEROn or BZERO  value         */
-    twidth: c_long,           /* I - width of each substring of chars    */
-    implipower: f64,          /* I - power of 10 of implied decimal      */
-    nullcheck: NullCheckType, /* I - null checking code; 0 = don't check */
+    input: &mut [c_char],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    twidth: c_long,
+    implipower: f64,
+    nullcheck: NullCheckType,
     /*     1:set null pixels = nullval         */
     /*     2: if null pixel, set nullarray = 1 */
-    snull: &[c_char],                /* I - value of FITS null string, if any   */
-    nullval: i8,                     /* I - set null pixels, if nullcheck = 1  */
-    nullarray: &mut [c_char],        /* O - bad pixel array, if nullcheck = 2   */
-    mut anynull: Option<&mut c_int>, /* O - set to 1 if any pixels are null     */
-    output: &mut [i8],               /* O - array of converted pixels          */
-    status: &mut c_int,              /* IO - error status                       */
+    snull: &[c_char],
+    nullval: i8,
+    nullarray: &mut [c_char],
+    mut anynull: Option<&mut c_int>,
+    output: &mut [i8],
+    status: &mut c_int,
 ) -> c_int {
     let mut dvalue: f64 = 0.0;
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];

@@ -1,3 +1,8 @@
+//! Fixtures shared by the ported CFITSIO test programs.
+//!
+//! See `TEST_CONVERSION.md` for how a C `test_*.c` maps onto these.
+#![warn(missing_docs)]
+
 use core::ffi::CStr;
 use std::{f32, f64};
 
@@ -65,11 +70,12 @@ pub fn path_with_ext(path: &str, ext: &str) -> [c_char; FLEN_FILENAME] {
     to_buf(&s)
 }
 
-/// Helper function for float comparisons
+/// Whether two `f32` values are equal to within one epsilon.
 pub fn floats_close_f32(a: f32, b: f32) -> bool {
     (a - b).abs() < f32::EPSILON
 }
 
+/// Whether two `f64` values are equal to within one epsilon.
 pub fn floats_close_f64(a: f64, b: f64) -> bool {
     (a - b).abs() < f64::EPSILON
 }

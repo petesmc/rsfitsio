@@ -1,3 +1,9 @@
+//! GZIP compression of a byte stream, over `libz-rs-sys`.
+//!
+//! Used when a FITS file is written to a `.gz` name, and by the `GZIP_1` and
+//! `GZIP_2` tile compressors in [`crate::imcompress`].
+#![warn(missing_docs)]
+
 use core::ptr;
 use std::io::{Read, Write};
 
@@ -47,18 +53,27 @@ pub(crate) unsafe fn deflateInit2(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the disk file into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
+///
+/// # Parameters
+///
+/// * `_filename`   — name of input file
+/// * `diskfile`    — (I) file pointer
+/// * `buffptr`     — (IO) memory pointer
+/// * `buffsize`    — (IO) size of buffer, in bytes
+/// * `mem_realloc` — function
+/// * `filesize`    — (O) size of file, in bytes
+/// * `status`      — (IO) error status
 pub(crate) unsafe fn uncompress2mem<T: Read>(
-    _filename: &[c_char],  /* name of input file                 */
-    diskfile: &mut T,      /* I - file pointer                        */
-    buffptr: *mut *mut u8, /* IO - memory pointer                     */
-    buffsize: &mut usize,  /* IO - size of buffer, in bytes           */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function     */
-    filesize: &mut usize, /* O - size of file, in bytes              */
-    status: &mut c_int,   /* IO - error status                       */
+    _filename: &[c_char],
+    diskfile: &mut T,
+    buffptr: *mut *mut u8,
+    buffsize: &mut usize,
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    filesize: &mut usize,
+    status: &mut c_int,
 ) -> c_int {
     unsafe {
         let mut err: c_int = 0;
@@ -218,18 +233,27 @@ pub(crate) unsafe fn uncompress2mem<T: Read>(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the file in memory into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
+///
+/// # Parameters
+///
+/// * `inmemptr`    — (I) memory pointer to compressed bytes
+/// * `inmemsize`   — (I) size of input compressed file
+/// * `buffptr`     — (IO) memory pointer
+/// * `buffsize`    — (IO) size of buffer, in bytes
+/// * `mem_realloc` — function
+/// * `filesize`    — (O) size of file, in bytes
+/// * `status`      — (IO) error status
 pub(crate) unsafe fn uncompress2mem_from_mem(
-    inmemptr: &[c_char],   /* I - memory pointer to compressed bytes */
-    inmemsize: usize,      /* I - size of input compressed file      */
-    buffptr: *mut *mut u8, /* IO - memory pointer                      */
-    buffsize: &mut usize,  /* IO - size of buffer, in bytes           */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function     */
-    filesize: Option<&mut usize>, /* O - size of file, in bytes              */
-    status: &mut c_int,           /* IO - error status                       */
+    inmemptr: &[c_char],
+    inmemsize: usize,
+    buffptr: *mut *mut u8,
+    buffsize: &mut usize,
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    filesize: Option<&mut usize>,
+    status: &mut c_int,
 ) -> c_int {
     unsafe {
         let mut err: c_int = 0;
@@ -326,18 +350,24 @@ pub(crate) unsafe fn uncompress2mem_from_mem(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the file into another file.
 ///
 /// The body is one `unsafe` block because it is zlib stream manipulation throughout:
 /// every call reads and writes through `z_stream`'s `next_in`/`next_out` raw
 /// pointers.  The function itself is safe: it owns both buffers and is the only
 /// thing that sets those pointers, so no caller can influence them.
+///
+/// # Parameters
+///
+/// * `_filename`   — name of input file
+/// * `indiskfile`  — (I) input file pointer
+/// * `outdiskfile` — (I) output file pointer
+/// * `status`      — (IO) error status
 pub(crate) fn uncompress2file<R: Read, W: Write>(
-    _filename: &[c_char], /* name of input file                  */
-    indiskfile: &mut R,   /* I - input file pointer                */
-    outdiskfile: &mut W,  /* I - output file pointer               */
-    status: &mut c_int,   /* IO - error status                       */
+    _filename: &[c_char],
+    indiskfile: &mut R,
+    outdiskfile: &mut W,
+    status: &mut c_int,
 ) -> c_int {
     unsafe {
         let mut err: c_int = 0;
@@ -491,16 +521,23 @@ pub(crate) fn uncompress2file<R: Read, W: Write>(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compress the file into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
+///
+/// # Parameters
+///
+/// * `inmemptr`  — (I) memory pointer to uncompressed bytes
+/// * `inmemsize` — (I) size of input uncompressed file
+/// * `outbuf`    — (IO) buffer for compressed file; grown as needed
+/// * `filesize`  — (O) size of compressed file, in bytes
+/// * `status`    — (IO) error status
 pub(crate) fn compress2mem_from_mem(
-    inmemptr: &[c_char],          /* I - memory pointer to uncompressed bytes */
-    inmemsize: usize,             /* I - size of input uncompressed file      */
-    outbuf: &mut Vec<u8>,         /* IO - buffer for compressed file; grown as needed */
-    filesize: Option<&mut usize>, /* O - size of compressed file, in bytes    */
-    status: &mut c_int,           /* IO - error status                        */
+    inmemptr: &[c_char],
+    inmemsize: usize,
+    outbuf: &mut Vec<u8>,
+    filesize: Option<&mut usize>,
+    status: &mut c_int,
 ) -> c_int {
     let mut err: c_int;
     let mut c_stream: z_stream; /* compression stream */
@@ -604,18 +641,22 @@ pub(crate) fn compress2mem_from_mem(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compress the memory file into disk file.
 ///
 /// The body is one `unsafe` block because it is zlib stream manipulation throughout:
 /// every call reads and writes through `z_stream`'s `next_in`/`next_out` raw
 /// pointers.  The function itself is safe: it owns both buffers and is the only
 /// thing that sets those pointers, so no caller can influence them.
+///
+/// # Parameters
+///
+/// * `inmemptr`  — (I) memory pointer to uncompressed bytes
+/// * `inmemsize` — (I) size of input uncompressed file
 pub(crate) fn compress2file_from_mem<W: Write>(
-    inmemptr: &[c_char], /* I - memory pointer to uncompressed bytes */
-    inmemsize: usize,    /* I - size of input uncompressed file      */
+    inmemptr: &[c_char],
+    inmemsize: usize,
     outdiskfile: &mut W,
-    filesize: Option<&mut usize>, /* O - size of file, in bytes              */
+    filesize: Option<&mut usize>,
     status: &mut c_int,
 ) -> c_int {
     unsafe {

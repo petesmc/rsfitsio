@@ -1,8 +1,14 @@
-/*  This file, drvrmem.rs, contains driver routines for memory files.        */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! The driver for in-memory files, behind the `mem://` prefix.
+//!
+//! A memory file is a growable byte buffer that behaves like a file. It backs
+//! `mem://` names, the decompression of a `.gz` or `.Z` file by
+//! [`crate::drvrfile`], and the temporary file that
+//! [`crate::cfileio`] creates when a filter is applied to an input file.
+//!
+//! Ported from CFITSIO's `drvrmem.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 use core::slice;
@@ -39,6 +45,7 @@ use crate::zcompress::{compress2file_from_mem, uncompress2mem, uncompress2mem_fr
 use crate::{BL, STDIN, STDOUT};
 use crate::{bb, cs};
 
+/// Size of the record buffer used when reading a file from stdin.
 pub const RECBUFLEN: usize = 1000;
 
 static STDIN_OUTFILE: Mutex<[c_char; FLEN_FILENAME]> = Mutex::new([0; FLEN_FILENAME]);
@@ -52,22 +59,37 @@ static STDIN_OUTFILE: Mutex<[c_char; FLEN_FILENAME]> = Mutex::new([0; FLEN_FILEN
 /// reports as a Stacked Borrows violation.  A separate allocation keeps the
 /// pointer's provenance independent of the table.
 #[derive(Debug, Copy, Clone)]
+/// The address and size cell a memory file owns, when the caller did not
+/// supply one of its own.
 struct OwnedMem {
+    /// Address of the allocation.
     addr: *mut c_char,
+    /// Size of the allocation in bytes.
     size: usize,
 }
 
-/* structure containing mem file structure */
+/// One open memory file.
 #[derive(Debug, Copy, Clone)]
 struct memdriver {
-    memaddrptr: *mut *mut c_char, /* Pointer to memory address pointer; points either into the caller's variables or into owned_cell. */
-    memsizeptr: *mut usize, /* Pointer to the size of the memory allocation; points either into the caller's variables or into owned_cell. */
-    owned_cell: *mut OwnedMem, /* non-null iff this slot allocated its own address/size cell (see mem_createmem) */
-    deltasize: usize,          /* Suggested increment for reallocating memory */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* realloc function */
-    currentpos: LONGLONG,   /* current file position, relative to start */
-    fitsfilesize: LONGLONG, /* size of the FITS file (always <= *memsizeptr) */
-    fileptr: *mut FILE,     /* pointer to compressed output disk file */
+    /// Pointer to the memory address pointer; points either into the caller's
+    /// variables or into `owned_cell`.
+    memaddrptr: *mut *mut c_char,
+    /// Pointer to the size of the memory allocation; points either into the
+    /// caller's variables or into `owned_cell`.
+    memsizeptr: *mut usize,
+    /// Non-null if and only if this slot allocated its own address and size
+    /// cell; see `mem_createmem`.
+    owned_cell: *mut OwnedMem,
+    /// Suggested increment for reallocating memory.
+    deltasize: usize,
+    /// Reallocation function used to grow the buffer.
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    /// Current file position, relative to the start.
+    currentpos: LONGLONG,
+    /// Size of the FITS file, always no greater than `*memsizeptr`.
+    fitsfilesize: LONGLONG,
+    /// Pointer to the compressed output disk file.
+    fileptr: *mut FILE,
 }
 
 impl Default for memdriver {
@@ -101,7 +123,6 @@ static MEM_TABLE: Mutex<[memdriver; NMAXFILES]> = Mutex::new(
     }; NMAXFILES],
 );
 
-/*--------------------------------------------------------------------------*/
 /// Mark a table slot as free, releasing the address/size cell if this slot
 /// owned one.  A null `memaddrptr` is what marks the slot empty.
 fn release_owned_cell(d: &mut memdriver) {
@@ -115,7 +136,6 @@ fn release_owned_cell(d: &mut memdriver) {
     d.memsizeptr = ptr::null_mut();
 }
 
-/*--------------------------------------------------------------------------*/
 /// Resize a driver-owned buffer, returning the new address or null on failure.
 ///
 /// mem_createmem allocates the buffer with Rust's allocator (a `Vec`), so it
@@ -154,31 +174,25 @@ unsafe fn owned_realloc(ptr: *mut c_char, newsize: usize) -> *mut c_char {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_init() -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_setoptions(_options: c_int) -> c_int {
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_getoptions(options: &mut c_int) -> c_int {
     *options = 0;
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_getversion(version: &mut c_int) -> c_int {
     *version = 10;
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn mem_shutdown() -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create a new empty memory file for subsequent writes.
 /// The file name is ignored in this case.
 pub(crate) fn mem_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mut c_int) -> c_int {
@@ -193,7 +207,6 @@ pub(crate) fn mem_create(_filename: &mut [c_char; FLEN_FILENAME], handle: &mut c
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// Create a new empty memory file for subsequent writes.
 /// Also create an empty compressed .gz file.  The memory file
 /// will be compressed and written to the disk file when the file is closed.
@@ -258,13 +271,19 @@ pub(crate) fn mem_create_comp_unsafe(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// lowest level routine to open a pre-existing memory file.
+///
+/// # Parameters
+///
+/// * `buffptr`    — (I) address of memory pointer
+/// * `buffsize`   — (I) size of buffer, in bytes
+/// * `deltasize`  — (I) increment for future realloc's
+/// * `memrealloc` — function (may be NULL)
 pub(crate) fn mem_openmem(
-    buffptr: *mut *mut c_void, /* I - address of memory pointer          */
-    buffsize: &mut usize,          /* I - size of buffer, in bytes           */
-    deltasize: usize,              /* I - increment for future realloc's     */
-    memrealloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function (may be NULL)  */
+    buffptr: *mut *mut c_void,
+    buffsize: &mut usize,
+    deltasize: usize,
+    memrealloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
     handle: &mut c_int,
 ) -> c_int {
     *handle = -1;
@@ -296,7 +315,6 @@ pub(crate) fn mem_openmem(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 ///  lowest level routine to allocate a memory file.
 pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
     *handle = -1;
@@ -360,7 +378,6 @@ pub(crate) fn mem_createmem(msize: usize, handle: &mut c_int) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// truncate the file to a new size
 pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
     unsafe {
@@ -405,7 +422,6 @@ pub(crate) fn mem_truncate_unsafe(handle: c_int, filesize: usize) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// do any special case checking when opening a file on the stdin stream
 pub(crate) fn stdin_checkfile(
     urltype: &mut [c_char; MAX_PREFIX_LEN],
@@ -426,7 +442,6 @@ pub(crate) fn stdin_checkfile(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// open a FITS file from the stdin file stream by copying it into memory
 /// The file name is ignored in this case.
 pub(crate) fn stdin_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_int) -> c_int {
@@ -506,7 +521,6 @@ pub(crate) fn stdin_open(filename: &mut [c_char], rwmode: c_int, handle: &mut c_
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy the stdin stream into memory.  Fill whatever amount of memory
 /// has already been allocated, then realloc more memory if necessary.
 pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
@@ -595,7 +609,6 @@ pub(crate) unsafe fn stdin2mem(hd: c_int) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy the stdin stream to a file.
 pub(crate) fn stdin2file(handle: c_int) -> c_int {
     /* handle number */
@@ -668,7 +681,6 @@ pub(crate) fn stdin2file(handle: c_int) -> c_int {
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// copy the memory file to stdout, then free the memory
 pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
     unsafe {
@@ -700,7 +712,6 @@ pub(crate) fn stdout_close_unsafe(handle: c_int) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine opens the compressed diskfile and creates an empty memory
 /// buffer with an appropriate size, then calls mem_uncompress2mem. It allows
 /// the memory 'file' to be opened with READWRITE access.
@@ -712,7 +723,6 @@ pub(crate) fn mem_compress_openrw(
     mem_compress_open(filename, READONLY, hdl)
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine opens the compressed diskfile and creates an empty memory
 /// buffer with an appropriate size, then calls mem_uncompress2mem.
 pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut c_int) -> c_int {
@@ -896,7 +906,6 @@ pub(crate) fn mem_compress_open(filename: &mut [c_char], rwmode: c_int, hdl: &mu
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine reads the compressed input stream and creates an empty memory
 /// buffer, then calls mem_uncompress2mem.
 pub(crate) unsafe fn mem_compress_stdin_open(
@@ -955,7 +964,6 @@ pub(crate) unsafe fn mem_compress_stdin_open(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine creates an empty memory buffer, then calls iraf2mem to
 /// open the IRAF disk file and convert it to a FITS file in memeory.
 pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c_int) -> c_int {
@@ -1003,7 +1011,6 @@ pub(crate) fn mem_iraf_open(filename: &mut [c_char], _rwmode: c_int, hdl: &mut c
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// This routine creates an empty memory buffer, writes a minimal
 /// image header, then copies the image data from the raw file into
 /// memory.  It will byteswap the pixel values if the raw array
@@ -1253,7 +1260,6 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// lower level routine to uncompress a file into memory.  The file
 /// has already been opened and the memory buffer has been allocated.
 #[cfg(unix)]
@@ -1322,7 +1328,6 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawFd>(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// lower level routine to uncompress a file into memory.  The file
 /// has already been opened and the memory buffer has been allocated.
 #[cfg(windows)]
@@ -1387,7 +1392,6 @@ pub(crate) unsafe fn mem_uncompress2mem<T: Read + AsRawHandle>(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// return the size of the file; only called when the file is first opened
 pub(crate) fn mem_size(handle: c_int, filesize: &mut usize) -> c_int {
     let handle = handle as usize;
@@ -1398,7 +1402,6 @@ pub(crate) fn mem_size(handle: c_int, filesize: &mut usize) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// close the file and free the memory.
 pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
     unsafe {
@@ -1426,7 +1429,6 @@ pub(crate) fn mem_close_free_unsafe(handle: c_int) -> c_int {
         0
     }
 }
-/*--------------------------------------------------------------------------*/
 ///  close the memory file but do not free the memory.
 pub(crate) fn mem_close_keep(handle: c_int) -> c_int {
     let handle = handle as usize;
@@ -1437,7 +1439,6 @@ pub(crate) fn mem_close_keep(handle: c_int) -> c_int {
     0
 }
 
-/*--------------------------------------------------------------------------*/
 /// Compress the memory file, writing it out to the fileptr (which might be stdout)
 pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
     unsafe {
@@ -1478,7 +1479,6 @@ pub(crate) fn mem_close_comp_unsafe(handle: c_int) -> c_int {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// seek to position relative to start of the file.
 pub(crate) fn mem_seek(handle: c_int, offset: LONGLONG) -> c_int {
     let handle = handle as usize;
@@ -1492,7 +1492,6 @@ pub(crate) fn mem_seek(handle: c_int, offset: LONGLONG) -> c_int {
     m[handle].currentpos = offset;
     0
 }
-/*--------------------------------------------------------------------------*/
 /// read bytes from the current position in the file
 pub(crate) fn mem_read_unsafe(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c_int {
     unsafe {
@@ -1520,7 +1519,6 @@ pub(crate) fn mem_read_unsafe(hdl: c_int, buffer: &mut [u8], nbytes: usize) -> c
     }
 }
 
-/*--------------------------------------------------------------------------*/
 ///  write bytes at the current position in the file
 pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
     unsafe {
@@ -1578,7 +1576,6 @@ pub(crate) fn mem_write_unsafe(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_in
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// uncompress input buffer, length nbytes and write bytes to current
 /// position in file.  output buffer needs to be at position 0 to start.
 pub(crate) unsafe fn mem_zuncompress_and_write(hdl: c_int, buffer: &[u8], nbytes: usize) -> c_int {
@@ -1614,7 +1611,6 @@ pub(crate) unsafe fn mem_zuncompress_and_write(hdl: c_int, buffer: &[u8], nbytes
     }
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg(feature = "bzip2")]
 pub(crate) unsafe fn bzip2uncompress2mem(
     filename: &[c_char],

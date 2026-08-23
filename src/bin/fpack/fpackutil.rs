@@ -1,22 +1,21 @@
-/* Transpiled from cfitsio/utilities/fpackutil.c
- *
- * FPACK utility routines
- * R. Seaman, NOAO & W. Pence, NASA/GSFC
- *
- * Shared by both binaries, as the C links fpackutil.o into both.  Nothing here
- * calls fp_usage/fp_help or fu_usage/fu_help, so funpack/main.rs can
- * #[path]-include it unchanged.
- *
- * DEVIATIONS from the C, each also marked at its site:
- *
- *   exit()      -> Err(FpExit(n)); see fpack_h.rs.
- *   temp files  tempfile::TempPath instead of the abort_fpack signal handler
- *               and its three globals, which are not ported.
- *   system()    funpack -Z streams through flate2 rather than `gzip -1'.
- *   bug fixes   Only where the C is undefined and Rust cannot reproduce it.
- *               Everything else upstream gets wrong is reproduced faithfully,
- *               marked NOTE (upstream bug N) at its site.
- */
+//! Transpiled from cfitsio/utilities/fpackutil.c
+//!
+//! FPACK utility routines R. Seaman, NOAO & W. Pence, NASA/GSFC
+//!
+//! Shared by both binaries, as the C links fpackutil.o into both.  Nothing here
+//! calls fp_usage/fp_help or fu_usage/fu_help, so funpack/main.rs can
+//! `#[path]`-include it unchanged.
+//!
+//! DEVIATIONS from the C, each also marked at its site:
+//!
+//! exit()      -> Err(FpExit(n)); see fpack_h.rs.
+//! temp files  tempfile::TempPath instead of the abort_fpack signal handler
+//! and its three globals, which are not ported.
+//! system()    funpack -Z streams through flate2 rather than `gzip -1'.
+//! bug fixes   Only where the C is undefined and Rust cannot reproduce it.
+//! Everything else upstream gets wrong is reproduced faithfully,
+//! marked NOTE (upstream bug N) at its site.
+#![warn(missing_docs)]
 
 use std::cell::{Cell, RefCell};
 use std::fs::File;
@@ -153,7 +152,6 @@ pub(crate) fn c_argv() -> Argv {
         .collect()
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_msg(msg: &[c_char]) -> c_int {
     fp_msg_bytes(cbytes(msg))
 }
@@ -192,12 +190,10 @@ fn report(text: &str) {
     });
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_noop() -> c_int {
     fp_msg_str("Input and output files are unchanged.\n");
     0
 }
-/*--------------------------------------------------------------------------*/
 /// C: `fp_abort_output(...)`, which ends in `exit (stat)` -- hence the FpExit
 /// return.  Both files are taken by value: one is closed, the other deleted.
 pub(crate) fn fp_abort_output(
@@ -236,7 +232,6 @@ pub(crate) fn fp_abort_output(
     FpExit(stat)
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_version() -> c_int {
     let mut version: f32 = 0.0;
 
@@ -250,7 +245,6 @@ pub(crate) fn fp_version() -> c_int {
     fp_msg_str("\n");
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_access(filename: &[c_char]) -> c_int {
     /* test if a file exists */
 
@@ -259,7 +253,6 @@ pub(crate) fn fp_access(filename: &[c_char]) -> c_int {
         Err(_) => -1,
     }
 }
-/*--------------------------------------------------------------------------*/
 /// C: `fp_tmpnam(suffix, rootname, tmpnam)`, transpiled verbatim -- including
 /// its check-then-use race -- because its names appear in the C's messages.
 /// Callers wrap the result in a `TempPath`.
@@ -316,7 +309,6 @@ fn fp_tmpnam_guard(
     Ok(TempPath::try_from_path(cpath(tmpnam)).expect("temp file name has no interior NUL"))
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_init(fpptr: &mut fpstate) -> c_int {
     let mut ii: usize;
 
@@ -367,7 +359,6 @@ pub(crate) fn fp_init(fpptr: &mut fpstate) -> c_int {
     fpptr.preflight_checked = 0;
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_list(argc: c_int, argv: &Argv, fpvar: fpstate) -> FpResult<c_int> {
     let mut infits: [c_char; SZ_STR] = [0; SZ_STR];
     let mut hdunum: c_int = 0;
@@ -435,7 +426,6 @@ pub(crate) fn fp_list(argc: c_int, argv: &Argv, fpvar: fpstate) -> FpResult<c_in
     }
     Ok(0)
 }
-/*--------------------------------------------------------------------------*/
 /// Takes the owning `Option` because `fp_abort_output` closes the file.
 pub(crate) fn fp_info_hdu(infptr: &mut Option<Box<fitsfile>>) -> FpResult<c_int> {
     /* NOTE (upstream bug 5): declared once but reread every pass, so a
@@ -572,7 +562,6 @@ pub(crate) fn fp_info_hdu(infptr: &mut Option<Box<fitsfile>>) -> FpResult<c_int>
     Ok(0)
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_preflight(
     argc: c_int,
     argv: &Argv,
@@ -890,7 +879,6 @@ pub(crate) fn fp_preflight(
     Ok(0)
 }
 
-/*--------------------------------------------------------------------------*/
 /* must run fp_preflight() before fp_loop()
  */
 pub(crate) fn fp_loop(argc: c_int, argv: &Argv, unpack: c_int, fpvar: fpstate) -> FpResult<c_int> {
@@ -1276,7 +1264,6 @@ fn gzip_file(file: &[c_char]) -> std::io::Result<()> {
     std::fs::remove_file(&src)
 }
 
-/*--------------------------------------------------------------------------*/
 /* fp_pack assumes the output file does not exist (checked by preflight)
  */
 pub(crate) fn fp_pack(
@@ -1352,7 +1339,6 @@ pub(crate) fn fp_pack(
     Ok(0)
 }
 
-/*--------------------------------------------------------------------------*/
 /* fp_unpack assumes the output file does not exist
  */
 pub(crate) fn fp_unpack(infits: &[c_char], outfits: &[c_char], fpvar: fpstate) -> FpResult<c_int> {
@@ -1610,7 +1596,6 @@ fn strtol_c(s: &[c_char]) -> (c_long, usize) {
     (val, i)
 }
 
-/*--------------------------------------------------------------------------*/
 /* fp_test assumes the output files do not exist
  */
 pub(crate) fn fp_test(
@@ -2154,7 +2139,6 @@ fn snprintf_into(buf: &mut [c_char], text: &str) {
     buf[n] = 0;
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_pack_hdu(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
@@ -2415,7 +2399,6 @@ pub(crate) fn fp_pack_hdu(
     0
 }
 
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_unpack_hdu(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
@@ -2465,7 +2448,6 @@ pub(crate) fn fp_unpack_hdu(
 
     0
 }
-/*--------------------------------------------------------------------------*/
 /// DEVIATION: the C guards each output pointer against NULL; no call site
 /// passes one, so they are plain `&mut` here.
 pub(crate) fn fits_read_image_speed(
@@ -2725,7 +2707,6 @@ pub(crate) fn fits_read_image_speed(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_test_hdu(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
@@ -2900,7 +2881,6 @@ pub(crate) fn fp_test_hdu(
     *status = stat;
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_test_table(
     infptr: &mut fitsfile,
     outfptr: &mut fitsfile,
@@ -2969,7 +2949,6 @@ pub(crate) fn fp_test_table(
 
     0
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn marktime(status: &mut c_int) -> c_int {
     /* the C reads gettimeofday on unix and gives up on elapsed time elsewhere;
     Instant is monotonic and available on both, so only the reporting in
@@ -2979,7 +2958,6 @@ pub(crate) fn marktime(status: &mut c_int) -> c_int {
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn gettime(elapse: &mut f32, elapscpu: &mut f32, status: &mut c_int) -> c_int {
     let ecpu = cpu_seconds();
     let scpu = SCPU.get();
@@ -2999,7 +2977,6 @@ pub(crate) fn gettime(elapse: &mut f32, elapscpu: &mut f32, status: &mut c_int) 
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_i2stat(
     infptr: &mut fitsfile,
     naxis: c_int,
@@ -3143,7 +3120,6 @@ pub(crate) fn fp_i2stat(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_i4stat(
     infptr: &mut fitsfile,
     naxis: c_int,
@@ -3285,7 +3261,6 @@ pub(crate) fn fp_i4stat(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_r4stat(
     infptr: &mut fitsfile,
     naxis: c_int,
@@ -3415,7 +3390,6 @@ pub(crate) fn fp_r4stat(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_i2rescale(
     infptr: &mut fitsfile,
     naxis: c_int,
@@ -3504,7 +3478,6 @@ pub(crate) fn fp_i2rescale(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 pub(crate) fn fp_i4rescale(
     infptr: &mut fitsfile,
     naxis: c_int,

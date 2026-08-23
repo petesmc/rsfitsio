@@ -1,4 +1,16 @@
-/*   Globally defined histogram parameters */
+//! Binning table columns into a histogram image.
+//!
+//! Given a table and a binning specification -- which columns, over what range,
+//! with what bin width -- these routines produce an image whose pixels count
+//! the rows falling in each bin. This is what the `[bin ...]` clause of the
+//! extended filename syntax invokes, so opening a table with a bin
+//! specification hands back an image.
+//!
+//! Ported from CFITSIO's `histo.c`, written by William Pence at the High Energy
+//! Astrophysics Science Archive Research Center (HEASARC), NASA Goddard Space
+//! Flight Center. See the "Column Binning or Histogramming Routines" section of
+//! the CFITSIO User's Reference Guide.
+#![warn(missing_docs)]
 
 use core::ffi::{CStr, c_void};
 use core::slice;
@@ -113,7 +125,6 @@ impl Default for HistUnion {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the extended input binning specification string, returning
 /// the binning parameters.  Supports up to 4 dimensions.  The binspec
 /// string has one of these forms:
@@ -138,34 +149,53 @@ impl Default for HistUnion {
 /// passed back to the caller.  Storage may be allocated by this routine,
 /// If *exprs is non-zero upon return, the caller is responsible to
 /// free(*exprs).  Upon return, the contains of exprs is,
+/// ```text
 ///     (*exprs)[0] = expression for column 1 (or 0 if none)
 ///     (*exprs)[1] = expression for column 2 (or 0 if none)
 ///     (*exprs)[2] = expression for column 3 (or 0 if none)
 ///     (*exprs)[3] = expression for column 4 (or 0 if none)
 ///     (*exprs)[4] = expression for weighting (or 0 if none)
+/// ```
 ///
 /// If the user specifies a column name and not an expression for bin
-/// axis i, then the corresponding (*exprs)[i] will be a null pointer.
+/// axis i, then the corresponding `(*exprs)[i]` will be a null pointer.
 ///
 /// To be recognized as an expression, the weighting expression must be
 /// enclosed in parentheses.
 ///
 /// Expressions are never allowed using the bin (xcol,ycol) notation.
+///
+/// # Parameters
+///
+/// * `binspec`   — (I) binning specification
+/// * `imagetype` — (O) image type, TINT or TSHORT
+/// * `histaxis`  — (O) no. of axes in the histogram
+/// * `colname`   — column name for axis
+/// * `minin`     — minimum value for each axis
+/// * `maxin`     — maximum value for each axis
+/// * `binsizein` — size of bins on each axis
+/// * `minname`   — keyword name for min
+/// * `maxname`   — keyword name for max
+/// * `binname`   — keyword name for binsize
+/// * `weight`    — weighting factor
+/// * `wtname`    — keyword or column name for weight
+/// * `recip`     — the reciprocal of the weight?
+/// * `exprs`     — returned with expressions (or 0)
 pub(crate) fn ffbinse(
-    binspec: &[c_char],                      /* I - binning specification */
-    imagetype: &mut c_int,                   /* O - image type, TINT or TSHORT */
-    histaxis: &mut c_int,                    /* O - no. of axes in the histogram */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* column name for axis */
-    minin: &mut [f64; 4],                    /* minimum value for each axis */
-    maxin: &mut [f64; 4],                    /* maximum value for each axis */
-    binsizein: &mut [f64; 4],                /* size of bins on each axis */
-    minname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for min */
-    maxname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for max */
-    binname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for binsize */
-    weight: &mut f64,                        /* weighting factor          */
-    wtname: &mut [c_char; 71],               /* keyword or column name for weight */
-    recip: &mut c_int,                       /* the reciprocal of the weight? */
-    exprs: Option<&mut [Box<[c_char]>; 5]>,  /* returned with expressions (or 0) */
+    binspec: &[c_char],
+    imagetype: &mut c_int,
+    histaxis: &mut c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    minin: &mut [f64; 4],
+    maxin: &mut [f64; 4],
+    binsizein: &mut [f64; 4],
+    minname: &mut [[c_char; FLEN_VALUE]; 4],
+    maxname: &mut [[c_char; FLEN_VALUE]; 4],
+    binname: &mut [[c_char; FLEN_VALUE]; 4],
+    weight: &mut f64,
+    wtname: &mut [c_char; 71],
+    recip: &mut c_int,
+    exprs: Option<&mut [Box<[c_char]>; 5]>,
     status: &mut c_int,
 ) -> c_int {
     let ii: c_int = 0;
@@ -629,23 +659,38 @@ pub(crate) fn ffbinse(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse non-extended expression, but otherwise the same as ffbinse()
+///
+/// # Parameters
+///
+/// * `binspec`   — (I) binning specification
+/// * `imagetype` — (O) image type, TINT or TSHORT
+/// * `histaxis`  — (O) no. of axes in the histogram
+/// * `colname`   — column name for axis
+/// * `minin`     — minimum value for each axis
+/// * `maxin`     — maximum value for each axis
+/// * `binsizein` — size of bins on each axis
+/// * `minname`   — keyword name for min
+/// * `maxname`   — keyword name for max
+/// * `binname`   — keyword name for binsize
+/// * `weight`    — weighting factor
+/// * `wtname`    — keyword or column name for weight
+/// * `recip`     — the reciprocal of the weight?
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffbins(
-    binspec: *const c_char,                  /* I - binning specification */
-    imagetype: *mut c_int,                   /* O - image type, TINT or TSHORT */
-    histaxis: *mut c_int,                    /* O - no. of axes in the histogram */
-    colname: *mut [[c_char; FLEN_VALUE]; 4], /* column name for axis */
-    minin: *mut f64,                         /* minimum value for each axis */
-    maxin: *mut f64,                         /* maximum value for each axis */
-    binsizein: *mut f64,                     /* size of bins on each axis */
-    minname: *mut [[c_char; FLEN_VALUE]; 4], /* keyword name for min */
-    maxname: *mut [[c_char; FLEN_VALUE]; 4], /* keyword name for max */
-    binname: *mut [[c_char; FLEN_VALUE]; 4], /* keyword name for binsize */
-    weight: *mut f64,                        /* weighting factor          */
-    wtname: *mut [c_char; FLEN_VALUE],       /* keyword or column name for weight */
-    recip: *mut c_int,                       /* the reciprocal of the weight? */
+    binspec: *const c_char,
+    imagetype: *mut c_int,
+    histaxis: *mut c_int,
+    colname: *mut [[c_char; FLEN_VALUE]; 4],
+    minin: *mut f64,
+    maxin: *mut f64,
+    binsizein: *mut f64,
+    minname: *mut [[c_char; FLEN_VALUE]; 4],
+    maxname: *mut [[c_char; FLEN_VALUE]; 4],
+    binname: *mut [[c_char; FLEN_VALUE]; 4],
+    weight: *mut f64,
+    wtname: *mut [c_char; FLEN_VALUE],
+    recip: *mut c_int,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -674,22 +719,37 @@ pub unsafe extern "C" fn ffbins(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse non-extended expression, but otherwise the same as ffbinse()
+///
+/// # Parameters
+///
+/// * `binspec`   — (I) binning specification
+/// * `imagetype` — (O) image type, TINT or TSHORT
+/// * `histaxis`  — (O) no. of axes in the histogram
+/// * `colname`   — column name for axis
+/// * `minin`     — minimum value for each axis
+/// * `maxin`     — maximum value for each axis
+/// * `binsizein` — size of bins on each axis
+/// * `minname`   — keyword name for min
+/// * `maxname`   — keyword name for max
+/// * `binname`   — keyword name for binsize
+/// * `weight`    — weighting factor
+/// * `wtcol`     — keyword or column name for weight
+/// * `recip`     — the reciprocal of the weight?
 pub fn ffbins_safe(
-    binspec: &[c_char],                      /* I - binning specification */
-    imagetype: &mut c_int,                   /* O - image type, TINT or TSHORT */
-    histaxis: &mut c_int,                    /* O - no. of axes in the histogram */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* column name for axis */
-    minin: &mut [f64; 4],                    /* minimum value for each axis */
-    maxin: &mut [f64; 4],                    /* maximum value for each axis */
-    binsizein: &mut [f64; 4],                /* size of bins on each axis */
-    minname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for min */
-    maxname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for max */
-    binname: &mut [[c_char; FLEN_VALUE]; 4], /* keyword name for binsize */
-    weight: &mut f64,                        /* weighting factor          */
-    wtcol: &mut [c_char; FLEN_VALUE],        /* keyword or column name for weight */
-    recip: &mut c_int,                       /* the reciprocal of the weight? */
+    binspec: &[c_char],
+    imagetype: &mut c_int,
+    histaxis: &mut c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    minin: &mut [f64; 4],
+    maxin: &mut [f64; 4],
+    binsizein: &mut [f64; 4],
+    minname: &mut [[c_char; FLEN_VALUE]; 4],
+    maxname: &mut [[c_char; FLEN_VALUE]; 4],
+    binname: &mut [[c_char; FLEN_VALUE]; 4],
+    weight: &mut f64,
+    wtcol: &mut [c_char; FLEN_VALUE],
+    recip: &mut c_int,
     status: &mut c_int,
 ) -> c_int {
     ffbinse(
@@ -699,7 +759,6 @@ pub fn ffbins_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input binning range specification string, returning
 /// the column name, histogram min and max values, and bin size.
 ///
@@ -966,7 +1025,6 @@ pub(crate) fn ffbinre(
 
     *status
 }
-/*--------------------------------------------------------------------------*/
 /// Parse the input binning range specification string, returning
 /// the column name, histogram min and max values, and bin size.
 ///
@@ -1025,7 +1083,6 @@ pub unsafe extern "C" fn ffbinr(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Parse the input binning range specification string, returning
 /// the column name, histogram min and max values, and bin size.
 ///
@@ -1047,25 +1104,44 @@ pub fn ffbinr_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols, on output, points to
+///                histogram image
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `colexpr`   — (I) optionally, expression intead of colum
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `wtexpr`    — (I) optionally, weight expression
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub(crate) fn ffhist2e(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to table with X and Y cols, on output, points to histogram image    */
-    outfile: &[c_char],               /* I - name for the output histogram file      */
-    imagetype: c_int,                 /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,                     /* I - number of axes in the histogram image   */
-    colname: &[[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    colexpr: Option<&[Option<&[c_char]>; 4]>, /* I - optionally, expression intead of colum  */
-    minin: &[f64],                    /* I - minimum histogram value, for each axis */
-    maxin: &[f64],                    /* I - maximum histogram value, for each axis */
-    binsizein: &[f64],                /* I - bin size along each axis               */
-    minname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,                    /* I - binning weighting factor          */
-    wtcol: &[c_char; FLEN_VALUE],     /* I - optional keyword or col for weight*/
-    wtexpr: Option<&[c_char]>,        /* I - optionally, weight expression     */
-    recip: c_int,                     /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>,     /* I - optional array (length = no. of   */
+    fptr: &mut Option<Box<fitsfile>>,
+    outfile: &[c_char],
+    imagetype: c_int,
+    naxis: c_int,
+    colname: &[[c_char; FLEN_VALUE]; 4],
+    colexpr: Option<&[Option<&[c_char]>; 4]>,
+    minin: &[f64],
+    maxin: &[f64],
+    binsizein: &[f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: &[c_char; FLEN_VALUE],
+    wtexpr: Option<&[c_char]>,
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1327,26 +1403,43 @@ pub(crate) fn ffhist2e(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Non-extended-syntax version of ffhist2e()
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffhist2(
-    fptr: *mut Option<Box<fitsfile>>, /* IO - pointer to table with X and Y cols;    */
+    fptr: *mut Option<Box<fitsfile>>,
     /*     on output, points to histogram image    */
-    outfile: *const c_char, /* I - name for the output histogram file      */
-    imagetype: c_int,       /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,           /* I - number of axes in the histogram image   */
-    colname: *const [[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: *const f64,      /* I - minimum histogram value, for each axis */
-    maxin: *const f64,      /* I - maximum histogram value, for each axis */
-    binsizein: *const f64,  /* I - bin size along each axis               */
-    minname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,          /* I - binning weighting factor          */
-    wtcol: *const [c_char; FLEN_VALUE], /* I - optional keyword or col for weight*/
-    recip: c_int,           /* I - use reciprocal of the weight?     */
-    selectrow: *const c_char, /* I - optional array (length = no. of   */
+    outfile: *const c_char,
+    imagetype: c_int,
+    naxis: c_int,
+    colname: *const [[c_char; FLEN_VALUE]; 4],
+    minin: *const f64,
+    maxin: *const f64,
+    binsizein: *const f64,
+    minname: *const [[c_char; FLEN_VALUE]; 4],
+    maxname: *const [[c_char; FLEN_VALUE]; 4],
+    binname: *const [[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: *const [c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: *const c_char,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1386,25 +1479,42 @@ pub unsafe extern "C" fn ffhist2(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Non-extended-syntax version of ffhist2e()
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub fn ffhist2_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* IO - pointer to table with X and Y cols;    */
+    fptr: &mut Option<Box<fitsfile>>,
     /*     on output, points to histogram image    */
-    outfile: &[c_char], /* I - name for the output histogram file      */
-    imagetype: c_int,   /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,       /* I - number of axes in the histogram image   */
-    colname: &[[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: &[f64],      /* I - minimum histogram value, for each axis */
-    maxin: &[f64],      /* I - maximum histogram value, for each axis */
-    binsizein: &[f64],  /* I - bin size along each axis               */
-    minname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,      /* I - binning weighting factor          */
-    wtcol: &[c_char; FLEN_VALUE], /* I - optional keyword or col for weight*/
-    recip: c_int,       /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>, /* I - optional array (length = no. of   */
+    outfile: &[c_char],
+    imagetype: c_int,
+    naxis: c_int,
+    colname: &[[c_char; FLEN_VALUE]; 4],
+    minin: &[f64],
+    maxin: &[f64],
+    binsizein: &[f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: &[c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1418,26 +1528,43 @@ pub fn ffhist2_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
-/// ffhist3: same as ffhist2, but does not close the original file
+/// Ffhist3: same as ffhist2, but does not close the original file
 ///  and/or replace the original file pointer
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) pointer to table with X and Y cols;
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffhist3(
-    fptr: *const *mut fitsfile, /* I - pointer to table with X and Y cols;    */
-    outfile: *const c_char,     /* I - name for the output histogram file      */
-    imagetype: c_int,           /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,               /* I - number of axes in the histogram image   */
-    colname: *const [[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: *const f64,          /* I - minimum histogram value, for each axis */
-    maxin: *const f64,          /* I - maximum histogram value, for each axis */
-    binsizein: *const f64,      /* I - bin size along each axis               */
-    minname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,              /* I - binning weighting factor          */
-    wtcol: *const [c_char; FLEN_VALUE], /* I - optional keyword or col for weight*/
-    recip: c_int,               /* I - use reciprocal of the weight?     */
-    selectrow: *const c_char,   /* I - optional array (length = no. of   */
+    fptr: *const *mut fitsfile,
+    outfile: *const c_char,
+    imagetype: c_int,
+    naxis: c_int,
+    colname: *const [[c_char; FLEN_VALUE]; 4],
+    minin: *const f64,
+    maxin: *const f64,
+    binsizein: *const f64,
+    minname: *const [[c_char; FLEN_VALUE]; 4],
+    maxname: *const [[c_char; FLEN_VALUE]; 4],
+    binname: *const [[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: *const [c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: *const c_char,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1480,25 +1607,42 @@ pub unsafe extern "C" fn ffhist3(
     }
 }
 
-/*--------------------------------------------------------------------------*/
-/// ffhist3: same as ffhist2, but does not close the original file
+/// Ffhist3: same as ffhist2, but does not close the original file
 ///  and/or replace the original file pointer
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub fn ffhist3_safe(
-    fptr: &mut fitsfile, /* IO - pointer to table with X and Y cols;    */
-    outfile: &[c_char],  /* I - name for the output histogram file      */
-    imagetype: c_int,    /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,        /* I - number of axes in the histogram image   */
-    colname: &[[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: &[f64],       /* I - minimum histogram value, for each axis */
-    maxin: &[f64],       /* I - maximum histogram value, for each axis */
-    binsizein: &[f64],   /* I - bin size along each axis               */
-    minname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,       /* I - binning weighting factor          */
-    wtcol: &[c_char; FLEN_VALUE], /* I - optional keyword or col for weight*/
-    recip: c_int,        /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>, /* I - optional array (length = no. of   */
+    fptr: &mut fitsfile,
+    outfile: &[c_char],
+    imagetype: c_int,
+    naxis: c_int,
+    colname: &[[c_char; FLEN_VALUE]; 4],
+    minin: &[f64],
+    maxin: &[f64],
+    binsizein: &[f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: &[c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1673,24 +1817,41 @@ pub fn ffhist3_safe(
     Some(histptr)
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`      — (I) pointer to table with X and Y cols; on output, points to
+///                histogram image
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub unsafe extern "C" fn ffhist(
-    fptr: *mut Option<Box<fitsfile>>, /* I - pointer to table with X and Y cols; on output, points to histogram image    */
-    outfile: *const c_char,           /* I - name for the output histogram file      */
-    imagetype: c_int,                 /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,                     /* I - number of axes in the histogram image   */
-    colname: *mut [[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: *mut f64,                  /* I - minimum histogram value, for each axis */
-    maxin: *mut f64,                  /* I - maximum histogram value, for each axis */
-    binsizein: *mut f64,              /* I - bin size along each axis               */
-    minname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,                    /* I - binning weighting factor          */
-    wtcol: *const [c_char; FLEN_VALUE], /* I - optional keyword or col for weight*/
-    recip: c_int,                     /* I - use reciprocal of the weight?     */
-    selectrow: *const c_char,         /* I - optional array (length = no. of   */
+    fptr: *mut Option<Box<fitsfile>>,
+    outfile: *const c_char,
+    imagetype: c_int,
+    naxis: c_int,
+    colname: *mut [[c_char; FLEN_VALUE]; 4],
+    minin: *mut f64,
+    maxin: *mut f64,
+    binsizein: *mut f64,
+    minname: *const [[c_char; FLEN_VALUE]; 4],
+    maxname: *const [[c_char; FLEN_VALUE]; 4],
+    binname: *const [[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: *const [c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: *const c_char,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -1729,23 +1890,40 @@ pub unsafe extern "C" fn ffhist(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`      — (I) pointer to table with X and Y cols; on output, points to
+///                histogram image
+/// * `outfile`   — (I) name for the output histogram file
+/// * `imagetype` — (I) datatype for image: TINT, TSHORT, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `colname`   — (I) column names
+/// * `minin`     — (I) minimum histogram value, for each axis
+/// * `maxin`     — (I) maximum histogram value, for each axis
+/// * `binsizein` — (I) bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `weightin`  — (I) binning weighting factor
+/// * `wtcol`     — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub fn ffhist_safe(
-    fptr: &mut Option<Box<fitsfile>>, /* I - pointer to table with X and Y cols; on output, points to histogram image    */
-    outfile: &[c_char],               /* I - name for the output histogram file      */
-    imagetype: c_int,                 /* I - datatype for image: TINT, TSHORT, etc   */
-    naxis: c_int,                     /* I - number of axes in the histogram image   */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* I - column names               */
-    minin: &mut [f64],                /* I - minimum histogram value, for each axis */
-    maxin: &mut [f64],                /* I - maximum histogram value, for each axis */
-    binsizein: &mut [f64],            /* I - bin size along each axis               */
-    minname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min    */
-    maxname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max    */
-    binname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize */
-    weightin: f64,                    /* I - binning weighting factor          */
-    wtcol: &[c_char; FLEN_VALUE],     /* I - optional keyword or col for weight*/
-    recip: c_int,                     /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>,     /* I - optional array (length = no. of   */
+    fptr: &mut Option<Box<fitsfile>>,
+    outfile: &[c_char],
+    imagetype: c_int,
+    naxis: c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    minin: &mut [f64],
+    maxin: &mut [f64],
+    binsizein: &mut [f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
+    weightin: f64,
+    wtcol: &[c_char; FLEN_VALUE],
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -2730,26 +2908,42 @@ pub fn ffhist_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Single-precision version
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table to be binned ;
+/// * `naxis`     — (I) number of axes/columns in the binned image
+/// * `colname`   — (I) optional column names
+/// * `minin`     — (I) optional lower bound value for each axis
+/// * `maxin`     — (I) optional upper bound value, for each axis
+/// * `binsizein` — (I) optional bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `colnum`    — (O) column numbers, to be binned
+/// * `haxes`     — (O) number of bins in each histogram axis
+/// * `amin`      — (O) lower bound of the histogram axes
+/// * `amax`      — (O) upper bound of the histogram axes
+/// * `binsize`   — (O) width of histogram bins/pixels on each axis
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_calc_binning(
-    fptr: *mut fitsfile, /* IO - pointer to table to be binned      ;       */
-    naxis: c_int,        /* I - number of axes/columns in the binned image  */
-    colname: *mut [[c_char; FLEN_VALUE]; 4], /* I - optional column names         */
-    minin: *mut f64,     /* I - optional lower bound value for each axis  */
-    maxin: *mut f64,     /* I - optional upper bound value, for each axis */
-    binsizein: *mut f64, /* I - optional bin size along each axis         */
-    minname: *mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min       */
-    maxname: *mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max       */
-    binname: *mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize   */
+    fptr: *mut fitsfile,
+    naxis: c_int,
+    colname: *mut [[c_char; FLEN_VALUE]; 4],
+    minin: *mut f64,
+    maxin: *mut f64,
+    binsizein: *mut f64,
+    minname: *mut [[c_char; FLEN_VALUE]; 4],
+    maxname: *mut [[c_char; FLEN_VALUE]; 4],
+    binname: *mut [[c_char; FLEN_VALUE]; 4],
 
     /* The returned parameters for each axis of the n-dimensional histogram are */
-    colnum: *mut c_int, /* O - column numbers, to be binned */
-    haxes: *mut c_long, /* O - number of bins in each histogram axis */
-    amin: *mut f32,     /* O - lower bound of the histogram axes */
-    amax: *mut f32,     /* O - upper bound of the histogram axes */
-    binsize: *mut f32,  /* O - width of histogram bins/pixels on each axis */
+    colnum: *mut c_int,
+    haxes: *mut c_long,
+    amin: *mut f32,
+    amax: *mut f32,
+    binsize: *mut f32,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -2777,25 +2971,41 @@ pub unsafe extern "C" fn fits_calc_binning(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Single-precision version
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table to be binned ;
+/// * `naxis`     — (I) number of axes/columns in the binned image
+/// * `colname`   — (I) optional column names
+/// * `minin`     — (I) optional lower bound value for each axis
+/// * `maxin`     — (I) optional upper bound value, for each axis
+/// * `binsizein` — (I) optional bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `colnum`    — (O) column numbers, to be binned
+/// * `haxes`     — (O) number of bins in each histogram axis
+/// * `amin`      — (O) lower bound of the histogram axes
+/// * `amax`      — (O) upper bound of the histogram axes
+/// * `binsize`   — (O) width of histogram bins/pixels on each axis
 pub fn fits_calc_binning_safe(
-    fptr: &mut fitsfile, /* IO - pointer to table to be binned      ;       */
-    naxis: c_int,        /* I - number of axes/columns in the binned image  */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional column names         */
-    minin: &mut [f64],   /* I - optional lower bound value for each axis  */
-    maxin: &mut [f64],   /* I - optional upper bound value, for each axis */
-    binsizein: &mut [f64], /* I - optional bin size along each axis         */
-    minname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min       */
-    maxname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max       */
-    binname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize   */
+    fptr: &mut fitsfile,
+    naxis: c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    minin: &mut [f64],
+    maxin: &mut [f64],
+    binsizein: &mut [f64],
+    minname: &mut [[c_char; FLEN_VALUE]; 4],
+    maxname: &mut [[c_char; FLEN_VALUE]; 4],
+    binname: &mut [[c_char; FLEN_VALUE]; 4],
 
     /* The returned parameters for each axis of the n-dimensional histogram are */
-    colnum: &mut [c_int], /* O - column numbers, to be binned */
-    haxes: &mut [c_long], /* O - number of bins in each histogram axis */
-    amin: &mut [f32],     /* O - lower bound of the histogram axes */
-    amax: &mut [f32],     /* O - upper bound of the histogram axes */
-    binsize: &mut [f32],  /* O - width of histogram bins/pixels on each axis */
+    colnum: &mut [c_int],
+    haxes: &mut [c_long],
+    amin: &mut [f32],
+    amax: &mut [f32],
+    binsize: &mut [f32],
     status: &mut c_int,
 ) -> c_int {
     let mut amind: [f64; 4] = [0.0; 4];
@@ -2836,31 +3046,50 @@ pub fn fits_calc_binning_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version with extended syntax
 /// Calculate the actual binning parameters, based on various user inputoptions.
 ///
-/// Note: caller is responsible to free parsers[*] upon return using ffcprs()
+/// Note: caller is responsible to free `parsers[*]` upon return using `ffcprs()`
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table to be binned ;
+/// * `naxis`     — (I) number of axes/columns in the binned image
+/// * `colname`   — (I) optional column names
+/// * `colexpr`   — (I) optional column expressions instead of name
+/// * `minin`     — (IO) optional lower bound value for each axis
+/// * `maxin`     — (IO) optional upper bound value, for each axis
+/// * `binsizein` — (IO) optional bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `colnum`    — (O) column numbers, to be binned
+/// * `datatypes` — (O) datatype for each column
+/// * `haxes`     — (O) number of bins in each histogram axis
+/// * `amin`      — (O) lower bound of the histogram axes
+/// * `amax`      — (O) upper bound of the histogram axes
+/// * `binsize`   — (O) width of histogram bins/pixels on each axis
+/// * `repeat`    — (O) vector repeat of input columns
 pub(crate) fn fits_calc_binningde(
-    fptr: &mut fitsfile, /* IO - pointer to table to be binned      ;       */
-    naxis: c_int,        /* I - number of axes/columns in the binned image  */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional column names         */
-    colexpr: Option<&[Option<&[c_char]>; 4]>, /* I - optional column expressions instead of name    */
-    minin: &mut [f64],                        /* IO - optional lower bound value for each axis  */
-    maxin: &mut [f64],                        /* IO - optional upper bound value, for each axis */
-    binsizein: &mut [f64],                    /* IO - optional bin size along each axis         */
-    minname: &[[c_char; FLEN_VALUE]; 4],      /* I - optional keywords for min       */
-    maxname: &[[c_char; FLEN_VALUE]; 4],      /* I - optional keywords for max       */
-    binname: &[[c_char; FLEN_VALUE]; 4],      /* I - optional keywords for binsize   */
+    fptr: &mut fitsfile,
+    naxis: c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    colexpr: Option<&[Option<&[c_char]>; 4]>,
+    minin: &mut [f64],
+    maxin: &mut [f64],
+    binsizein: &mut [f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
 
     /* The returned parameters for each axis of the n-dimensional histogram are */
-    colnum: &mut [c_int],                /* O - column numbers, to be binned */
-    mut datatypes: Option<&mut [c_int]>, /* O - datatype for each column */
-    haxes: &mut [c_long],                /* O - number of bins in each histogram axis */
-    amin: &mut [f64],                    /* O - lower bound of the histogram axes */
-    amax: &mut [f64],                    /* O - upper bound of the histogram axes */
-    binsize: &mut [f64],                 /* O - width of histogram bins/pixels on each axis */
-    mut repeat: Option<&mut c_long>,     /* O - vector repeat of input columns */
+    colnum: &mut [c_int],
+    mut datatypes: Option<&mut [c_int]>,
+    haxes: &mut [c_long],
+    amin: &mut [f64],
+    amax: &mut [f64],
+    binsize: &mut [f64],
+    mut repeat: Option<&mut c_long>,
     status: &mut c_int,
 ) -> c_int {
     let mut colptr: &mut tcolumn;
@@ -3420,27 +3649,43 @@ pub(crate) fn fits_calc_binningde(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version, with non-extended syntax
 /// Calculate the actual binning parameters, based on various user input options.
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table to be binned ;
+/// * `naxis`     — (I) number of axes/columns in the binned image
+/// * `colname`   — (I) optional column names
+/// * `minin`     — (I) optional lower bound value for each axis
+/// * `maxin`     — (I) optional upper bound value, for each axis
+/// * `binsizein` — (I) optional bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `colnum`    — (O) column numbers, to be binned
+/// * `haxes`     — (O) number of bins in each histogram axis
+/// * `amin`      — (O) lower bound of the histogram axes
+/// * `amax`      — (O) upper bound of the histogram axes
+/// * `binsize`   — (O) width of histogram bins/pixels on each axis
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_calc_binningd(
-    fptr: *mut fitsfile, /* IO - pointer to table to be binned      ;       */
-    naxis: c_int,        /* I - number of axes/columns in the binned image  */
-    colname: *mut [[c_char; FLEN_VALUE]; 4], /* I - optional column names         */
-    minin: *mut f64,     /* I - optional lower bound value for each axis  */
-    maxin: *mut f64,     /* I - optional upper bound value, for each axis */
-    binsizein: *mut f64, /* I - optional bin size along each axis         */
-    minname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min       */
-    maxname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max       */
-    binname: *const [[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize   */
+    fptr: *mut fitsfile,
+    naxis: c_int,
+    colname: *mut [[c_char; FLEN_VALUE]; 4],
+    minin: *mut f64,
+    maxin: *mut f64,
+    binsizein: *mut f64,
+    minname: *const [[c_char; FLEN_VALUE]; 4],
+    maxname: *const [[c_char; FLEN_VALUE]; 4],
+    binname: *const [[c_char; FLEN_VALUE]; 4],
 
     /* The returned parameters for each axis of the n-dimensional histogram are */
-    colnum: *mut c_int, /* O - column numbers, to be binned */
-    haxes: *mut c_long, /* O - number of bins in each histogram axis */
-    amin: *mut f64,     /* O - lower bound of the histogram axes */
-    amax: *mut f64,     /* O - upper bound of the histogram axes */
-    binsize: *mut f64,  /* O - width of histogram bins/pixels on each axis */
+    colnum: *mut c_int,
+    haxes: *mut c_long,
+    amin: *mut f64,
+    amax: *mut f64,
+    binsize: *mut f64,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -3471,26 +3716,42 @@ pub unsafe extern "C" fn fits_calc_binningd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version, with non-extended syntax
 /// Calculate the actual binning parameters, based on various user inputoptions.
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table to be binned ;
+/// * `naxis`     — (I) number of axes/columns in the binned image
+/// * `colname`   — (I) optional column names
+/// * `minin`     — (IO) optional lower bound value for each axis
+/// * `maxin`     — (IO) optional upper bound value, for each axis
+/// * `binsizein` — (IO) optional bin size along each axis
+/// * `minname`   — (I) optional keywords for min
+/// * `maxname`   — (I) optional keywords for max
+/// * `binname`   — (I) optional keywords for binsize
+/// * `colnum`    — (O) column numbers, to be binned
+/// * `haxes`     — (O) number of bins in each histogram axis
+/// * `amin`      — (O) lower bound of the histogram axes
+/// * `amax`      — (O) upper bound of the histogram axes
+/// * `binsize`   — (O) width of histogram bins/pixels on each axis
 pub fn fits_calc_binningd_safe(
-    fptr: &mut fitsfile, /* IO - pointer to table to be binned      ;       */
-    naxis: c_int,        /* I - number of axes/columns in the binned image  */
-    colname: &mut [[c_char; FLEN_VALUE]; 4], /* I - optional column names         */
-    minin: &mut [f64],   /* IO - optional lower bound value for each axis  */
-    maxin: &mut [f64],   /* IO - optional upper bound value, for each axis */
-    binsizein: &mut [f64], /* IO - optional bin size along each axis         */
-    minname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for min       */
-    maxname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for max       */
-    binname: &[[c_char; FLEN_VALUE]; 4], /* I - optional keywords for binsize   */
+    fptr: &mut fitsfile,
+    naxis: c_int,
+    colname: &mut [[c_char; FLEN_VALUE]; 4],
+    minin: &mut [f64],
+    maxin: &mut [f64],
+    binsizein: &mut [f64],
+    minname: &[[c_char; FLEN_VALUE]; 4],
+    maxname: &[[c_char; FLEN_VALUE]; 4],
+    binname: &[[c_char; FLEN_VALUE]; 4],
 
     /* The returned parameters for each axis of the n-dimensional histogram are */
-    colnum: &mut [c_int], /* O - column numbers, to be binned */
-    haxes: &mut [c_long], /* O - number of bins in each histogram axis */
-    amin: &mut [f64],     /* O - lower bound of the histogram axes */
-    amax: &mut [f64],     /* O - upper bound of the histogram axes */
-    binsize: &mut [f64],  /* O - width of histogram bins/pixels on each axis */
+    colnum: &mut [c_int],
+    haxes: &mut [c_long],
+    amin: &mut [f64],
+    amax: &mut [f64],
+    binsize: &mut [f64],
     status: &mut c_int,
 ) -> c_int {
     fits_calc_binningde(
@@ -3499,16 +3760,24 @@ pub fn fits_calc_binningd_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write default WCS keywords in the output histogram image header
 /// if the keywords do not already exist.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `histptr` — (I) pointer to output histogram image HDU
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `colnum`  — (I) column numbers (array length = naxis)
+/// * `colname` — (I) if expression, then column name to use
+/// * `colexpr` — (I) if expression, then column name to use
 pub(crate) fn fits_write_keys_histoe(
-    fptr: &mut fitsfile,    /* I - pointer to table to be binned              */
-    histptr: &mut fitsfile, /* I - pointer to output histogram image HDU      */
-    naxis: c_int,           /* I - number of axes in the histogram image      */
-    colnum: &[c_int],       /* I - column numbers (array length = naxis)      */
-    colname: Option<&[[c_char; FLEN_VALUE]; 4]>, /* I - if expression, then column name to use */
-    colexpr: Option<&[Option<&[c_char]>; 4]>, /* I - if expression, then column name to use */
+    fptr: &mut fitsfile,
+    histptr: &mut fitsfile,
+    naxis: c_int,
+    colnum: &[c_int],
+    colname: Option<&[[c_char; FLEN_VALUE]; 4]>,
+    colexpr: Option<&[Option<&[c_char]>; 4]>,
     status: &mut c_int,
 ) -> c_int {
     let mut tstatus: c_int = 0;
@@ -3622,13 +3891,18 @@ pub(crate) fn fits_write_keys_histoe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `histptr` — (I) pointer to output histogram image HDU
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `colnum`  — (I) column numbers (array length = naxis)
 pub unsafe extern "C" fn fits_write_keys_histo(
-    fptr: *mut fitsfile,    /* I - pointer to table to be binned              */
-    histptr: *mut fitsfile, /* I - pointer to output histogram image HDU      */
-    naxis: c_int,           /* I - number of axes in the histogram image      */
-    colnum: *const c_int,   /* I - column numbers (array length = naxis)      */
+    fptr: *mut fitsfile,
+    histptr: *mut fitsfile,
+    naxis: c_int,
+    colnum: *const c_int,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -3643,24 +3917,34 @@ pub unsafe extern "C" fn fits_write_keys_histo(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `histptr` — (I) pointer to output histogram image HDU
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `colnum`  — (I) column numbers (array length = naxis)
 pub fn fits_write_keys_histo_safe(
-    fptr: &mut fitsfile,    /* I - pointer to table to be binned              */
-    histptr: &mut fitsfile, /* I - pointer to output histogram image HDU      */
-    naxis: c_int,           /* I - number of axes in the histogram image      */
-    colnum: &[c_int],       /* I - column numbers (array length = naxis)      */
+    fptr: &mut fitsfile,
+    histptr: &mut fitsfile,
+    naxis: c_int,
+    colnum: &[c_int],
     status: &mut c_int,
 ) -> c_int {
     fits_write_keys_histoe(fptr, histptr, naxis, colnum, None, None, status)
 }
 
-/*--------------------------------------------------------------------------*/
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `amin`    — (I) first pixel include in each axis
+/// * `binsize` — (I) binning factor for each axis
 pub unsafe extern "C" fn fits_rebin_wcs(
-    fptr: *mut fitsfile, /* I - pointer to table to be binned           */
-    naxis: c_int,        /* I - number of axes in the histogram image   */
-    amin: *mut f32,      /* I - first pixel include in each axis        */
-    binsize: *mut f32,   /* I - binning factor for each axis            */
+    fptr: *mut fitsfile,
+    naxis: c_int,
+    amin: *mut f32,
+    binsize: *mut f32,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -3674,12 +3958,17 @@ pub unsafe extern "C" fn fits_rebin_wcs(
     }
 }
 
-/*--------------------------------------------------------------------------*/
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `amin`    — (I) first pixel include in each axis
+/// * `binsize` — (I) binning factor for each axis
 pub fn fits_rebin_wcs_safe(
-    fptr: &mut fitsfile, /* I - pointer to table to be binned           */
-    naxis: c_int,        /* I - number of axes in the histogram image   */
-    amin: &mut [f32],    /* I - first pixel include in each axis        */
-    binsize: &mut [f32], /* I - binning factor for each axis            */
+    fptr: &mut fitsfile,
+    naxis: c_int,
+    amin: &mut [f32],
+    binsize: &mut [f32],
     status: &mut c_int,
 ) -> c_int {
     let mut amind: [f64; 4] = [0.0; 4];
@@ -3698,16 +3987,22 @@ pub fn fits_rebin_wcs_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double precision version
 /// Update the  WCS keywords that define the location of the reference
 /// pixel, and the pixel size, along each axis.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `amin`    — (I) first pixel include in each axis
+/// * `binsize` — (I) binning factor for each axis
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_rebin_wcsd(
-    fptr: *mut fitsfile, /* I - pointer to table to be binned           */
-    naxis: c_int,        /* I - number of axes in the histogram image   */
-    amin: *mut f64,      /* I - first pixel include in each axis        */
-    binsize: *mut f64,   /* I - binning factor for each axis            */
+    fptr: *mut fitsfile,
+    naxis: c_int,
+    amin: *mut f64,
+    binsize: *mut f64,
     status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
@@ -3721,15 +4016,21 @@ pub unsafe extern "C" fn fits_rebin_wcsd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double precision version
 /// Update the  WCS keywords that define the location of the reference
 /// pixel, and the pixel size, along each axis.
+///
+/// # Parameters
+///
+/// * `fptr`    — (I) pointer to table to be binned
+/// * `naxis`   — (I) number of axes in the histogram image
+/// * `amin`    — (I) first pixel include in each axis
+/// * `binsize` — (I) binning factor for each axis
 pub fn fits_rebin_wcsd_safe(
-    fptr: &mut fitsfile, /* I - pointer to table to be binned           */
-    naxis: c_int,        /* I - number of axes in the histogram image   */
-    amin: &mut [f64],    /* I - first pixel include in each axis        */
-    binsize: &mut [f64], /* I - binning factor for each axis            */
+    fptr: &mut fitsfile,
+    naxis: c_int,
+    amin: &mut [f64],
+    binsize: &mut [f64],
     status: &mut c_int,
 ) -> c_int {
     let mut ii: c_int;
@@ -3853,23 +4154,38 @@ pub fn fits_rebin_wcsd_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Single-precision version
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `histptr`   — (I) pointer to output FITS image
+/// * `bitpix`    — (I) datatype for image: 16, 32, -32, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `naxes`     — (I) size of axes in the histogram image
+/// * `colnum`    — (I) column numbers (array length = naxis)
+/// * `amin`      — (I) minimum histogram value, for each axis
+/// * `amax`      — (I) maximum histogram value, for each axis
+/// * `binsize`   — (I) bin size along each axis
+/// * `weight`    — (I) binning weighting factor
+/// * `wtcolnum`  — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_make_hist(
-    fptr: *mut fitsfile,      /* IO - pointer to table with X and Y cols; */
-    histptr: *mut fitsfile,   /* I - pointer to output FITS image      */
-    bitpix: c_int,            /* I - datatype for image: 16, 32, -32, etc    */
-    naxis: c_int,             /* I - number of axes in the histogram image   */
-    naxes: *const c_long,     /* I - size of axes in the histogram image   */
-    colnum: *const c_int,     /* I - column numbers (array length = naxis)   */
-    amin: *const f32,         /* I - minimum histogram value, for each axis */
-    amax: *const f32,         /* I - maximum histogram value, for each axis */
-    binsize: *const f32,      /* I - bin size along each axis               */
-    weight: f32,              /* I - binning weighting factor          */
-    wtcolnum: c_int,          /* I - optional keyword or col for weight*/
-    recip: c_int,             /* I - use reciprocal of the weight?     */
-    selectrow: *const c_char, /* I - optional array (length = no. of   */
+    fptr: *mut fitsfile,
+    histptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    colnum: *const c_int,
+    amin: *const f32,
+    amax: *const f32,
+    binsize: *const f32,
+    weight: f32,
+    wtcolnum: c_int,
+    recip: c_int,
+    selectrow: *const c_char,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -3904,22 +4220,37 @@ pub unsafe extern "C" fn fits_make_hist(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Single-precision version
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `histptr`   — (I) pointer to output FITS image
+/// * `bitpix`    — (I) datatype for image: 16, 32, -32, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `naxes`     — (I) size of axes in the histogram image
+/// * `colnum`    — (I) column numbers (array length = naxis)
+/// * `amin`      — (I) minimum histogram value, for each axis
+/// * `amax`      — (I) maximum histogram value, for each axis
+/// * `binsize`   — (I) bin size along each axis
+/// * `weight`    — (I) binning weighting factor
+/// * `wtcolnum`  — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub fn fits_make_hist_safe(
-    fptr: &mut fitsfile,          /* IO - pointer to table with X and Y cols; */
-    histptr: &mut fitsfile,       /* I - pointer to output FITS image      */
-    bitpix: c_int,                /* I - datatype for image: 16, 32, -32, etc    */
-    naxis: c_int,                 /* I - number of axes in the histogram image   */
-    naxes: &[c_long],             /* I - size of axes in the histogram image   */
-    colnum: &[c_int],             /* I - column numbers (array length = naxis)   */
-    amin: &[f32],                 /* I - minimum histogram value, for each axis */
-    amax: &[f32],                 /* I - maximum histogram value, for each axis */
-    binsize: &[f32],              /* I - bin size along each axis               */
-    weight: f32,                  /* I - binning weighting factor          */
-    wtcolnum: c_int,              /* I - optional keyword or col for weight*/
-    recip: c_int,                 /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>, /* I - optional array (length = no. of   */
+    fptr: &mut fitsfile,
+    histptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    colnum: &[c_int],
+    amin: &[f32],
+    amax: &[f32],
+    binsize: &[f32],
+    weight: f32,
+    wtcolnum: c_int,
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -3950,28 +4281,46 @@ pub fn fits_make_hist_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `histptr`   — (I) pointer to output FITS image
+/// * `datatypes` — (I) datatype of input (or 0 for auto)
+/// * `bitpix`    — (I) datatype for image: 16, 32, -32, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `naxes`     — (I) size of axes in the histogram image
+/// * `colnum`    — (I) column numbers (array length = naxis)
+/// * `colexpr`   — (I) optional expression instead of column
+/// * `amin`      — (I) minimum histogram value, for each axis
+/// * `amax`      — (I) maximum histogram value, for each axis
+/// * `binsize`   — (I) bin size along each axis
+/// * `weight`    — (I) binning weighting factor (0 or DOUBLENULLVALUE means null)
+/// * `wtcolnum`  — (I) optional keyword or col for weight
+/// * `wtexpr`    — (I) optional weighting expression
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub(crate) fn fits_make_histde(
-    fptr: &mut fitsfile,    /* IO - pointer to table with X and Y cols; */
-    histptr: &mut fitsfile, /* I - pointer to output FITS image      */
-    mut datatypes: Option<&mut [c_int]>, /*  I - datatype of input (or 0 for auto) */
-    bitpix: c_int,          /* I - datatype for image: 16, 32, -32, etc    */
-    naxis: c_int,           /* I - number of axes in the histogram image   */
-    naxes: &[c_long],       /* I - size of axes in the histogram image   */
-    colnum: &[c_int],       /* I - column numbers (array length = naxis)   */
-    colexpr: Option<&[Option<&[c_char]>; 4]>, /* I - optional expression instead of column */
-    amin: &[f64],           /* I - minimum histogram value, for each axis */
-    amax: &[f64],           /* I - maximum histogram value, for each axis */
-    binsize: &[f64],        /* I - bin size along each axis               */
-    mut weight: f64,        /* I - binning weighting factor (0 or DOUBLENULLVALUE means null) */
-    wtcolnum: c_int,        /* I - optional keyword or col for weight*/
-    wtexpr: Option<&[c_char]>, /* I - optional weighting expression */
+    fptr: &mut fitsfile,
+    histptr: &mut fitsfile,
+    mut datatypes: Option<&mut [c_int]>,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    colnum: &[c_int],
+    colexpr: Option<&[Option<&[c_char]>; 4]>,
+    amin: &[f64],
+    amax: &[f64],
+    binsize: &[f64],
+    mut weight: f64,
+    wtcolnum: c_int,
+    wtexpr: Option<&[c_char]>,
     /*  disambiguation of weight values */
     /*    non-null weight: use that value */
     /*    null weight: use wtexpr if non-null, else wtcolnum */
-    recip: c_int,                 /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>, /* I - optional array (length = no. of   */
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -4412,23 +4761,38 @@ pub(crate) fn fits_make_histde(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version, non-extended syntax
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `histptr`   — (I) pointer to output FITS image
+/// * `bitpix`    — (I) datatype for image: 16, 32, -32, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `naxes`     — (I) size of axes in the histogram image
+/// * `colnum`    — (I) column numbers (array length = naxis)
+/// * `amin`      — (I) minimum histogram value, for each axis
+/// * `amax`      — (I) maximum histogram value, for each axis
+/// * `binsize`   — (I) bin size along each axis
+/// * `weight`    — (I) binning weighting factor
+/// * `wtcolnum`  — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_make_histd(
-    fptr: *mut fitsfile,      /* IO - pointer to table with X and Y cols; */
-    histptr: *mut fitsfile,   /* I - pointer to output FITS image      */
-    bitpix: c_int,            /* I - datatype for image: 16, 32, -32, etc    */
-    naxis: c_int,             /* I - number of axes in the histogram image   */
-    naxes: *const c_long,     /* I - size of axes in the histogram image   */
-    colnum: *const c_int,     /* I - column numbers (array length = naxis)   */
-    amin: *const f64,         /* I - minimum histogram value, for each axis */
-    amax: *const f64,         /* I - maximum histogram value, for each axis */
-    binsize: *const f64,      /* I - bin size along each axis               */
-    weight: f64,              /* I - binning weighting factor          */
-    wtcolnum: c_int,          /* I - optional keyword or col for weight*/
-    recip: c_int,             /* I - use reciprocal of the weight?     */
-    selectrow: *const c_char, /* I - optional array (length = no. of   */
+    fptr: *mut fitsfile,
+    histptr: *mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: *const c_long,
+    colnum: *const c_int,
+    amin: *const f64,
+    amax: *const f64,
+    binsize: *const f64,
+    weight: f64,
+    wtcolnum: c_int,
+    recip: c_int,
+    selectrow: *const c_char,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -4463,22 +4827,37 @@ pub unsafe extern "C" fn fits_make_histd(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Double-precision version, non-extended syntax
+///
+/// # Parameters
+///
+/// * `fptr`      — (IO) pointer to table with X and Y cols;
+/// * `histptr`   — (I) pointer to output FITS image
+/// * `bitpix`    — (I) datatype for image: 16, 32, -32, etc
+/// * `naxis`     — (I) number of axes in the histogram image
+/// * `naxes`     — (I) size of axes in the histogram image
+/// * `colnum`    — (I) column numbers (array length = naxis)
+/// * `amin`      — (I) minimum histogram value, for each axis
+/// * `amax`      — (I) maximum histogram value, for each axis
+/// * `binsize`   — (I) bin size along each axis
+/// * `weight`    — (I) binning weighting factor (0 or DOUBLENULLVALUE means null)
+/// * `wtcolnum`  — (I) optional keyword or col for weight
+/// * `recip`     — (I) use reciprocal of the weight?
+/// * `selectrow` — (I) optional array (length = no. of
 pub fn fits_make_histd_safe(
-    fptr: &mut fitsfile,          /* IO - pointer to table with X and Y cols; */
-    histptr: &mut fitsfile,       /* I - pointer to output FITS image      */
-    bitpix: c_int,                /* I - datatype for image: 16, 32, -32, etc    */
-    naxis: c_int,                 /* I - number of axes in the histogram image   */
-    naxes: &[c_long],             /* I - size of axes in the histogram image   */
-    colnum: &[c_int],             /* I - column numbers (array length = naxis)   */
-    amin: &[f64],                 /* I - minimum histogram value, for each axis */
-    amax: &[f64],                 /* I - maximum histogram value, for each axis */
-    binsize: &[f64],              /* I - bin size along each axis               */
-    weight: f64,     /* I - binning weighting factor (0 or DOUBLENULLVALUE means null) */
-    wtcolnum: c_int, /* I - optional keyword or col for weight*/
-    recip: c_int,    /* I - use reciprocal of the weight?     */
-    selectrow: Option<&[c_char]>, /* I - optional array (length = no. of   */
+    fptr: &mut fitsfile,
+    histptr: &mut fitsfile,
+    bitpix: c_int,
+    naxis: c_int,
+    naxes: &[c_long],
+    colnum: &[c_int],
+    amin: &[f64],
+    amax: &[f64],
+    binsize: &[f64],
+    weight: f64,
+    wtcolnum: c_int,
+    recip: c_int,
+    selectrow: Option<&[c_char]>,
     /* rows in the table).  If the element is true */
     /* then the corresponding row of the table will*/
     /* be included in the histogram, otherwise the */
@@ -4492,7 +4871,6 @@ pub fn fits_make_histd_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// Simple utility routine to compute the min and max value in a column
 pub(crate) fn fits_get_col_minmax(
     fptr: &mut fitsfile,
@@ -4557,17 +4935,26 @@ struct histo_minmax_workfn_struct {
     ngood: c_long,
 }
 
-/*---------------------------------------------------------------------------*/
 /// Iterator work function which evaluates a parser result and computes
 /// min max value
+///
+/// # Parameters
+///
+/// * `totalrows` — (I) Total rows to be processed
+/// * `offset`    — (I) Number of rows skipped at start
+/// * `firstrow`  — (I) First row of this iteration
+/// * `nrows`     — (I) Number of rows in this iter
+/// * `nCols`     — (I) Number of columns in use
+/// * `colData`   — (IO) Column information/data
+/// * `userPtr`   — (I) Data handling instructions
 extern "C" fn histo_minmax_expr_workfn(
-    totalrows: c_long,         /* I - Total rows to be processed     */
-    offset: c_long,            /* I - Number of rows skipped at start*/
-    firstrow: c_long,          /* I - First row of this iteration    */
-    nrows: c_long,             /* I - Number of rows in this iter    */
-    nCols: c_int,              /* I - Number of columns in use       */
-    colData: *mut iteratorCol, /* IO- Column information/data        */
-    userPtr: *mut c_void,      /* I - Data handling instructions     */
+    totalrows: c_long,
+    offset: c_long,
+    firstrow: c_long,
+    nrows: c_long,
+    nCols: c_int,
+    colData: *mut iteratorCol,
+    userPtr: *mut c_void,
 ) -> c_int {
     let userPtr = unsafe { &mut *userPtr.cast::<histo_minmax_workfn_struct>() };
     let mut status: c_int = 0;
@@ -4615,7 +5002,6 @@ extern "C" fn histo_minmax_expr_workfn(
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Simple utility routine to compute the min and max value in an expression
 fn fits_get_expr_minmax(
     fptr: &mut fitsfile,
@@ -4808,7 +5194,6 @@ fn fits_get_expr_minmax(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Interator work function that writes out the histogram.
 /// The histogram values are calculated by another work function, ffcalchisto.
 /// This work function only gets called once, and totaln = nvalues.
@@ -4839,7 +5224,6 @@ extern "C" fn ffwritehisto(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Interator work function that writes out the histogram.
 /// The histogram values are calculated by another work function, ffcalchisto.
 /// This work function only gets called once, and totaln = nvalues.
@@ -4924,7 +5308,6 @@ fn ffwritehisto_safe(
     status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Interator work function that calculates values for the 2D histogram.
 extern "C" fn ffcalchist(
     totalrows: c_long,
@@ -5191,9 +5574,7 @@ mod tests {
         expected.as_bytes() == bytes
     }
 
-    /*--------------------------------------------------------------------------*/
     /* Test ffbins: Parse basic binning specification strings */
-    /*--------------------------------------------------------------------------*/
 
     #[test]
     fn test_ffbins_simple_binsize() {
@@ -5672,9 +6053,7 @@ mod tests {
         assert_eq!(binsizein[0], 2.0);
     }
 
-    /*--------------------------------------------------------------------------*/
     /* Test ffbinse: Extended binning specification with expressions */
-    /*--------------------------------------------------------------------------*/
 
     #[test]
     fn test_ffbinse_with_expression() {
@@ -5811,9 +6190,7 @@ mod tests {
         assert!(c_str_eq(&exprs[1], "(sqrt(Y))"));
     }
 
-    /*--------------------------------------------------------------------------*/
     /* Test ffbinr: Parse binning range specification */
-    /*--------------------------------------------------------------------------*/
 
     #[test]
     fn test_ffbinr_column_only() {
@@ -6070,9 +6447,7 @@ mod tests {
         assert_eq!(maxin, 100.0);
     }
 
-    /*--------------------------------------------------------------------------*/
     /* Test ffbinre: Extended range parser with expressions */
-    /*--------------------------------------------------------------------------*/
 
     #[test]
     fn test_ffbinre_with_expression() {

@@ -1,7 +1,8 @@
-/* Transpiled from cfitsio/utilities/fvrf_file.c
-
-`static HduName **hduname' becomes a thread-local Vec<HduName>; the C's
-malloc/calloc/free bookkeeping is dropped in favour of RAII.  */
+//! Transpiled from cfitsio/utilities/fvrf_file.c
+//!
+//! `static HduName **hduname` becomes a thread-local `Vec<HduName>`; the C's
+//! malloc/calloc/free bookkeeping is dropped in favour of RAII.
+#![warn(missing_docs)]
 
 use std::cell::{Cell, RefCell};
 
@@ -54,11 +55,17 @@ fn init_hduname() {
 }
 
 /* set the hduname memeber hdutype, extname, extver */
+/// # Parameters
+///
+/// * `hdunum`  — hdu number
+/// * `hdutype` — hdutype
+/// * `extname` — extension name
+/// * `extver`  — extension version
 pub(crate) fn set_hduname(
-    hdunum: c_int,              /* hdu number */
-    hdutype: c_int,             /* hdutype */
-    extname: Option<&[c_char]>, /* extension name */
-    extver: c_int,              /* extension version */
+    hdunum: c_int,
+    hdutype: c_int,
+    extname: Option<&[c_char]>,
+    extver: c_int,
 ) {
     let i = (hdunum - 1) as usize;
     HDUNAME.with(|h| {
@@ -98,10 +105,11 @@ pub(crate) fn set_hdubasic(hdunum: c_int, hdutype: c_int) {
 
 /* test to see whether the two extension having the same name */
 /* return 1: identical 0: different */
-pub(crate) fn test_hduname(
-    hdunum1: c_int, /* index of first hdu */
-    hdunum2: c_int, /* index of second hdu */
-) -> c_int {
+/// # Parameters
+///
+/// * `hdunum1` — index of first hdu
+/// * `hdunum2` — index of second hdu
+pub(crate) fn test_hduname(hdunum1: c_int, hdunum2: c_int) -> c_int {
     HDUNAME.with(|h| {
         let h = h.borrow();
         let p1 = &h[(hdunum1 - 1) as usize];
@@ -282,10 +290,11 @@ pub(crate) fn test_end(infits: &mut fitsfile, out: Out) {
 *      Initialize the fverify report
 *
 *******************************************************************************/
-pub(crate) fn init_report(
-    out: Out,            /* output file */
-    _rootnam: &[c_char], /* input file name */
-) {
+/// # Parameters
+///
+/// * `out`      — output file
+/// * `_rootnam` — input file name
+pub(crate) fn init_report(out: Out, _rootnam: &[c_char]) {
     let mut comm: [c_char; COMM_LEN] = [0; COMM_LEN];
     spf!(comm; "\n", totalhdu(), " Header-Data Units in this file.");
     wrtout(out, &comm);

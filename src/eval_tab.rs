@@ -1,3 +1,14 @@
+//! The token numbers the parser and lexer agree on.
+//!
+//! **Generated code**: `bison`'s `%token` block from `eval.y`, as
+//! `eval_tab.h`. The names carry the grammar's own spelling, which is why the
+//! crate allows `clippy::upper_case_acronyms` -- `BOOLEAN`, `BITSTR`,
+//! `GTIFILTER` and the rest must stay as the grammar writes them.
+//!
+//! See [`crate::eval_f`] for how the parser's three files fit together.
+// The token constants below are bison's own output; see the note in eval_y.rs.
+#![allow(missing_docs)]
+
 use crate::{
     c_types::{c_char, c_double, c_int, c_long},
     eval_defs::MAX_STRLEN,

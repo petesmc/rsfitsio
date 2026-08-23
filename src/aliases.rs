@@ -1,5 +1,24 @@
 #![allow(deprecated)]
 #![allow(unused_imports)]
+//! The public entry points, under CFITSIO's own names.
+//!
+//! This module mirrors CFITSIO's `fitsio.h` and `longnam.h` exactly, and is the
+//! only intended path to a routine — the implementation modules are exposed so
+//! that the port can be read against the original C, not so that they are
+//! called directly.
+//!
+//! Each routine appears twice:
+//!
+//! * in [`c_api`], under both its `ffxyz` and its `fits_*` spelling, as the
+//!   `unsafe extern "C"` entry point;
+//! * in [`rust_api`], under both its `fits_*` and its `ffxyz_safe` spelling, as
+//!   the safe form taking references, slices and `Option`s.
+//!
+//! `./scripts/check_api.py` diffs this module against `fitsio.h` and
+//! `longnam.h` and fails on a missing name, an invented one, or an alias
+//! pointing at the wrong routine. See `PUBLIC_API.md` for the rules and for
+//! what is deliberately hidden.
+#![warn(missing_docs)]
 
 use crate::c_types::{c_char, c_int};
 use crate::fitsio::CFITSIO_SONAME;
@@ -7,6 +26,11 @@ use crate::fitsio::fitsfile;
 
 pub(crate) use crate::cfileio::ffourl as fits_parse_output_url;
 
+/// The C ABI entry points: `unsafe extern "C"` functions taking raw pointers.
+///
+/// These are `#[deprecated]` so that callers inside the crate reach for
+/// [`rust_api`] instead; the attribute is not a statement about the C API's
+/// future.
 pub mod c_api {
     use super::*;
 
@@ -23,11 +47,34 @@ pub mod c_api {
     pub use crate::histo::ffbinr as fits_parse_binrange;
     pub use crate::histo::ffbins as fits_parse_binspec;
 
-    /*
-    use the following special macro to test that the fitsio.h include file
-    that was used to build the CFITSIO library is compatible with the version
-    as included when compiling the application program
-    */
+    /// Opens an existing FITS file, checking that the caller was built against
+    /// a compatible version of the library.
+    ///
+    /// In C this is a macro that passes `CFITSIO_SONAME` through to
+    /// `ffopentest`, so that a program compiled against one `fitsio.h` and
+    /// linked against a different library is caught at run time rather than
+    /// misbehaving.
+    ///
+    /// # Parameters
+    ///
+    /// * `A` — (O) the opened file
+    /// * `B` — (I) name of the file to open
+    /// * `C` — (I) [`READONLY`](crate::fitsio::READONLY) or
+    ///   [`READWRITE`](crate::fitsio::READWRITE)
+    /// * `D` — (IO) error status
+    ///
+    /// # Returns
+    ///
+    /// The error status; `0` on success.
+    ///
+    /// # Safety
+    ///
+    /// `A`, `B` and `D` must be non-null and valid, and `B` must point at a
+    /// nul-terminated string.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `A` or `D` is null.
     #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
     pub unsafe extern "C" fn fits_open_file(
         A: *mut Option<Box<fitsfile>>,
@@ -669,19 +716,35 @@ pub mod c_api {
     };
     pub use crate::quantize::{fits_img_stats_float, fits_img_stats_int, fits_img_stats_short};
 
+    /// Entry points CFITSIO exports but does not declare in `fitsio.h`.
+    ///
+    /// Programs that link against the C library can still reach these by
+    /// declaring them themselves, so the port provides them for ABI
+    /// compatibility. They are not part of the documented API.
     pub mod unofficial {
         use crate::c_types::{c_int, c_long, c_void};
         use crate::fitsio::{FITSfile, LONGLONG};
         use crate::fitsio::{NULL_MSG, fitsfile};
 
-        /*--------------------------------------------------------------------------*/
-        /// low level routine to read bytes from a file.
+        /// Low level routine to read bytes from a file.
+        ///
+        /// # Parameters
+        ///
+        /// * `fptr`   — (I) FITS file pointer
+        /// * `nbytes` — (I) number of bytes to read
+        /// * `buffer` — (O) buffer to read into
+        /// * `status` — (O) error status
+        ///
+        /// # Safety
+        ///
+        /// `fptr`, `status` and `buffer` must be non-null and valid, and
+        /// `buffer` must be writable for at least `nbytes` bytes.
         #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
         unsafe extern "C" fn ffread(
-            fptr: *mut FITSfile, /* I - FITS file pointer              */
-            nbytes: c_long,      /* I - number of bytes to read        */
-            buffer: *mut c_void, /* O - buffer to read into            */
-            status: *mut c_int,  /* O - error status                   */
+            fptr: *mut FITSfile,
+            nbytes: c_long,
+            buffer: *mut c_void,
+            status: *mut c_int,
         ) -> c_int {
             unsafe {
                 let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -692,31 +755,50 @@ pub mod c_api {
             }
         }
 
-        /*--------------------------------------------------------------------------*/
-        /// low level routine to seek to a position in a file.
+        /// Low level routine to seek to a position in a file.
+        ///
+        /// # Parameters
+        ///
+        /// * `fptr`     — (I) FITS file pointer
+        /// * `position` — (I) byte position to seek to
+        ///
+        /// # Safety
+        ///
+        /// `fptr` must be non-null and valid.
         #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-        unsafe extern "C" fn ffseek(
-            fptr: *mut FITSfile, /* I - FITS file pointer              */
-            position: LONGLONG,  /* I - byte position to seek to       */
-        ) -> c_int {
+        unsafe extern "C" fn ffseek(fptr: *mut FITSfile, position: LONGLONG) -> c_int {
             unsafe {
                 let fptr = fptr.as_mut().expect(NULL_MSG);
                 crate::cfileio::ffseek(fptr, position)
             }
         }
 
-        /*--------------------------------------------------------------------------*/
         /// Get (read) the requested number of bytes from the file, starting at
-        /// the current file position.  This function combines ffmbyt and ffgbyt
-        /// for increased efficiency.
+        /// the current file position.
+        ///
+        /// Combines `ffmbyt` and `ffgbyt` for increased efficiency.
+        ///
+        /// # Parameters
+        ///
+        /// * `fptr`    — (I) FITS file pointer
+        /// * `gsize`   — (I) size of each group of bytes
+        /// * `ngroups` — (I) number of groups to read
+        /// * `offset`  — (I) size of the gap between groups, which may be < 0
+        /// * `buffer`  — (I) buffer to be filled
+        /// * `status`  — (IO) error status
+        ///
+        /// # Safety
+        ///
+        /// `fptr`, `status` and `buffer` must be non-null and valid, and
+        /// `buffer` must be writable for at least `ngroups * gsize` bytes.
         #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
         unsafe extern "C" fn ffgbytoff(
-            fptr: *mut fitsfile, /* I - FITS file pointer                   */
-            gsize: c_long,       /* I - size of each group of bytes         */
-            ngroups: c_long,     /* I - number of groups to read            */
-            offset: c_long,      /* I - size of gap between groups (may be < 0) */
-            buffer: *mut c_void, /* I - buffer to be filled                 */
-            status: *mut c_int,  /* IO - error status                       */
+            fptr: *mut fitsfile,
+            gsize: c_long,
+            ngroups: c_long,
+            offset: c_long,
+            buffer: *mut c_void,
+            status: *mut c_int,
         ) -> c_int {
             unsafe {
                 let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -732,6 +814,10 @@ pub mod c_api {
     }
 }
 
+/// The safe entry points, taking references, slices and `Option`s.
+///
+/// An opened file is an `Option<Box<fitsfile>>`. This is the module to call
+/// from Rust.
 #[deny(unsafe_code, unsafe_op_in_unsafe_fn, deprecated)]
 pub mod rust_api {
     use super::*;
@@ -749,11 +835,25 @@ pub mod rust_api {
     pub use crate::histo::ffbinr_safe as fits_parse_binrange;
     pub use crate::histo::ffbins_safe as fits_parse_binspec;
 
-    /*
-    use the following special macro to test that the fitsio.h include file
-    that was used to build the CFITSIO library is compatible with the version
-    as included when compiling the application program
-    */
+    /// Opens an existing FITS file, checking that the caller was built against
+    /// a compatible version of the library.
+    ///
+    /// In C this is a macro that passes `CFITSIO_SONAME` through to
+    /// `ffopentest`, so that a program compiled against one `fitsio.h` and
+    /// linked against a different library is caught at run time rather than
+    /// misbehaving.
+    ///
+    /// # Parameters
+    ///
+    /// * `A` — (O) the opened file
+    /// * `B` — (I) name of the file to open
+    /// * `C` — (I) [`READONLY`](crate::fitsio::READONLY) or
+    ///   [`READWRITE`](crate::fitsio::READWRITE)
+    /// * `D` — (IO) error status
+    ///
+    /// # Returns
+    ///
+    /// The error status; `0` on success.
     pub fn fits_open_file(
         A: &mut Option<Box<fitsfile>>,
         B: &[c_char],

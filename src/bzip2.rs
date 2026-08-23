@@ -1,3 +1,9 @@
+//! The bzip2 entry points used by the `BZIP2_1` tile compressor.
+//!
+//! Re-exported from `libbz2-rs-sys` behind the default `bzip2` feature. BZIP2
+//! is not publicly supported by CFITSIO and exists for test purposes only.
+#![warn(missing_docs)]
+
 use crate::c_types::{c_int, c_void, FILE};
 
 pub use bzip2_sys::{

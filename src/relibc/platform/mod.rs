@@ -1,3 +1,9 @@
+//! Platform glue for the vendored relibc code.
+//!
+//! Vendored from relibc; see [`crate::relibc`].
+// Vendored code, documented in upstream's style.
+#![allow(missing_docs)]
+
 use core::fmt;
 use core::{cell::Cell, ptr};
 

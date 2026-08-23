@@ -1,8 +1,9 @@
-/* C printf conversions that Rust's format!() cannot express: %g in any form,
- * and the `#' alternate flag.  Everything format!() can do is left to it at
- * the call sites; the double conversions come through here so that there is
- * one rounding and one specials-spelling engine, and it is the C one.
- */
+//! C printf conversions that Rust's format!() cannot express: %g in any
+//! form,
+//! and the `#' alternate flag.  Everything format!() can do is left to it at
+//! the call sites; the double conversions come through here so that there
+//! is one rounding and one specials-spelling engine, and it is the C one.
+#![warn(missing_docs)]
 
 use std::ffi::CStr;
 

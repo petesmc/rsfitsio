@@ -10,6 +10,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: Temporarily modify the rust toolchain version
+      run: rustup override set 1.96.0
+
+    # The docs are warning-free; keep them that way. No --lib: that would only
+    # cover the library and leave the utility binaries' docs unchecked.
+    - name: Build the documentation
+      env:
+        RUSTDOCFLAGS: -D warnings
+      run: cargo doc --no-deps
+
   build-on-linux-x64:
     runs-on: ubuntu-latest
 

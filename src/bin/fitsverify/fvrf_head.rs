@@ -1,9 +1,10 @@
-/* Transpiled from cfitsio/utilities/fvrf_head.c
-
-The `char **' working arrays (cards, tmpkwds, ttype, tform, tunit) are
-file-statics in the C; here they are thread-locals holding owned copies.
-`temp' / `ptemp' were only ever used to hand a pattern to key_match(), so
-the pattern is passed directly instead.  */
+//! Transpiled from cfitsio/utilities/fvrf_head.c
+//!
+//! The `char **' working arrays (cards, tmpkwds, ttype, tform, tunit) are
+//! file-statics in the C; here they are thread-locals holding owned copies.
+//! `temp' / `ptemp' were only ever used to hand a pattern to key_match(),
+//! so the pattern is passed directly instead.
+#![warn(missing_docs)]
 
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -161,7 +162,6 @@ pub(crate) fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
 
     /* initialize the report */
     init_report(out, &rootnam);
-    /*------------------  Hdu Loop --------------------------------*/
     i = 1;
     while i <= totalhdu() {
         /* move to the right hdu and do the CFITSIO test */
@@ -214,7 +214,6 @@ pub(crate) fn verify_fits(infile: &mut [c_char], out: Out) -> c_int {
     /* test the end of file  */
     test_end(&mut infits, out);
 
-    /*------------------ Closing  --------------------------------*/
     /* closing the report*/
     close_report(out);
 
@@ -251,13 +250,13 @@ fn close_err(out: Out) {
 *
 *
 *************************************************************/
-fn init_hdu(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hdunum: c_int,         /* hdu index 	     */
-    hdutype: c_int,        /* hdutype	     */
-    hduptr: &mut FitsHdu,
-) {
+/// # Parameters
+///
+/// * `infits`  — input fits file
+/// * `out`     — output ascii file
+/// * `hdunum`  — hdu index
+/// * `hdutype` — hdutype
+fn init_hdu(infits: &mut fitsfile, out: Out, hdunum: c_int, hdutype: c_int, hduptr: &mut FitsHdu) {
     let mut morekeys: c_int;
     let mut i: usize;
     let mut j: usize;
@@ -619,11 +618,11 @@ fn init_hdu(
 *    This includes many tests of WCS keywords
 *
 *************************************************************/
-fn test_hdu(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+fn test_hdu(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut status: c_int = 0;
     let numusrkey: c_int;
     let hdunum: c_int;
@@ -1193,11 +1192,12 @@ fn test_hdu(
 *   Test the primary array header
 *
 *************************************************************/
-fn test_prm(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* hdu information structure */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — hdu information structure
+fn test_prm(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut i: c_int;
     let mut j: c_int;
     let mut k: c_int = 0;
@@ -1417,11 +1417,12 @@ fn test_prm(
 *   Test the extension header
 *
 *************************************************************/
-fn test_ext(
-    _infits: &mut fitsfile, /* input fits file   */
-    out: Out,               /* output ascii file */
-    hduptr: &mut FitsHdu,   /* information about header */
-) {
+/// # Parameters
+///
+/// * `_infits` — input fits file
+/// * `out`     — output ascii file
+/// * `hduptr`  — information about header
+fn test_ext(_infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut i: c_int;
     let mut j: c_int;
     let mut k: c_int = 0;
@@ -1526,11 +1527,12 @@ fn test_ext(
 *   Test the image extension header
 *
 *************************************************************/
-fn test_img_ext(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* information about header */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — information about header
+fn test_img_ext(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut errmes: [c_char; ERRMES_LEN] = [0; ERRMES_LEN];
 
     test_ext(infits, out, hduptr);
@@ -1559,11 +1561,12 @@ fn test_img_ext(
 * and image Extension.
 *
 *************************************************************/
-fn test_array(
-    _infits: &mut fitsfile, /* input fits file   */
-    out: Out,               /* output ascii file */
-    hduptr: &mut FitsHdu,   /* information about header */
-) {
+/// # Parameters
+///
+/// * `_infits` — input fits file
+/// * `out`     — output ascii file
+/// * `hduptr`  — information about header
+fn test_array(_infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut p: usize;
     let mut j: c_int;
     let mut k: c_int = 0;
@@ -1697,11 +1700,12 @@ fn test_array(
 *   tunit.
 *
 *************************************************************/
-fn test_tbl(
-    _infits: &mut fitsfile, /* input fits file   */
-    out: Out,               /* output ascii file */
-    hduptr: &mut FitsHdu,   /* information about header */
-) {
+/// # Parameters
+///
+/// * `_infits` — input fits file
+/// * `out`     — output ascii file
+/// * `hduptr`  — information about header
+fn test_tbl(_infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut p: usize;
     let mut m: c_int;
     let mut n: c_int = 0;
@@ -2198,11 +2202,12 @@ fn test_tbl(
 *   Test the ascii table extension header
 *
 *************************************************************/
-fn test_asc_ext(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* information about header */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — information about header
+fn test_asc_ext(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut p: usize;
     let mut i: c_int;
     let mut j: c_int;
@@ -2372,11 +2377,12 @@ fn test_asc_ext(
 *   Test the binary table extension header
 *
 *************************************************************/
-fn test_bin_ext(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* information about header */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — information about header
+fn test_bin_ext(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut i: c_int;
     let mut j: c_int;
     let mut k: c_int = 0;
@@ -2665,11 +2671,12 @@ fn test_bin_ext(
 *   Test the general keywords that can be in any header
 *
 *************************************************************/
-fn test_header(
-    _infits: &mut fitsfile, /* input fits file   */
-    out: Out,               /* output ascii file */
-    hduptr: &mut FitsHdu,   /* information about header  */
-) {
+/// # Parameters
+///
+/// * `_infits` — input fits file
+/// * `out`     — output ascii file
+/// * `hduptr`  — information about header
+fn test_header(_infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     /* common mandatory  keywords */
     let mandkey: [&std::ffi::CStr; 5] = [c"SIMPLE", c"BITPIX", c"NAXIS", c"XTENSION", c"END"];
     let nmandkey = 5;
@@ -3014,19 +3021,22 @@ fn test_header(
 *   name is stored in a sorted array.
 *
 *************************************************************/
+/// # Parameters
+///
+/// * `strs`    — fits keyname array
+/// * `nstr`    — total number of keys
+/// * `pattern` — wanted pattern
+/// * `exact`   — exact matching or pattern matching exact = 1: exact matching. exact =
+///              0: pattern matching. Any keywords with "patten"* is included
+/// * `ikey`    — The element number of first key Return -99 if not found
+/// * `mkey`    — total number of key matched return -999 if not found
 fn key_match(
-    strs: &[[c_char; FLEN_KEYWORD]], /* fits keyname  array */
-    nstr: c_int,                     /* total number of keys */
-    pattern: &[c_char],              /* wanted pattern  */
-    exact: c_int,                    /* exact matching or pattern matching
-                                     exact = 1: exact matching.
-                                     exact = 0: pattern matching.
-                                     Any keywords with "patten"* is included
-                                     */
-    ikey: &mut c_int, /* The element number of first key
-                      Return -99 if not found */
-    mkey: &mut c_int, /* total number of key matched
-                      return -999 if not found */
+    strs: &[[c_char; FLEN_KEYWORD]],
+    nstr: c_int,
+    pattern: &[c_char],
+    exact: c_int,
+    ikey: &mut c_int,
+    mkey: &mut c_int,
 ) {
     let mut i: c_int;
     let fnpt: fn(&[c_char], &[c_char]) -> Ordering = if exact != 0 { compstre } else { compstrp };
@@ -3170,14 +3180,20 @@ fn test_colnam(out: Out, hduptr: &FitsHdu) {
 *   Parse the tform of the variable length vector.
 *
 *************************************************************/
+/// # Parameters
+///
+/// * `colnum`    — column number
+/// * `datacode`  — data code
+/// * `maxlen`    — maximum length of the vector
+/// * `isQFormat` — true if var col is 'Q' format
 pub(crate) fn parse_vtform(
     infits: &mut fitsfile,
     out: Out,
     _hduptr: &FitsHdu,
-    colnum: c_int,         /* column number */
-    datacode: &mut c_int,  /* data code */
-    maxlen: &mut c_long,   /* maximum length of the vector */
-    isQFormat: &mut c_int, /* true if var col is 'Q' format */
+    colnum: c_int,
+    datacode: &mut c_int,
+    maxlen: &mut c_long,
+    isQFormat: &mut c_int,
 ) {
     let mut i: c_int = 0;
     let mut status: c_int = 0;
@@ -3338,11 +3354,11 @@ fn print_header(out: Out) {
 *  Print out the summary of this hdu.
 *
 **************************************************************/
-fn print_summary(
-    _infits: &mut fitsfile, /* input fits file   */
-    out: Out,               /* output ascii file */
-    hduptr: &FitsHdu,
-) {
+/// # Parameters
+///
+/// * `_infits` — input fits file
+/// * `out`     — output ascii file
+fn print_summary(_infits: &mut fitsfile, out: Out, hduptr: &FitsHdu) {
     let mut extver: [c_char; 10] = [0; 10];
     let mut extnv: [c_char; 2 * FLEN_VALUE + 4] = [0; 2 * FLEN_VALUE + 4];
     let mut npix: c_long;
@@ -3717,14 +3733,10 @@ mod fits_tests {
         (get_total_err(), get_total_warn())
     }
 
-    /*--- clean input reports nothing -------------------------------------*/
-
     #[test]
     fn test_clean_primary_array() {
         assert_eq!(counts(&pw(&[])), (0, 0));
     }
-
-    /*--- warnings --------------------------------------------------------*/
 
     #[test]
     fn test_simple_false_warns() {
@@ -3784,8 +3796,6 @@ mod fits_tests {
         assert_eq!(counts(&img(&["BSCALE  =                  0.0"])), (0, 1));
     }
 
-    /*--- keyword syntax errors -------------------------------------------*/
-
     #[test]
     fn test_lower_case_keyword_name_errors() {
         assert_eq!(counts(&pw(&["lowerkey=                    1"])), (1, 0));
@@ -3810,8 +3820,6 @@ mod fits_tests {
         assert!(e > 0, "a complex value with no comma must be reported");
     }
 
-    /*--- keywords in the wrong kind of HDU -------------------------------*/
-
     #[test]
     fn test_xtension_in_primary_errors() {
         assert_eq!(counts(&pw(&["XTENSION= 'IMAGE   '"])), (2, 0));
@@ -3826,8 +3834,6 @@ mod fits_tests {
     fn test_blank_with_floating_point_data_errors() {
         assert_eq!(counts(&img(&["BLANK   =                   -1"])), (1, 0));
     }
-
-    /*--- WCS -------------------------------------------------------------*/
 
     #[test]
     fn test_wcs_cdelt_zero_warns() {
@@ -3872,8 +3878,6 @@ mod fits_tests {
         assert_eq!(counts(&img(&["RADESYS = 'BOGUS   '"])), (0, 1));
         assert_eq!(counts(&img(&["SPECSYS = 'NOPE    '"])), (0, 1));
     }
-
-    /*--- tables ----------------------------------------------------------*/
 
     #[test]
     fn test_tdim_not_allowed_in_ascii_table() {
@@ -4004,8 +4008,6 @@ mod fits_tests {
             (2, 0)
         );
     }
-
-    /*--- file structure --------------------------------------------------*/
 
     #[test]
     fn test_extraneous_bytes_after_last_hdu_error() {

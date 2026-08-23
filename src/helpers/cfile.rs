@@ -1,3 +1,6 @@
+//! Adapters between C stream I/O and the Rust `Read` / `Write` traits.
+#![warn(missing_docs)]
+
 use std::{
     fs::File,
     io::{self, Read, Write},

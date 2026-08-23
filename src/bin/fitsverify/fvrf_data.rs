@@ -1,9 +1,11 @@
-/* Transpiled from cfitsio/utilities/fvrf_data.c
-
-The CFITSIO iterator hands its work function a `void *userPointer' and an
-array of iteratorCol whose `array' member is a raw buffer, so test_data /
-iterdata keep the C's pointer arithmetic inside small unsafe blocks.  All
-the other column reads use the typed safe wrappers.  */
+//! Transpiled from cfitsio/utilities/fvrf_data.c
+//!
+//! The CFITSIO iterator hands its work function a `void *userPointer' and
+//! an array of iteratorCol whose `array' member is a raw buffer, so
+//! test_data /
+//! iterdata keep the C's pointer arithmetic inside small unsafe blocks.  All
+//! the other column reads use the typed safe wrappers.
+#![warn(missing_docs)]
 
 use std::cell::{Cell, RefCell};
 
@@ -32,16 +34,27 @@ use crate::{scat, spf};
 /* flag for input only iterator column (fitsio.h InputCol) */
 const InputCol: c_int = 0;
 
+/// State carried through the column iterator while checking a table's data.
 struct UserIter {
+    /// Number of numeric columns.
     nnum: c_int,
+    /// Number of complex columns.
     ncmp: c_int,
+    /// Number of floating point columns.
     nfloat: c_int,
+    /// Datatype code of each column being checked.
     indatatyp: Vec<c_int>,
+    /// Largest value seen in each column.
     datamax: Vec<f64>,
+    /// Smallest value seen in each column.
     datamin: Vec<f64>,
+    /// Null value of each column.
     tnull: Vec<f64>,
-    mask: Vec<c_uchar>, /* for bit X column only */
+    /// Bit mask, for a bit (`X`) column only.
+    mask: Vec<c_uchar>,
+    /// Number of text columns.
     ntxt: c_int,
+    /// Where the report is written.
     out: Out,
 }
 
@@ -68,11 +81,12 @@ struct UserIter {
 *  this routine does not read the image pixels.
 *
 *************************************************************/
-pub(crate) fn test_data(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* fits hdu pointer  */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — fits hdu pointer
+pub(crate) fn test_data(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let mut iter_col: Vec<iteratorCol> = Vec::new();
     let ncols: c_int;
 
@@ -594,7 +608,6 @@ pub(crate) fn test_data(
     }
 }
 
-/***********************************************************************/
 /* iterator work function */
 
 /* The C keeps its per-table state in function statics; the same state lives
@@ -884,11 +897,12 @@ pub extern "C" fn iterdata(
 *   Test the bytes between the ASCII table column.
 *
 *************************************************************/
-fn test_agap(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-    hduptr: &mut FitsHdu,  /* fits hdu pointer  */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+/// * `hduptr` — fits hdu pointer
+fn test_agap(infits: &mut fitsfile, out: Out, hduptr: &mut FitsHdu) {
     let ncols: c_int;
     let mut nrows: LONGLONG = 0;
     let mut irows: c_long = 0;
@@ -1017,10 +1031,11 @@ fn test_agap(
 *   Test the checksum of the hdu
 *
 *************************************************************/
-fn test_checksum(
-    infits: &mut fitsfile, /* input fits file   */
-    out: Out,              /* output ascii file */
-) {
+/// # Parameters
+///
+/// * `infits` — input fits file
+/// * `out`    — output ascii file
+fn test_checksum(infits: &mut fitsfile, out: Out) {
     let mut status: c_int = 0;
     let mut dataok: c_int = 0;
     let mut hduok: c_int = 0;

@@ -1,3 +1,11 @@
+//! Fallible heap allocation.
+//!
+//! CFITSIO checks every `malloc` and reports
+//! [`MEMORY_ALLOCATION`](crate::fitsio::MEMORY_ALLOCATION) rather than
+//! aborting, so the port needs a `Box::new` that returns an error instead of
+//! panicking on allocation failure.
+#![warn(missing_docs)]
+
 use alloc::alloc::alloc;
 use core::alloc::Layout;
 use core::error::Error;

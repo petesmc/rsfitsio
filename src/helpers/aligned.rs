@@ -1,3 +1,6 @@
+//! A heap byte buffer with an alignment guarantee.
+#![warn(missing_docs)]
+
 use alloc::collections::TryReserveError;
 use core::ops::{Deref, DerefMut};
 

@@ -1,3 +1,13 @@
+//! Shared definitions for the expression parser.
+//!
+//! The types the three parser files agree on: the evaluation tree's `Node` and
+//! `NodeValue`, the `ParseData` state the parse builds up, and the column and
+//! keyword descriptions it collects. All are crate-private. Corresponds to
+//! CFITSIO's `eval_defs.h`.
+//!
+//! See [`crate::eval_f`] for how the three files fit together.
+#![warn(missing_docs)]
+
 use alloc::rc::Rc;
 use core::ffi::c_void;
 
@@ -9,15 +19,24 @@ use crate::eval_tab::FITS_PARSER_YYSTYPE;
 use crate::fitsio::{LONGLONG, PixelFilter, fitsfile, iteratorCol};
 use crate::region::SAORegion;
 
+/// Maximum number of dimensions a parsed vector column may have.
 pub const MAXDIMS: c_int = 5;
+/// Maximum number of subscripts in a column reference.
 pub const MAXSUBS: c_int = 10;
+/// Maximum length of a variable name in an expression.
 pub const MAXVARNAME: usize = 80;
+/// Operation code marking a node as a constant rather than a computation.
 pub const CONST_OP: c_int = -1000;
+/// Parser error indicator.
 pub const P_ERROR: c_int = -1;
+/// Maximum length of a string value in an expression, including the
+/// terminator.
 pub const MAX_STRLEN: c_int = 256;
+/// [`MAX_STRLEN`] less the terminator, as a string, for building format
+/// specifiers.
 pub const MAX_STRLEN_S: &str = "255";
 
-/* An opaque pointer. */
+/// The lexer's scanner state. An opaque pointer in the C.
 pub(crate) type yyscan_t<'a> = &'a mut yyguts_t;
 
 /// The sort of a parser value: which of `eval.y`'s four nonterminals a node
@@ -48,6 +67,7 @@ impl ValueSort {
         self as c_int
     }
 
+    /// The sort for a token number, or `None` if it names no sort.
     pub(crate) fn from_code(v: c_int) -> Option<ValueSort> {
         Some(match v {
             258 => ValueSort::Boolean,

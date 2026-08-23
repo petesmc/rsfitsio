@@ -1,9 +1,14 @@
-/*  This file, putcolk.rs, contains routines that write data elements to    */
-/*  a FITS image or table, with 'int' datatype.                            */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that write data elements to a FITS image or table, with `int`
+//! datatype.
+//!
+//! The [`TINT`] arm of the typed column I/O family. [`crate::putcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::getcolk`].
+//!
+//! Ported from CFITSIO's `putcolk.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::slice;
 use core::{cmp, mem};
@@ -27,7 +32,6 @@ use crate::relibc::header::stdio::snprintf_f64;
 use crate::wrappers::strlen_safe;
 use crate::{buffers::*, int_snprintf, slice_to_str};
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
@@ -36,14 +40,23 @@ use crate::{buffers::*, int_snprintf, slice_to_str};
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpprk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)           */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: *const c_int, /* I - array of values that are written        */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -56,7 +69,6 @@ pub unsafe extern "C" fn ffpprk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
@@ -65,13 +77,22 @@ pub unsafe extern "C" fn ffpprk(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 pub fn ffpprk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)           */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_int],     /* I - array of values that are written        */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let nullvalue: c_int = 0;
 
@@ -104,7 +125,6 @@ pub fn ffpprk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).  Any array values
@@ -115,15 +135,25 @@ pub fn ffpprk_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) undefined pixel value
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffppnk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)           */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: *const c_int, /* I - array of values that are written        */
-    nulval: c_int,       /* I - undefined pixel value                   */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_int,
+    nulval: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -136,7 +166,6 @@ pub unsafe extern "C" fn ffppnk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).  Any array values
@@ -147,14 +176,24 @@ pub unsafe extern "C" fn ffppnk(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `nulval`    — (I) undefined pixel value
+/// * `status`    — (IO) error status
 pub fn ffppnk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)           */
-    firstelem: LONGLONG, /* I - first vector element to write(1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_int],     /* I - array of values that are written        */
-    nulval: c_int,       /* I - undefined pixel value                   */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_int],
+    nulval: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut nullvalue: c_int = 0;
 
@@ -190,19 +229,28 @@ pub fn ffppnk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffp2dk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                     */
-    group: c_long,       /* I - group to write(1 = 1st group)         */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value               */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value               */
-    array: *const c_int, /* I - array to be written                   */
-    status: *mut c_int,  /* IO - error status                         */
+    fptr: *mut fitsfile,
+    group: c_long,
+    ncols: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -215,18 +263,27 @@ pub unsafe extern "C" fn ffp2dk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an entire 2-D array of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 pub fn ffp2dk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                     */
-    group: c_long,       /* I - group to write(1 = 1st group)         */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value               */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value               */
-    array: &[c_int],     /* I - array to be written                   */
-    status: &mut c_int,  /* IO - error status                         */
+    fptr: &mut fitsfile,
+    group: c_long,
+    ncols: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     /* call the 3D writing routine, with the 3rd dimension = 1 */
     ffp3dk_safe(fptr, group, ncols, naxis2, naxis1, naxis2, 1, array, status);
@@ -234,7 +291,6 @@ pub fn ffp2dk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an entire 3-D cube of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
@@ -243,17 +299,29 @@ pub fn ffp2dk_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `nrows`  — (I) number of rows in each plane of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `naxis3` — (I) FITS image NAXIS3 value
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffp3dk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                     */
-    group: c_long,       /* I - group to write(1 = 1st group)         */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array */
-    nrows: LONGLONG,     /* I - number of rows in each plane of array */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value               */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value               */
-    naxis3: LONGLONG,    /* I - FITS image NAXIS3 value               */
-    array: *const c_int, /* I - array to be written                   */
-    status: *mut c_int,  /* IO - error status                         */
+    fptr: *mut fitsfile,
+    group: c_long,
+    ncols: LONGLONG,
+    nrows: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    naxis3: LONGLONG,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -268,7 +336,6 @@ pub unsafe extern "C" fn ffp3dk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an entire 3-D cube of values to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of the
 /// FITS array is not the same as the array being written).
@@ -277,16 +344,28 @@ pub unsafe extern "C" fn ffp3dk(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `ncols`  — (I) number of pixels in each row of array
+/// * `nrows`  — (I) number of rows in each plane of array
+/// * `naxis1` — (I) FITS image NAXIS1 value
+/// * `naxis2` — (I) FITS image NAXIS2 value
+/// * `naxis3` — (I) FITS image NAXIS3 value
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 pub fn ffp3dk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                     */
-    group: c_long,       /* I - group to write(1 = 1st group)         */
-    ncols: LONGLONG,     /* I - number of pixels in each row of array */
-    nrows: LONGLONG,     /* I - number of rows in each plane of array */
-    naxis1: LONGLONG,    /* I - FITS image NAXIS1 value               */
-    naxis2: LONGLONG,    /* I - FITS image NAXIS2 value               */
-    naxis3: LONGLONG,    /* I - FITS image NAXIS3 value               */
-    array: &[c_int],     /* I - array to be written                   */
-    status: &mut c_int,  /* IO - error status                         */
+    fptr: &mut fitsfile,
+    group: c_long,
+    ncols: LONGLONG,
+    nrows: LONGLONG,
+    naxis1: LONGLONG,
+    naxis2: LONGLONG,
+    naxis3: LONGLONG,
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let mut tablerow: c_long = 0;
     let fpixel: [c_long; 3] = [1, 1, 1];
@@ -366,7 +445,6 @@ pub fn ffp3dk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write a subsection of pixels to the primary array or image.
 ///
 /// A subsection is defined to be any contiguous rectangular
@@ -374,16 +452,27 @@ pub fn ffp3dk_safe(
 /// Data conversion and scaling will be performed if necessary
 /// (e.g, if the datatype of the FITS array is not the same as
 /// the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `naxis`  — (I) number of data axes in array
+/// * `naxes`  — (I) size of each FITS axis
+/// * `fpixel` — (I) 1st pixel in each axis to write (1=1st)
+/// * `lpixel` — (I) last pixel in each axis to write
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpssk(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    group: c_long,         /* I - group to write(1 = 1st group)           */
-    naxis: c_long,         /* I - number of data axes in array            */
-    naxes: *const c_long,  /* I - size of each FITS axis                  */
-    fpixel: *const c_long, /* I - 1st pixel in each axis to write (1=1st) */
-    lpixel: *const c_long, /* I - last pixel in each axis to write        */
-    array: *const c_int,   /* I - array to be written                     */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    group: c_long,
+    naxis: c_long,
+    naxes: *const c_long,
+    fpixel: *const c_long,
+    lpixel: *const c_long,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -405,7 +494,6 @@ pub unsafe extern "C" fn ffpssk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write a subsection of pixels to the primary array or image.
 ///
 /// A subsection is defined to be any contiguous rectangular
@@ -413,15 +501,26 @@ pub unsafe extern "C" fn ffpssk(
 /// Data conversion and scaling will be performed if necessary
 /// (e.g, if the datatype of the FITS array is not the same as
 /// the array being written).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `group`  — (I) group to write(1 = 1st group)
+/// * `naxis`  — (I) number of data axes in array
+/// * `naxes`  — (I) size of each FITS axis
+/// * `fpixel` — (I) 1st pixel in each axis to write (1=1st)
+/// * `lpixel` — (I) last pixel in each axis to write
+/// * `array`  — (I) array to be written
+/// * `status` — (IO) error status
 pub fn ffpssk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    group: c_long,       /* I - group to write(1 = 1st group)           */
-    naxis: c_long,       /* I - number of data axes in array            */
-    naxes: &[c_long],    /* I - size of each FITS axis                  */
-    fpixel: &[c_long],   /* I - 1st pixel in each axis to write (1=1st) */
-    lpixel: &[c_long],   /* I - last pixel in each axis to write        */
-    array: &[c_int],     /* I - array to be written                     */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    group: c_long,
+    naxis: c_long,
+    naxes: &[c_long],
+    fpixel: &[c_long],
+    lpixel: &[c_long],
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let mut fpix: [LONGLONG; 7] = [0; 7];
     let mut dimen: [LONGLONG; 7] = [0; 7];
@@ -547,7 +646,6 @@ pub fn ffpssk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of group parameters to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
@@ -556,14 +654,23 @@ pub fn ffpssk_safe(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpgpk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                      */
-    group: c_long,       /* I - group to write(1 = 1st group)          */
-    firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
-    nelem: c_long,       /* I - number of values to write              */
-    array: *const c_int, /* I - array of values that are written       */
-    status: *mut c_int,  /* IO - error status                          */
+    fptr: *mut fitsfile,
+    group: c_long,
+    firstelem: c_long,
+    nelem: c_long,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -575,7 +682,6 @@ pub unsafe extern "C" fn ffpgpk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of group parameters to the primary array. Data conversion
 /// and scaling will be performed if necessary (e.g, if the datatype of
 /// the FITS array is not the same as the array being written).
@@ -584,13 +690,22 @@ pub unsafe extern "C" fn ffpgpk(
 /// each group of the primary array is a row in the table,
 /// where the first column contains the group parameters
 /// and the second column contains the image itself.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `group`     — (I) group to write(1 = 1st group)
+/// * `firstelem` — (I) first vector element to write(1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values that are written
+/// * `status`    — (IO) error status
 pub fn ffpgpk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                      */
-    group: c_long,       /* I - group to write(1 = 1st group)          */
-    firstelem: c_long,   /* I - first vector element to write(1 = 1st) */
-    nelem: c_long,       /* I - number of values to write              */
-    array: &[c_int],     /* I - array of values that are written       */
-    status: &mut c_int,  /* IO - error status                          */
+    fptr: &mut fitsfile,
+    group: c_long,
+    firstelem: c_long,
+    nelem: c_long,
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let row = cmp::max(1, group);
 
@@ -606,7 +721,6 @@ pub fn ffpgpk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a column in the current FITS HDU.
 ///
 /// The column number may refer to a real column in an ASCII or binary table,
@@ -619,15 +733,25 @@ pub fn ffpgpk_safe(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpclk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: *const c_int, /* I - array of values to write                */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -648,7 +772,6 @@ pub unsafe extern "C" fn ffpclk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of values to a column in the current FITS HDU.
 ///
 /// The column number may refer to a real column in an ASCII or binary table,
@@ -661,14 +784,24 @@ pub unsafe extern "C" fn ffpclk(
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `status`    — (IO) error status
 pub fn ffpclk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_int],     /* I - array of values to write                */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_int],
+    status: &mut c_int,
 ) -> c_int {
     let mut tcode: c_int = 0;
     let mut maxelem2: c_int = 0;
@@ -728,9 +861,7 @@ pub fn ffpclk_safe(
         int = 4 bytes, and long = 8 bytes.
         */
 
-        /*---------------------------------------------------*/
         /*  Check input and get parameters about the column: */
-        /*---------------------------------------------------*/
         if ffgcprll(
             fptr,
             colnum,
@@ -783,12 +914,10 @@ pub fn ffpclk_safe(
             writeraw = false;
         }
 
-        /*---------------------------------------------------------------------*/
         /*  Now write the pixels to the FITS column.                           */
         /*  First call the ffXXfYY routine to  (1) convert the datatype        */
         /*  if necessary, and (2) scale the values by the FITS TSCALn and      */
         /*  TZEROn linear scaling parameters into a temporary buffer.          */
-        /*---------------------------------------------------------------------*/
         remain = nelem; /* remaining number of values to write  */
         next = 0; /* next element in array to be written  */
         rownum = 0; /* row number, relative to firstrow     */
@@ -965,9 +1094,7 @@ pub fn ffpclk_safe(
                 }
             } /* End of switch block */
 
-            /*-------------------------*/
             /*  Check for fatal error  */
-            /*-------------------------*/
             if *status > 0 {
                 /* test for error during previous write operation */
 
@@ -982,9 +1109,7 @@ pub fn ffpclk_safe(
                 return *status;
             }
 
-            /*--------------------------------------------*/
             /*  increment the counters for the next loop  */
-            /*--------------------------------------------*/
             remain -= ntodo as LONGLONG;
             if remain != 0 {
                 next += ntodo as LONGLONG;
@@ -998,9 +1123,7 @@ pub fn ffpclk_safe(
             }
         } /*  End of main while Loop  */
 
-        /*--------------------------------*/
         /*  check for numerical overflow  */
-        /*--------------------------------*/
         if *status == OVERFLOW_ERR {
             ffpmsg_str("Numerical overflow during type conversion while writing FITS data.");
             *status = NUM_OVERFLOW;
@@ -1010,23 +1133,33 @@ pub fn ffpclk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of elements to the specified column of a table.  Any input
 /// pixels equal to the value of nulvalue will be replaced by the appropriate
 /// null value in the output FITS file.
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) value used to flag undefined pixels
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpcnk(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: *const c_int, /* I - array of values to write                */
-    nulvalue: c_int,     /* I - value used to flag undefined pixels     */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *const c_int,
+    nulvalue: c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -1048,22 +1181,32 @@ pub unsafe extern "C" fn ffpcnk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Write an array of elements to the specified column of a table.  Any input
 /// pixels equal to the value of nulvalue will be replaced by the appropriate
 /// null value in the output FITS file.
 ///
 /// The input array of values will be converted to the datatype of the column
 /// and will be inverse-scaled by the FITS TSCALn and TZEROn values if necessary
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to write (1 = 1st col)
+/// * `firstrow`  — (I) first row to write (1 = 1st row)
+/// * `firstelem` — (I) first vector element to write (1 = 1st)
+/// * `nelem`     — (I) number of values to write
+/// * `array`     — (I) array of values to write
+/// * `nulvalue`  — (I) value used to flag undefined pixels
+/// * `status`    — (IO) error status
 pub fn ffpcnk_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    firstrow: LONGLONG,  /* I - first row to write (1 = 1st row)        */
-    firstelem: LONGLONG, /* I - first vector element to write (1 = 1st) */
-    nelem: LONGLONG,     /* I - number of values to write               */
-    array: &[c_int],     /* I - array of values to write                */
-    nulvalue: c_int,     /* I - value used to flag undefined pixels     */
-    status: &mut c_int,  /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &[c_int],
+    nulvalue: c_int,
+    status: &mut c_int,
 ) -> c_int {
     let mut ngood: LONGLONG = 0;
     let mut nbad: LONGLONG = 0;
@@ -1217,16 +1360,24 @@ pub fn ffpcnk_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required.
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfi1(
-    input: &[c_int],    /* I - array of values to be converted  */
-    ntodo: c_long,      /* I - number of elements in the array  */
-    scale: f64,         /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,          /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [u8],  /* O - output array of converted values */
-    status: &mut c_int, /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [u8],
+    status: &mut c_int,
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
@@ -1258,16 +1409,24 @@ pub(crate) fn ffintfi1(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required.
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfi2(
-    input: &[c_int],        /* I - array of values to be converted  */
-    ntodo: c_long,          /* I - number of elements in the array  */
-    scale: f64,             /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,              /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [c_short], /* O - output array of converted values */
-    status: &mut c_int,     /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [c_short],
+    status: &mut c_int,
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
@@ -1301,16 +1460,24 @@ pub(crate) fn ffintfi2(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfi4(
-    input: &[c_int],         /* I - array of values to be converted  */
-    ntodo: c_long,           /* I - number of elements in the array  */
-    scale: f64,              /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,               /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [INT32BIT], /* O - output array of converted values */
-    status: &mut c_int,      /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [INT32BIT],
+    status: &mut c_int,
 ) -> c_int {
     assert!(output.len() >= ntodo as usize);
     assert!(input.len() >= ntodo as usize);
@@ -1337,16 +1504,24 @@ pub(crate) fn ffintfi4(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfi8(
-    input: &[c_int],         /* I - array of values to be converted  */
-    ntodo: c_long,           /* I - number of elements in the array  */
-    scale: f64,              /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,               /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [LONGLONG], /* O - output array of converted values */
-    status: &mut c_int,      /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [LONGLONG],
+    status: &mut c_int,
 ) -> c_int {
     if scale == 1.0 && zero == 9223372036854775808.0 {
         /* Writing to unsigned long long column. Input values must not be negative */
@@ -1385,16 +1560,24 @@ pub(crate) fn ffintfi8(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required.
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfr4(
-    input: &[c_int],    /* I - array of values to be converted  */
-    ntodo: c_long,      /* I - number of elements in the array  */
-    scale: f64,         /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,          /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [f32], /* O - output array of converted values */
-    status: &mut c_int, /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [f32],
+    status: &mut c_int,
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
@@ -1408,16 +1591,24 @@ pub(crate) fn ffintfr4(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do datatype conversion and scaling if required.
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfr8(
-    input: &[c_int],    /* I - array of values to be converted  */
-    ntodo: c_long,      /* I - number of elements in the array  */
-    scale: f64,         /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,          /* I - FITS TZEROn or BZERO  value      */
-    output: &mut [f64], /* O - output array of converted values */
-    status: &mut c_int, /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    output: &mut [f64],
+    status: &mut c_int,
 ) -> c_int {
     if scale == 1.0 && zero == 0.0 {
         for ii in 0..(ntodo as usize) {
@@ -1431,18 +1622,28 @@ pub(crate) fn ffintfr8(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Copy input to output prior to writing output to a FITS file.
 /// Do scaling if required.
+///
+/// # Parameters
+///
+/// * `input`  — (I) array of values to be converted
+/// * `ntodo`  — (I) number of elements in the array
+/// * `scale`  — (I) FITS TSCALn or BSCALE value
+/// * `zero`   — (I) FITS TZEROn or BZERO value
+/// * `cform`  — (I) format for output string values
+/// * `twidth` — (I) width of each field, in chars
+/// * `output` — (O) output array of converted values
+/// * `status` — (IO) error status
 pub(crate) fn ffintfstr(
-    input: &[c_int],       /* I - array of values to be converted  */
-    ntodo: c_long,         /* I - number of elements in the array  */
-    scale: f64,            /* I - FITS TSCALn or BSCALE value      */
-    zero: f64,             /* I - FITS TZEROn or BZERO  value      */
-    cform: &[c_char],      /* I - format for output string values  */
-    twidth: c_long,        /* I - width of each field, in chars    */
-    output: &mut [c_char], /* O - output array of converted values */
-    status: &mut c_int,    /* IO - error status                    */
+    input: &[c_int],
+    ntodo: c_long,
+    scale: f64,
+    zero: f64,
+    cform: &[c_char],
+    twidth: c_long,
+    output: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut oi = 0;
 

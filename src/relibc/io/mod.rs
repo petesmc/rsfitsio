@@ -266,6 +266,8 @@
 //! [`Read::read`]: trait.Read.html#tymethod.read
 //! [`Result`]: ../result/enum.Result.html
 //! [`.unwrap()`]: ../result/enum.Result.html#method.unwrap
+// Vendored from the Rust project's std::io; documented in upstream's style.
+#![allow(missing_docs)]
 
 pub mod buffered;
 pub mod cursor;

@@ -1,3 +1,7 @@
+//! Transpiled from cfitsio/utilities/smem.c: a utility for listing and
+//! removing the shared memory segments the shmem:// driver creates.
+#![warn(missing_docs)]
+
 #[cfg(not(windows))]
 use libc::{c_char, c_int};
 #[cfg(not(windows))]
@@ -7,6 +11,7 @@ use rsfitsio::drvrsmem::{
 use std::ptr;
 use std::{ffi::CStr, process::ExitCode};
 
+/// Entry point on Windows, where System V shared memory does not exist.
 #[cfg(windows)]
 pub fn main() -> ExitCode {
     println!("smem not supported on windows");
@@ -32,6 +37,8 @@ fn scan_int(s: &str) -> Option<c_int> {
     digits.parse::<c_int>().ok().map(|v| sign * v)
 }
 
+/// Entry point: lists, recovers or removes the shared memory segments the
+/// `shmem://` driver has created.
 #[cfg(not(windows))]
 pub fn main() -> ExitCode {
     let mut cmdok: bool = true;

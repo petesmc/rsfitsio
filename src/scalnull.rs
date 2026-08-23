@@ -1,9 +1,18 @@
-/*  This file, scalnull.rs, contains the FITSIO routines used to define     */
-/*  the starting heap address, the value scaling and the null values.      */
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
-/*--------------------------------------------------------------------------*/
+//! Routines that define the starting heap address, the value scaling and the
+//! null values.
+//!
+//! The scaling set here affects only the automatic conversion performed as data
+//! elements are read and written; it does not change the `BSCALE`, `BZERO` or
+//! `TNULLn` keywords. When reading, the value handed back is
+//! `(value in the FITS array) * scale + zero`; the inverse is applied when
+//! writing.
+//!
+//! Ported from CFITSIO's `scalnull.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center. The routine descriptions draw on the "Define Data
+//! Scaling and Undefined Pixel Parameters" section of the CFITSIO User's
+//! Reference Guide.
+#![warn(missing_docs)]
 
 use core::ffi::CStr;
 
@@ -17,19 +26,25 @@ use crate::fitsio::*;
 use crate::modkey::ffukyj_safe;
 use crate::wrappers::*;
 
-/*--------------------------------------------------------------------------*/
 /// Define the starting address for the heap for a binary table.
 ///
 /// The default address is NAXIS1 * NAXIS2.  It is in units of
 /// bytes relative to the beginning of the regular binary table data.
 /// This routine also writes the appropriate THEAP keyword to the
 /// FITS header.
+///
+/// The offset is zero-indexed and measured from the start of the binary table
+/// data. This is only relevant for binary tables that contain variable length
+/// array columns (`TFORMn = 'Pt'`), and must be called after the required
+/// keywords have been written but before any data is written to the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `theap`  — (I) starting address for the heap
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
-pub unsafe extern "C" fn ffpthp(
-    fptr: *mut fitsfile, /* I - FITS file pointer */
-    theap: c_long,       /* I - starting addrss for the heap */
-    status: *mut c_int,  /* IO - error status     */
-) -> c_int {
+pub unsafe extern "C" fn ffpthp(fptr: *mut fitsfile, theap: c_long, status: *mut c_int) -> c_int {
     // FFI WRAPPER
     unsafe {
         let fptr = fptr.as_mut().expect(NULL_MSG);
@@ -39,18 +54,24 @@ pub unsafe extern "C" fn ffpthp(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the starting address for the heap for a binary table.
 ///
 /// The default address is NAXIS1 * NAXIS2.  It is in units of
 /// bytes relative to the beginning of the regular binary table data.
 /// This routine also writes the appropriate THEAP keyword to the
 /// FITS header.
-pub fn ffpthp_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer */
-    theap: c_long,       /* I - starting addrss for the heap */
-    status: &mut c_int,  /* IO - error status     */
-) -> c_int {
+///
+/// The offset is zero-indexed and measured from the start of the binary table
+/// data. This is only relevant for binary tables that contain variable length
+/// array columns (`TFORMn = 'Pt'`), and must be called after the required
+/// keywords have been written but before any data is written to the table.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `theap`  — (I) starting address for the heap
+/// * `status` — (IO) error status
+pub fn ffpthp_safe(fptr: &mut fitsfile, theap: c_long, status: &mut c_int) -> c_int {
     if *status > 0 || theap < 1 {
         return *status;
     }
@@ -72,7 +93,6 @@ pub fn ffpthp_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the linear scaling factor for the primary array or image extension
 /// pixel values. This routine overrides the scaling values given by the
 /// BSCALE and BZERO keywords if present.  Note that this routine does not
@@ -80,12 +100,19 @@ pub fn ffpthp_safe(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the BSCALE and BZERO
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — (I) scaling factor: value of BSCALE
+/// * `zero`   — (I) zero point: value of BZERO
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpscl(
-    fptr: *mut fitsfile, /* I - FITS file pointer               */
-    scale: f64,          /* I - scaling factor: value of BSCALE */
-    zero: f64,           /* I - zero point: value of BZERO      */
-    status: *mut c_int,  /* IO - error status                   */
+    fptr: *mut fitsfile,
+    scale: f64,
+    zero: f64,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -96,7 +123,6 @@ pub unsafe extern "C" fn ffpscl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the linear scaling factor for the primary array or image extension
 /// pixel values. This routine overrides the scaling values given by the
 /// BSCALE and BZERO keywords if present.  Note that this routine does not
@@ -104,12 +130,14 @@ pub unsafe extern "C" fn ffpscl(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the BSCALE and BZERO
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
-pub fn ffpscl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer               */
-    scale: f64,          /* I - scaling factor: value of BSCALE */
-    zero: f64,           /* I - zero point: value of BZERO      */
-    status: &mut c_int,  /* IO - error status                   */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `scale`  — (I) scaling factor: value of BSCALE
+/// * `zero`   — (I) zero point: value of BZERO
+/// * `status` — (IO) error status
+pub fn ffpscl_safe(fptr: &mut fitsfile, scale: f64, zero: f64, status: &mut c_int) -> c_int {
     let mut hdutype = 0;
     if *status > 0 {
         return *status;
@@ -148,7 +176,6 @@ pub fn ffpscl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the value used to represent undefined pixels in the primary array or
 /// image extension. This only applies to integer image pixel (i.e. BITPIX > 0).
 /// This routine overrides the null pixel value given by the BLANK keyword
@@ -157,11 +184,17 @@ pub fn ffpscl_safe(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the BLANK  keyword value (or not defined if the keyword is not
 /// present).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nulvalue` — (I) null pixel value: value of BLANK
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffpnul(
-    fptr: *mut fitsfile, /* I - FITS file pointer                */
-    nulvalue: LONGLONG,  /* I - null pixel value: value of BLANK */
-    status: *mut c_int,  /* IO - error status                    */
+    fptr: *mut fitsfile,
+    nulvalue: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -172,7 +205,6 @@ pub unsafe extern "C" fn ffpnul(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the value used to represent undefined pixels in the primary array or
 /// image extension. This only applies to integer image pixel (i.e. BITPIX > 0).
 /// This routine overrides the null pixel value given by the BLANK keyword
@@ -181,11 +213,13 @@ pub unsafe extern "C" fn ffpnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the BLANK  keyword value (or not defined if the keyword is not
 /// present).
-pub fn ffpnul_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                */
-    nulvalue: LONGLONG,  /* I - null pixel value: value of BLANK */
-    status: &mut c_int,  /* IO - error status                    */
-) -> c_int {
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `nulvalue` — (I) null pixel value: value of BLANK
+/// * `status`   — (IO) error status
+pub fn ffpnul_safe(fptr: &mut fitsfile, nulvalue: LONGLONG, status: &mut c_int) -> c_int {
     let mut hdutype = 0;
 
     if *status > 0 {
@@ -215,7 +249,6 @@ pub fn ffpnul_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the linear scaling factor for the TABLE or BINTABLE extension
 /// column values. This routine overrides the scaling values given by the
 /// TSCALn and TZEROn keywords if present.  Note that this routine does not
@@ -223,13 +256,21 @@ pub fn ffpnul_safe(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the TSCALn and TZEROn
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number to apply scaling to
+/// * `scale`  — (I) scaling factor: value of TSCALn
+/// * `zero`   — (I) zero point: value of TZEROn
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftscl(
-    fptr: *mut fitsfile, /* I - FITS file pointer                 */
-    colnum: c_int,       /* I - column number to apply scaling to */
-    scale: f64,          /* I - scaling factor: value of TSCALn   */
-    zero: f64,           /* I - zero point: value of TZEROn       */
-    status: *mut c_int,  /* IO - error status                     */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    scale: f64,
+    zero: f64,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -240,7 +281,6 @@ pub unsafe extern "C" fn fftscl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the linear scaling factor for the TABLE or BINTABLE extension
 /// column values. This routine overrides the scaling values given by the
 /// TSCALn and TZEROn keywords if present.  Note that this routine does not
@@ -248,12 +288,20 @@ pub unsafe extern "C" fn fftscl(
 /// the values temporarily in the internal buffer.  Thus, a subsequent call to
 /// the ffrdef routine will reset the scaling back to the TSCALn and TZEROn
 /// keyword values (or 1. and 0. respectively if the keywords are not present).
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) column number to apply scaling to
+/// * `scale`  — (I) scaling factor: value of TSCALn
+/// * `zero`   — (I) zero point: value of TZEROn
+/// * `status` — (IO) error status
 pub fn fftscl_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                 */
-    colnum: c_int,       /* I - column number to apply scaling to */
-    scale: f64,          /* I - scaling factor: value of TSCALn   */
-    zero: f64,           /* I - zero point: value of TZEROn       */
-    status: &mut c_int,  /* IO - error status                     */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    scale: f64,
+    zero: f64,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype = 0;
 
@@ -286,7 +334,6 @@ pub fn fftscl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the value used to represent undefined pixels in the BINTABLE column.
 ///
 /// This only applies to integer datatype columns (TFORM = B, I, or J).
@@ -296,12 +343,19 @@ pub fn fftscl_safe(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn  keyword value (or not defined if the keyword is not
 /// present).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number to apply nulvalue to
+/// * `nulvalue` — (I) null pixel value: value of TNULLn
+/// * `status`   — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fftnul(
-    fptr: *mut fitsfile, /* I - FITS file pointer                  */
-    colnum: c_int,       /* I - column number to apply nulvalue to */
-    nulvalue: LONGLONG,  /* I - null pixel value: value of TNULLn  */
-    status: *mut c_int,  /* IO - error status                      */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    nulvalue: LONGLONG,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -312,7 +366,6 @@ pub unsafe extern "C" fn fftnul(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the value used to represent undefined pixels in the BINTABLE column.
 ///
 /// This only applies to integer datatype columns (TFORM = B, I, or J).
@@ -322,11 +375,18 @@ pub unsafe extern "C" fn fftnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn  keyword value (or not defined if the keyword is not
 /// present).
+///
+/// # Parameters
+///
+/// * `fptr`     — (I) FITS file pointer
+/// * `colnum`   — (I) column number to apply nulvalue to
+/// * `nulvalue` — (I) null pixel value: value of TNULLn
+/// * `status`   — (IO) error status
 pub fn fftnul_safe(
-    fptr: &mut fitsfile, /* I - FITS file pointer                  */
-    colnum: c_int,       /* I - column number to apply nulvalue to */
-    nulvalue: LONGLONG,  /* I - null pixel value: value of TNULLn  */
-    status: &mut c_int,  /* IO - error status                      */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    nulvalue: LONGLONG,
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype = 0;
     if *status > 0 {
@@ -351,7 +411,6 @@ pub fn fftnul_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the string used to represent undefined pixels in the ASCII TABLE
 /// column. This routine overrides the null  value given by the TNULLn keyword
 /// if present.  Note that this routine does not write or modify the TNULLn
@@ -359,12 +418,19 @@ pub fn fftnul_safe(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn keyword value (or not defined if the keyword is not
 /// present).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) column number to apply nulvalue to
+/// * `nulstring` — (I) null pixel value: value of TNULLn
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffsnul(
-    fptr: *mut fitsfile,      /* I - FITS file pointer                  */
-    colnum: c_int,            /* I - column number to apply nulvalue to */
-    nulstring: *const c_char, /* I - null pixel value: value of TNULLn  */
-    status: *mut c_int,       /* IO - error status                      */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    nulstring: *const c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -377,7 +443,6 @@ pub unsafe extern "C" fn ffsnul(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Define the string used to represent undefined pixels in the ASCII TABLE
 /// column. This routine overrides the null  value given by the TNULLn keyword
 /// if present.  Note that this routine does not write or modify the TNULLn
@@ -385,11 +450,18 @@ pub unsafe extern "C" fn ffsnul(
 /// buffer. Thus, a subsequent call to the ffrdef routine will reset the null
 /// value back to the TNULLn keyword value (or not defined if the keyword is not
 /// present).
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) column number to apply nulvalue to
+/// * `nulstring` — (I) null pixel value: value of TNULLn
+/// * `status`    — (IO) error status
 pub fn ffsnul_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                  */
-    colnum: c_int,        /* I - column number to apply nulvalue to */
-    nulstring: &[c_char], /* I - null pixel value: value of TNULLn  */
-    status: &mut c_int,   /* IO - error status                      */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    nulstring: &[c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut hdutype = 0;
     if *status > 0 {

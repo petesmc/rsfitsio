@@ -1,5 +1,10 @@
-//! This is an old implementation of the LZW decompression algorithm from the
-//! Unix compress utility.
+//! LZW decompression, for reading files compressed by the Unix `compress`
+//! utility.
+//!
+//! An old implementation of the algorithm, carried over from CFITSIO so that a
+//! `.Z` file can still be read. The compression side is not provided; new files
+//! are written with GZIP by [`crate::zcompress`].
+#![warn(missing_docs)]
 
 use bytemuck::{cast_slice, cast_slice_mut};
 
@@ -51,27 +56,53 @@ macro_rules! MAXCODE {
     };
 }
 
+/// The decompressor's working state: the buffers, the LZW code table and the
+/// input and output streams.
+///
+/// The C keeps all of this in file-scope globals; gathering it into one struct
+/// is what lets the routines below be safe methods rather than functions
+/// reaching for mutable statics.
 struct LZW_Compress<'a> {
+    /// Input buffer.
     inbuf: [c_uchar; INBUFSIZ + INBUF_EXTRA],
+    /// Output buffer.
     outbuf: [c_uchar; OUTBUFSIZ + OUTBUF_EXTRA],
+    /// Distance buffer.
     d_buf: [c_ushort; DIST_BUFSIZE],
+    /// Sliding window of already-decompressed output.
     window: [c_uchar; 2 * WSIZE],
-    tab_prefix: [c_ushort; 1 << BITS], /* prefix code for each entry */
-    maxbits: c_int,                    /* max bits per code for LZW */
-    method: c_int,                     /* compression method */
-    exit_code: c_int,                  /* program exit code */
-    last_member: c_int,                /* set for .zip and .Z files */
-    bytes_in: usize,                   /* number of input bytes */
-    bytes_out: usize,                  /* number of output bytes */
-    ifname: [c_char; 128],             /* input file name */
-    ifd: *mut FILE,                    /* input file descriptor */
-    ofd: *mut FILE,                    /* output file descriptor */
-    memptr: *mut *mut c_void,          /* memory location for uncompressed file */
-    memsize: &'a mut usize,            /* size (bytes) of memory allocated for file */
-    realloc_fn: Option<unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void>, /* reallocation function */
-    insize: usize,     /* valid bytes in inbuf */
-    inptr: usize,      /* index of next byte to be processed in inbuf */
-    block_mode: c_int, /* block compress mode -C compatible with 2.0 */
+    /// Prefix code for each entry of the LZW table.
+    tab_prefix: [c_ushort; 1 << BITS],
+    /// Maximum bits per code for LZW.
+    maxbits: c_int,
+    /// Compression method.
+    method: c_int,
+    /// Program exit code.
+    exit_code: c_int,
+    /// Set for `.zip` and `.Z` files.
+    last_member: c_int,
+    /// Number of input bytes.
+    bytes_in: usize,
+    /// Number of output bytes.
+    bytes_out: usize,
+    /// Input file name.
+    ifname: [c_char; 128],
+    /// Input file descriptor.
+    ifd: *mut FILE,
+    /// Output file descriptor.
+    ofd: *mut FILE,
+    /// Memory location for the uncompressed file.
+    memptr: *mut *mut c_void,
+    /// Size in bytes of the memory allocated for the file.
+    memsize: &'a mut usize,
+    /// Reallocation function used to grow that memory.
+    realloc_fn: Option<unsafe extern "C" fn(*mut c_void, usize) -> *mut c_void>,
+    /// Valid bytes in `inbuf`.
+    insize: usize,
+    /// Index of the next byte to be processed in `inbuf`.
+    inptr: usize,
+    /// Block compress mode; `-C` compatible with 2.0.
+    block_mode: c_int,
 }
 
 impl<'a> LZW_Compress<'a> {
@@ -170,18 +201,27 @@ impl<'a> LZW_Compress<'a> {
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Uncompress the file into memory.  Fill whatever amount of memory has
 /// already been allocated, then realloc more memory, using the supplied
 /// input function, if necessary.
+///
+/// # Parameters
+///
+/// * `filename`    — name of input file
+/// * `indiskfile`  — (I) file pointer
+/// * `buffptr`     — (IO) memory pointer
+/// * `buffsize`    — (IO) size of buffer, in bytes
+/// * `mem_realloc` — function
+/// * `filesize`    — (O) size of file, in bytes
+/// * `status`      — (IO) error status
 pub(crate) fn zuncompress2mem(
-    filename: &[c_char],   /* name of input file                 */
-    indiskfile: *mut FILE, /* I - file pointer                        */
-    buffptr: *mut *mut u8, /* IO - memory pointer                     */
-    buffsize: &mut usize,  /* IO - size of buffer, in bytes           */
-    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>, /* function     */
-    filesize: &mut usize, /* O - size of file, in bytes              */
-    status: &mut c_int,   /* IO - error status                       */
+    filename: &[c_char],
+    indiskfile: *mut FILE,
+    buffptr: *mut *mut u8,
+    buffsize: &mut usize,
+    mem_realloc: Option<unsafe extern "C" fn(p: *mut c_void, newsize: usize) -> *mut c_void>,
+    filesize: &mut usize,
+    status: &mut c_int,
 ) -> c_int {
     let mut magic: [c_char; 2] = [0; 2]; /* magic header */
 
@@ -233,7 +273,6 @@ pub(crate) fn zuncompress2mem(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Decompress in to out.  This routine adapts to the codes in the
 /// file building the "string" table on-the-fly; requiring no table to
 /// be stored in the compressed file.

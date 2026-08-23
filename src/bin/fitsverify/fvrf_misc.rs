@@ -1,13 +1,15 @@
-/******************************************************************************
-* Function
-*      wrtout: print messages in the streams of stdout and out.
-*      wrterr: print erro messages  in the streams of stderr and out.
-*      wrtferr: print cfitsio erro messages in the streams of stderr and out.
-*      wrtwrn: print warning messages in the streams of stdout and out.
-*      wrtsep: print seperators.
-*      num_err_wrn: Return the number of errors and  warnings.
-*
-*******************************************************************************/
+//! ****************************************************************************
+//! Function
+//! wrtout: print messages in the streams of stdout and out.
+//! wrterr: print erro messages  in the streams of stderr and out.
+//! wrtferr: print cfitsio erro messages in the streams of stderr and out.
+//! wrtwrn: print warning messages in the streams of stdout and out.
+//! wrtsep: print seperators.
+//! num_err_wrn: Return the number of errors and  warnings.
+//!
+//! *****************************************************************************
+#![warn(missing_docs)]
+
 /* Transpiled from cfitsio/utilities/fvrf_misc.c */
 
 use std::cell::Cell;

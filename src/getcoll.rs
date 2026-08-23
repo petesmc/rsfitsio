@@ -1,9 +1,14 @@
-/*  This file, getcoll.rs, contains routines that read data elements from   */
-/*  a FITS image or table, with logical datatype.                          */
-
-/*  The FITSIO software was written by William Pence at the High Energy    */
-/*  Astrophysic Science Archive Research Center (HEASARC) at the NASA      */
-/*  Goddard Space Flight Center.                                           */
+//! Routines that read data elements from a FITS image or table, with
+//! logical datatype.
+//!
+//! The [`TLOGICAL`] arm of the typed column I/O family. [`crate::getcol`]
+//! dispatches here when a caller asks for this datatype at run time; the
+//! write-side counterpart is [`crate::putcoll`].
+//!
+//! Ported from CFITSIO's `getcoll.c`, written by William Pence at the High
+//! Energy Astrophysics Science Archive Research Center (HEASARC), NASA Goddard
+//! Space Flight Center.
+#![warn(missing_docs)]
 
 use core::cmp;
 use core::slice;
@@ -20,22 +25,33 @@ use crate::getcolui::ffgcvui_safe;
 use crate::getcoluk::ffgcvuk_safe;
 use crate::{buffers::*, int_snprintf};
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
 ///
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for null pixels
+/// * `array`     — (O) array of values
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcvl(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,  /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG, /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to read                */
-    nulval: c_char,      /* I - value for null pixels                   */
-    array: *mut c_char,  /* O - array of values                         */
-    anynul: *mut c_int,  /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: c_char,
+    array: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -59,21 +75,32 @@ pub unsafe extern "C" fn ffgcvl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
 ///
 /// Any undefined pixels will be set equal to the value of 'nulval' unless
 /// nulval = 0 in which case no checks for undefined pixels will be made.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nulval`    — (I) value for null pixels
+/// * `array`     — (O) array of values
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcvl_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    nulval: c_char,             /* I - value for null pixels                   */
-    array: &mut [c_char],       /* O - array of values                         */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nulval: c_char,
+    array: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut cdummy: [c_char; 1] = [0];
 
@@ -94,7 +121,6 @@ pub fn ffgcvl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
 ///
 /// !!!! THIS ROUTINE IS DEPRECATED AND SHOULD NOT BE USED !!!!!!
@@ -102,14 +128,23 @@ pub fn ffgcvl_safe(
 /// No checking for null values will be performed.
 // #[deprecated]
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values
+/// * `status`    — (IO) error status
 pub unsafe extern "C" fn ffgcl(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,  /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG, /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,     /* I - number of values to read                */
-    array: *mut c_char,  /* O - array of values                         */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -131,21 +166,30 @@ pub unsafe extern "C" fn ffgcl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
 ///
 /// !!!! THIS ROUTINE IS DEPRECATED AND SHOULD NOT BE USED !!!!!!
 ///           !!!! USE ffgcvl INSTEAD  !!!!!!
 /// No checking for null values will be performed.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values
+/// * `status`    — (IO) error status
 #[deprecated]
 pub fn ffgcl_safe(
-    fptr: &mut fitsfile,  /* I - FITS file pointer                       */
-    colnum: c_int,        /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,   /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,  /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,      /* I - number of values to read                */
-    array: &mut [c_char], /* O - array of values                         */
-    status: &mut c_int,   /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut anynul: c_int = 0;
     let nulval: c_char = 0;
@@ -163,19 +207,30 @@ pub fn ffgcl_safe(
     )
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcfl(
-    fptr: *mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    array: *mut c_char,    /* O - array of values                         */
-    nularray: *mut c_char, /* O - array of flags = 1 if nultyp = 2        */
-    anynul: *mut c_int,    /* O - set to 1 if any values are null; else 0 */
-    status: *mut c_int,    /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: *mut c_char,
+    nularray: *mut c_char,
+    anynul: *mut c_int,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -192,18 +247,29 @@ pub unsafe extern "C" fn ffgcfl(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `array`     — (O) array of values
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub fn ffgcfl_safe(
-    fptr: &mut fitsfile,        /* I - FITS file pointer                       */
-    colnum: c_int,              /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,         /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,        /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,            /* I - number of values to read                */
-    array: &mut [c_char],       /* O - array of values                         */
-    nularray: &mut [c_char],    /* O - array of flags = 1 if nultyp = 2        */
-    anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,         /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    array: &mut [c_char],
+    nularray: &mut [c_char],
+    anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let nulval: c_char = 0;
 
@@ -223,22 +289,35 @@ pub fn ffgcfl_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read an array of logical values from a column in the current FITS HDU.
+///
+/// # Parameters
+///
+/// * `fptr`      — (I) FITS file pointer
+/// * `colnum`    — (I) number of column to read (1 = 1st col)
+/// * `firstrow`  — (I) first row to read (1 = 1st row)
+/// * `firstelem` — (I) first vector element to read (1 = 1st)
+/// * `nelem`     — (I) number of values to read
+/// * `nultyp`    — (I) null value handling code:
+/// * `nulval`    — (I) value for null pixels if nultyp = 1
+/// * `array`     — (O) array of values
+/// * `nularray`  — (O) array of flags = 1 if nultyp = 2
+/// * `anynul`    — (O) set to 1 if any values are null; else 0
+/// * `status`    — (IO) error status
 pub(crate) fn ffgcll(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,    /* I - first row to read (1 = 1st row)         */
-    firstelem: LONGLONG,   /* I - first vector element to read (1 = 1st)  */
-    nelem: LONGLONG,       /* I - number of values to read                */
-    nultyp: NullCheckType, /* I - null value handling code:               */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    firstelem: LONGLONG,
+    nelem: LONGLONG,
+    nultyp: NullCheckType,
     /*     1: set undefined pixels = nulval        */
     /*     2: set nularray=1 for undefined pixels  */
-    nulval: c_char,                 /* I - value for null pixels if nultyp = 1     */
-    array: &mut [c_char],           /* O - array of values                         */
-    nularray: &mut [c_char],        /* O - array of flags = 1 if nultyp = 2        */
-    mut anynul: Option<&mut c_int>, /* O - set to 1 if any values are null; else 0 */
-    status: &mut c_int,             /* IO - error status                           */
+    nulval: c_char,
+    array: &mut [c_char],
+    nularray: &mut [c_char],
+    mut anynul: Option<&mut c_int>,
+    status: &mut c_int,
 ) -> c_int {
     let mut dtemp: f64 = 0.0;
     let mut tcode: c_int = 0;
@@ -276,9 +355,7 @@ pub(crate) fn ffgcll(
     if nultyp == NullCheckType::SetNullArray {
         nularray.fill(0); /* initialize nullarray */
     }
-    /*---------------------------------------------------*/
     /*  Check input and get parameters about the column: */
-    /*---------------------------------------------------*/
     if ffgcprll(
         fptr,
         colnum,
@@ -309,17 +386,13 @@ pub(crate) fn ffgcll(
         *status = NOT_LOGICAL_COL;
         return *status;
     }
-    /*------------------------------------------------------------------*/
     /*  Decide whether to check for null values in the input FITS file: */
-    /*------------------------------------------------------------------*/
     nulcheck = nultyp; /* by default, check for null values in the FITS file */
 
     if nultyp == NullCheckType::SetPixel && nulval == 0 {
         nulcheck = NullCheckType::None; /* calling routine does not want to check for nulls */
     }
-    /*---------------------------------------------------------------------*/
     /*  Now read the logical values from the FITS column.                  */
-    /*---------------------------------------------------------------------*/
 
     remain = nelem; /* remaining number of values to read */
     next = 0; /* next element in array to be read   */
@@ -383,9 +456,7 @@ pub(crate) fn ffgcll(
             return *status;
         }
 
-        /*--------------------------------------------*/
         /*  increment the counters for the next loop  */
-        /*--------------------------------------------*/
         remain -= ntodo as LONGLONG;
         if remain > 0 {
             elemnum += ntodo as LONGLONG;
@@ -403,20 +474,29 @@ pub(crate) fn ffgcll(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// read an array of logical values from a specified bit or byte
 /// column of the binary table.    larray is set = TRUE, if the corresponding
 /// bit = 1, otherwise it is set to FALSE.
 /// The binary table column being read from must have datatype 'B' or 'X'.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column to write (1 = 1st col)
+/// * `frow`   — (I) first row to write (1 = 1st row)
+/// * `fbit`   — (I) first bit to write (1 = 1st)
+/// * `nbit`   — (I) number of bits to write
+/// * `larray` — (O) array of logicals corresponding to bits
+/// * `status` — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcx(
-    fptr: *mut fitsfile, /* I - FITS file pointer                       */
-    colnum: c_int,       /* I - number of column to write (1 = 1st col) */
-    frow: LONGLONG,      /* I - first row to write (1 = 1st row)        */
-    fbit: LONGLONG,      /* I - first bit to write (1 = 1st)            */
-    nbit: LONGLONG,      /* I - number of bits to write                 */
-    larray: *mut c_char, /* O - array of logicals corresponding to bits */
-    status: *mut c_int,  /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    frow: LONGLONG,
+    fbit: LONGLONG,
+    nbit: LONGLONG,
+    larray: *mut c_char,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -429,19 +509,28 @@ pub unsafe extern "C" fn ffgcx(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// read an array of logical values from a specified bit or byte
 /// column of the binary table.    larray is set = TRUE, if the corresponding
 /// bit = 1, otherwise it is set to FALSE.
 /// The binary table column being read from must have datatype 'B' or 'X'.
+///
+/// # Parameters
+///
+/// * `fptr`   — (I) FITS file pointer
+/// * `colnum` — (I) number of column to write (1 = 1st col)
+/// * `frow`   — (I) first row to write (1 = 1st row)
+/// * `fbit`   — (I) first bit to write (1 = 1st)
+/// * `nbit`   — (I) number of bits to write
+/// * `larray` — (O) array of logicals corresponding to bits
+/// * `status` — (IO) error status
 pub fn ffgcx_safe(
-    fptr: &mut fitsfile,   /* I - FITS file pointer                       */
-    colnum: c_int,         /* I - number of column to write (1 = 1st col) */
-    frow: LONGLONG,        /* I - first row to write (1 = 1st row)        */
-    fbit: LONGLONG,        /* I - first bit to write (1 = 1st)            */
-    nbit: LONGLONG,        /* I - number of bits to write                 */
-    larray: &mut [c_char], /* O - array of logicals corresponding to bits */
-    status: &mut c_int,    /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    frow: LONGLONG,
+    fbit: LONGLONG,
+    nbit: LONGLONG,
+    larray: &mut [c_char],
+    status: &mut c_int,
 ) -> c_int {
     let mut bstart: LONGLONG = 0;
     let mut offset: c_long = 0;
@@ -585,21 +674,31 @@ pub fn ffgcx_safe(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
+///
+/// # Parameters
+///
+/// * `fptr`            — (I) FITS file pointer
+/// * `colnum`          — (I) number of column to read (1 = 1st col)
+/// * `firstrow`        — (I) first row to read (1 = 1st row)
+/// * `nrows`           — (I) no. of rows to read
+/// * `input_first_bit` — (I) first bit to read (1 = 1st)
+/// * `input_nbits`     — (I) number of bits to read (<= 32)
+/// * `array`           — (O) array of integer values
+/// * `status`          — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcxui(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: *mut c_ushort,    /* O - array of integer values            */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    input_first_bit: c_long,
+    input_nbits: c_int,
+    array: *mut c_ushort,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -621,22 +720,31 @@ pub unsafe extern "C" fn ffgcxui(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 16 or the total number of bits in the column,
 /// which ever is less.
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `fptr`            — (I) FITS file pointer
+/// * `colnum`          — (I) number of column to read (1 = 1st col)
+/// * `firstrow`        — (I) first row to read (1 = 1st row)
+/// * `nrows`           — (I) no. of rows to read
+/// * `input_first_bit` — (I) first bit to read (1 = 1st)
+/// * `input_nbits`     — (I) number of bits to read (<= 32)
+/// * `array`           — (O) array of integer values
+/// * `status`          — (IO) error status
 pub fn ffgcxui_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: &mut [c_ushort],  /* O - array of integer values            */
-    status: &mut c_int,      /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    input_first_bit: c_long,
+    input_nbits: c_int,
+    array: &mut [c_ushort],
+    status: &mut c_int,
 ) -> c_int {
     let mut colbyte: [c_ushort; 5] = [0; 5];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
@@ -783,21 +891,31 @@ pub fn ffgcxui_safe(
     *status
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
+///
+/// # Parameters
+///
+/// * `fptr`            — (I) FITS file pointer
+/// * `colnum`          — (I) number of column to read (1 = 1st col)
+/// * `firstrow`        — (I) first row to read (1 = 1st row)
+/// * `nrows`           — (I) no. of rows to read
+/// * `input_first_bit` — (I) first bit to read (1 = 1st)
+/// * `input_nbits`     — (I) number of bits to read (<= 32)
+/// * `array`           — (O) array of integer values
+/// * `status`          — (IO) error status
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgcxuk(
-    fptr: *mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: *mut c_uint,      /* O - array of integer values            */
-    status: *mut c_int,      /* IO - error status                           */
+    fptr: *mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    input_first_bit: c_long,
+    input_nbits: c_int,
+    array: *mut c_uint,
+    status: *mut c_int,
 ) -> c_int {
     // FFI WRAPPER
     unsafe {
@@ -819,22 +937,31 @@ pub unsafe extern "C" fn ffgcxuk(
     }
 }
 
-/*--------------------------------------------------------------------------*/
 /// Read a consecutive string of bits from an 'X' or 'B' column and
 /// interpret them as an unsigned integer.  The number of bits must be
 /// less than or equal to 32 or the total number of bits in the column,
 /// which ever is less.
 #[allow(clippy::if_same_then_else)]
 // C dispatch chain: distinct conditions deliberately share an action.
+/// # Parameters
+///
+/// * `fptr`            — (I) FITS file pointer
+/// * `colnum`          — (I) number of column to read (1 = 1st col)
+/// * `firstrow`        — (I) first row to read (1 = 1st row)
+/// * `nrows`           — (I) no. of rows to read
+/// * `input_first_bit` — (I) first bit to read (1 = 1st)
+/// * `input_nbits`     — (I) number of bits to read (<= 32)
+/// * `array`           — (O) array of integer values
+/// * `status`          — (IO) error status
 pub fn ffgcxuk_safe(
-    fptr: &mut fitsfile,     /* I - FITS file pointer                       */
-    colnum: c_int,           /* I - number of column to read (1 = 1st col)  */
-    firstrow: LONGLONG,      /* I - first row to read (1 = 1st row)         */
-    nrows: LONGLONG,         /* I - no. of rows to read                     */
-    input_first_bit: c_long, /* I - first bit to read (1 = 1st)        */
-    input_nbits: c_int,      /* I - number of bits to read (<= 32)     */
-    array: &mut [c_uint],    /* O - array of integer values            */
-    status: &mut c_int,      /* IO - error status                           */
+    fptr: &mut fitsfile,
+    colnum: c_int,
+    firstrow: LONGLONG,
+    nrows: LONGLONG,
+    input_first_bit: c_long,
+    input_nbits: c_int,
+    array: &mut [c_uint],
+    status: &mut c_int,
 ) -> c_int {
     let mut colbyte: [c_uint; 5] = [0; 5];
     let mut message: [c_char; FLEN_ERRMSG] = [0; FLEN_ERRMSG];
