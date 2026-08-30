@@ -80,7 +80,7 @@ pub unsafe extern "C" fn fits_read_wcstab(
 
         let fptr = fptr.as_mut().expect(NULL_MSG);
 
-        fits_read_wcstab_safer(fptr, nwtb, wtb, status)
+        fits_read_wcstab_safe(fptr, nwtb, wtb, status)
     }
 }
 
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn fits_read_wcstab(
 ///
 /// * `fptr` — (I) FITS file pointer
 /// * `nwtb` — Number of arrays to be read from the binary table(s)
-pub fn fits_read_wcstab_safer(
+pub fn fits_read_wcstab_safe(
     fptr: &mut fitsfile,
     nwtb: c_int,
     wtb: &[wtbarr],
@@ -2555,7 +2555,7 @@ mod tests {
             fits_open_file(&mut f, &name, READONLY, &mut status);
 
             // With nwtb=0, should return immediately with no error.
-            fits_read_wcstab_safer(f.as_deref_mut().unwrap(), 0, &[], &mut status);
+            fits_read_wcstab_safe(f.as_deref_mut().unwrap(), 0, &[], &mut status);
             assert_eq!(status, 0, "fits_read_wcstab with nwtb=0 should succeed");
 
             fits_close_file(f.take().unwrap(), &mut status);

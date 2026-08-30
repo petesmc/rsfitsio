@@ -4491,7 +4491,7 @@ pub unsafe extern "C" fn ffffrw(
 
         raw_to_slice!(expr);
 
-        ffffrw_safer(fptr, expr, rownum, status)
+        ffffrw_safe(fptr, expr, rownum, status)
     }
 }
 
@@ -4504,7 +4504,7 @@ pub unsafe extern "C" fn ffffrw(
 /// * `expr`   — (I) Boolean expression
 /// * `rownum` — (O) First row of table to eval to T
 /// * `status` — (O) Error status
-pub fn ffffrw_safer(
+pub fn ffffrw_safe(
     fptr: &mut fitsfile,
     expr: &[c_char],
     rownum: &mut c_long,
@@ -4942,7 +4942,7 @@ pub unsafe extern "C" fn fits_pixel_filter(filter: *mut PixelFilter, status: *mu
         let status = status.as_mut().expect("Null status pointer");
         let filter = filter.as_mut().expect("Null filter pointer");
 
-        fits_pixel_filter_safer(filter, status)
+        fits_pixel_filter_safe(filter, status)
     }
 }
 
@@ -4952,7 +4952,7 @@ pub unsafe extern "C" fn fits_pixel_filter(filter: *mut PixelFilter, status: *mu
 ///
 /// * `filter` — (I) pixel filter structure
 /// * `status` — (IO) error status
-pub fn fits_pixel_filter_safer(filter: &mut PixelFilter, status: &mut c_int) -> c_int {
+pub fn fits_pixel_filter_safe(filter: &mut PixelFilter, status: &mut c_int) -> c_int {
     unsafe {
         let mut info: parseInfo = parseInfo::default();
         let mut naxis: c_int = 0;

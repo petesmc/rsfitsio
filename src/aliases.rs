@@ -822,14 +822,14 @@ pub mod c_api {
 pub mod rust_api {
     use super::*;
 
-    pub use crate::cfileio::ffexist_safer as fits_file_exists;
+    pub use crate::cfileio::ffexist_safe as fits_file_exists;
     pub use crate::cfileio::ffifile_safe as fits_parse_input_filename;
     pub use crate::cfileio::ffiurl_safe as fits_parse_input_url;
     pub use crate::cfileio::ffrtnm_safe as fits_parse_rootname;
 
-    pub use crate::cfileio::ffextn_safer as fits_parse_extnum;
+    pub use crate::cfileio::ffextn_safe as fits_parse_extnum;
     pub use crate::cfileio::ffexts_safe as fits_parse_extspec;
-    pub use crate::cfileio::ffomem_safer as fits_open_memfile;
+    pub use crate::cfileio::ffomem_safe as fits_open_memfile;
     pub use crate::editcol::ffrwrg_safe as fits_parse_range;
     pub use crate::editcol::ffrwrgll_safe as fits_parse_rangell;
     pub use crate::histo::ffbinr_safe as fits_parse_binrange;
@@ -867,16 +867,16 @@ pub mod rust_api {
     pub use crate::buffers::ffflus_safe as fits_flush_file;
     pub use crate::cfileio::ffclos_safe as fits_close_file;
     pub use crate::cfileio::ffdelt_safe as fits_delete_file;
-    pub use crate::cfileio::ffdkinit_safer as fits_create_diskfile;
-    pub use crate::cfileio::ffdkopn_safer as fits_open_diskfile;
-    pub use crate::cfileio::ffdopn_safer as fits_open_data;
+    pub use crate::cfileio::ffdkinit_safe as fits_create_diskfile;
+    pub use crate::cfileio::ffdkopn_safe as fits_open_diskfile;
+    pub use crate::cfileio::ffdopn_safe as fits_open_data;
     pub use crate::cfileio::ffeopn_safe as fits_open_extlist;
-    pub use crate::cfileio::ffimem_safer as fits_create_memfile;
+    pub use crate::cfileio::ffimem_safe as fits_create_memfile;
     pub use crate::cfileio::ffinit_safe as fits_create_file;
-    pub use crate::cfileio::ffiopn_safer as fits_open_image;
-    pub use crate::cfileio::ffreopen_safer as fits_reopen_file;
+    pub use crate::cfileio::ffiopn_safe as fits_open_image;
+    pub use crate::cfileio::ffreopen_safe as fits_reopen_file;
     pub use crate::cfileio::fftopn_safe as fits_open_table;
-    pub use crate::cfileio::fftplt_safer as fits_create_template;
+    pub use crate::cfileio::fftplt_safe as fits_create_template;
     pub use crate::cfileio::ffurlt_safe as fits_url_type;
     pub use crate::fitscore::ffflmd_safe as fits_file_mode;
     pub use crate::fitscore::ffflnm_safe as fits_file_name;
@@ -1001,7 +1001,7 @@ pub mod rust_api {
     pub use crate::getkey::ffgskyc_safe as fits_read_string_key_com;
     pub use crate::getkey::ffgstr_safe as fits_read_str;
     pub use crate::getkey::ffgtdm_safe as fits_read_tdim;
-    pub use crate::getkey::ffgtdmll_safer as fits_read_tdimll;
+    pub use crate::getkey::ffgtdmll_safe as fits_read_tdimll;
     pub use crate::getkey::ffgunt_safe as fits_read_key_unit;
     pub use crate::getkey::ffhdr2str_safe as fits_hdr2str;
 
@@ -1042,19 +1042,19 @@ pub mod rust_api {
     pub use crate::modkey::ffmrec_safe as fits_modify_record;
 
     pub use crate::modkey::ffikey_safe as fits_insert_card;
-    pub use crate::modkey::ffikfc_safer as fits_insert_key_fixcmp;
-    pub use crate::modkey::ffikfm_safer as fits_insert_key_fixdblcmp;
+    pub use crate::modkey::ffikfc_safe as fits_insert_key_fixcmp;
+    pub use crate::modkey::ffikfm_safe as fits_insert_key_fixdblcmp;
     pub use crate::modkey::ffikls_safe as fits_insert_key_longstr;
-    pub use crate::modkey::ffikyc_safer as fits_insert_key_cmp;
-    pub use crate::modkey::ffikyd_safer as fits_insert_key_dbl;
-    pub use crate::modkey::ffikye_safer as fits_insert_key_flt;
+    pub use crate::modkey::ffikyc_safe as fits_insert_key_cmp;
+    pub use crate::modkey::ffikyd_safe as fits_insert_key_dbl;
+    pub use crate::modkey::ffikye_safe as fits_insert_key_flt;
     pub use crate::modkey::ffikyf_safe as fits_insert_key_fixflt;
-    pub use crate::modkey::ffikyg_safer as fits_insert_key_fixdbl;
+    pub use crate::modkey::ffikyg_safe as fits_insert_key_fixdbl;
     pub use crate::modkey::ffikyj_safe as fits_insert_key_lng;
-    pub use crate::modkey::ffikyl_safer as fits_insert_key_log;
+    pub use crate::modkey::ffikyl_safe as fits_insert_key_log;
     pub use crate::modkey::ffikym_safe as fits_insert_key_dblcmp;
-    pub use crate::modkey::ffikys_safer as fits_insert_key_str;
-    pub use crate::modkey::ffikyu_safer as fits_insert_key_null;
+    pub use crate::modkey::ffikys_safe as fits_insert_key_str;
+    pub use crate::modkey::ffikyu_safe as fits_insert_key_null;
     pub use crate::modkey::ffirec_safe as fits_insert_record;
 
     pub use crate::fitscore::ffghad_safe as fits_get_hduaddr;
@@ -1117,7 +1117,7 @@ pub mod rust_api {
 
     pub use crate::fitscore::ffeqty_safe as fits_get_eqcoltype;
     pub use crate::fitscore::ffeqtyll_safe as fits_get_eqcoltypell;
-    pub use crate::fitscore::ffgacl_safer as fits_get_acolparms;
+    pub use crate::fitscore::ffgacl_safe as fits_get_acolparms;
     pub use crate::fitscore::ffgbcl_safe as fits_get_bcolparms;
     pub use crate::fitscore::ffgbclll_safe as fits_get_bcolparmsll;
     pub use crate::fitscore::ffgcnn_safe as fits_get_colname;
@@ -1228,7 +1228,7 @@ pub mod rust_api {
     pub use crate::getcoluj::ffgsfujj_safe as fits_read_subsetnull_ulnglng;
     pub use crate::getcoluk::ffgsfuk_safe as fits_read_subsetnull_uint;
 
-    pub use crate::cfileio::fits_copy_image_section_safer as ffcpimg;
+    pub use crate::cfileio::fits_copy_image_section_safe as ffcpimg;
 
     pub use crate::getcol::ffgcf_safe as fits_read_colnull;
     pub use crate::getcol::ffgcv_safe as fits_read_col;
@@ -1436,7 +1436,7 @@ pub mod rust_api {
     pub use crate::eval_f::ffcalc_rng_safe as fits_calculator_rng;
     pub use crate::eval_f::ffcalc_safe as fits_calculator;
     pub use crate::eval_f::ffcrow_safe as fits_calc_rows;
-    pub use crate::eval_f::ffffrw_safer as fits_find_first_row;
+    pub use crate::eval_f::ffffrw_safe as fits_find_first_row;
     pub use crate::eval_f::fffrow_safe as fits_find_rows;
     pub use crate::eval_f::fffrwc_safe as fits_find_rows_cmp;
     pub use crate::eval_f::ffsrow_safe as fits_select_rows;
@@ -1460,7 +1460,7 @@ pub mod rust_api {
     pub use crate::group::ffgmrm_safe as fits_remove_member;
     pub use crate::group::ffgmtf_safe as fits_transfer_member;
 
-    pub use crate::cfileio::ffgtmo_safer as fits_get_timeout;
+    pub use crate::cfileio::ffgtmo_safe as fits_get_timeout;
     pub use crate::cfileio::ffshdwn_safe as fits_show_download_progress;
     pub use crate::cfileio::ffstmo_safe as fits_set_timeout;
 

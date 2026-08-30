@@ -32,7 +32,7 @@ use libc::{EOF, fclose, fgetc, fopen, fread, memcmp, memcpy, memset, realloc, un
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use crate::cfileio::ffclos_safe;
-use crate::cfileio::{MAX_PREFIX_LEN, ffimem_safer};
+use crate::cfileio::{MAX_PREFIX_LEN, ffimem_safe};
 use crate::drvrfile::{file_close, file_create, file_open, file_openfile, file_write};
 use crate::fitscore::{ALLOCATIONS, ffpmsg_slice, ffpmsg_str};
 use crate::fitsio::*;
@@ -1176,7 +1176,7 @@ pub(crate) fn mem_rawfile_open(filename: &mut [c_char], rwmode: c_int, hdl: &mut
 
         /* open this piece of memory as a new FITS file */
 
-        ffimem_safer(
+        ffimem_safe(
             &mut fptr,
             m[*hdl as usize].memaddrptr.cast::<*mut c_void>(),
             &mut filesize,

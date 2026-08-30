@@ -50,7 +50,7 @@ use crate::drvrmem::{
     mem_setoptions, mem_shutdown, mem_size, mem_truncate_unsafe, mem_write_unsafe, stdin_checkfile,
     stdin_open, stdout_close_unsafe,
 };
-use crate::fitscore::{ffcrhd_safe, ffgisz_safe, ffpmsg_cstr, ffxmsg_safer};
+use crate::fitscore::{ffcrhd_safe, ffgisz_safe, ffpmsg_cstr, ffxmsg_safe};
 
 use crate::KeywordDatatypeMut;
 #[cfg(all(feature = "shared_mem", not(target_os = "windows")))]
@@ -61,8 +61,8 @@ use crate::drvrsmem::{
 use crate::editcol::{ffdcol_safe, fficol_safe};
 use crate::edithdu::{ffcopy_safe, ffcphd_safe};
 use crate::eval_f::{
-    ffcalc_inplace_safe, ffffrw_safer, fffrow_safe, ffsrow_inplace_safe, ffsrow_safe,
-    fits_pixel_filter_safer,
+    ffcalc_inplace_safe, ffffrw_safe, fffrow_safe, ffsrow_inplace_safe, ffsrow_safe,
+    fits_pixel_filter_safe,
 };
 use crate::fitscore::{
     ALLOCATIONS, ffchdu, ffcmrk_safe, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe,
@@ -78,7 +78,7 @@ use crate::getcoli::ffgsvi_safe;
 use crate::getcolj::ffgsvjj_safe;
 use crate::getcolk::ffgsvk_safe;
 use crate::getkey::{
-    ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safer, ffmaky_safe,
+    ffgcrd_safe, ffghsp_safe, ffgky_safe, ffgkyl_safe, ffgrec_safe, ffgtdmll_safe, ffmaky_safe,
 };
 use crate::group::{fits_clean_url, fits_get_cwd, fits_path2url};
 use crate::histo::{ffbinse, ffhist2e};
@@ -217,7 +217,7 @@ pub unsafe extern "C" fn ffomem(
 
         raw_to_slice!(name);
 
-        ffomem_safer(
+        ffomem_safe(
             fptr,
             name,
             mode,
@@ -240,7 +240,7 @@ pub unsafe extern "C" fn ffomem(
 /// * `deltasize`   — (I) increment for future realloc's
 /// * `mem_realloc` — function
 /// * `status`      — (IO) error status
-pub fn ffomem_safer(
+pub fn ffomem_safe(
     fptr: &mut Option<Box<fitsfile>>,
     name: &[c_char],
     mode: c_int,
@@ -288,7 +288,7 @@ pub fn ffomem_safer(
 
     if *NEED_TO_INITIALIZE.lock().unwrap() {
         /* this is called only once */
-        *status = fits_init_cfitsio_safer();
+        *status = fits_init_cfitsio_safe();
 
         if *status > 0 {
             return *status;
@@ -529,7 +529,7 @@ pub unsafe extern "C" fn ffdkopn(
 
         raw_to_slice!(name);
 
-        ffdkopn_safer(fptr, name, mode, status)
+        ffdkopn_safe(fptr, name, mode, status)
     }
 }
 
@@ -539,7 +539,7 @@ pub unsafe extern "C" fn ffdkopn(
 /// * `name`   — (I) full name of file to open
 /// * `mode`   — (I) 0 = open readonly; 1 = read/write
 /// * `status` — (IO) error status
-pub fn ffdkopn_safer(
+pub fn ffdkopn_safe(
     fptr: &mut Option<Box<fitsfile>>,
     name: &[c_char],
     mode: c_int,
@@ -585,7 +585,7 @@ pub unsafe extern "C" fn ffdopn(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(name);
 
-        ffdopn_safer(fptr, name, mode, status)
+        ffdopn_safe(fptr, name, mode, status)
     }
 }
 
@@ -595,7 +595,7 @@ pub unsafe extern "C" fn ffdopn(
 /// * `name`   — (I) full name of file to open
 /// * `mode`   — (I) 0 = open readonly; 1 = read/write
 /// * `status` — (IO) error status
-pub fn ffdopn_safer(
+pub fn ffdopn_safe(
     fptr: &mut Option<Box<fitsfile>>,
     name: &[c_char],
     mode: c_int,
@@ -849,7 +849,7 @@ pub unsafe extern "C" fn ffiopn(
 
         raw_to_slice!(name);
 
-        ffiopn_safer(fptr, name, mode, status)
+        ffiopn_safe(fptr, name, mode, status)
     }
 }
 
@@ -868,7 +868,7 @@ pub unsafe extern "C" fn ffiopn(
 /// * `name`   — (I) full name of file to open
 /// * `mode`   — (I) 0 = open readonly; 1 = read/write
 /// * `status` — (IO) error status
-pub fn ffiopn_safer(
+pub fn ffiopn_safe(
     fptr: &mut Option<Box<fitsfile>>,
     name: &[c_char],
     mode: c_int,
@@ -1128,7 +1128,7 @@ pub fn ffopen_safe(
 
     if *NEED_TO_INITIALIZE.lock().unwrap() {
         /* this is called only once */
-        *status = fits_init_cfitsio_safer();
+        *status = fits_init_cfitsio_safe();
     }
 
     if *status > 0 {
@@ -1646,7 +1646,7 @@ pub fn ffopen_safe(
                 *status = BAD_ROW_NUM;
                 return *status;
             };
-        } else if ffffrw_safer(f, &rowexpress, &mut rownum, status) > 0 {
+        } else if ffffrw_safe(f, &rowexpress, &mut rownum, status) > 0 {
             ffpmsg_str("Failed to find row matching this expression:");
             ffpmsg_slice(&rowexpress);
             ffpmsg_str("Could not open the following image in a table cell:");
@@ -2046,7 +2046,7 @@ pub unsafe extern "C" fn ffreopen(
 
         let openfptr = openfptr.as_mut().expect(NULL_MSG);
 
-        ffreopen_safer(openfptr, newfptr, status)
+        ffreopen_safe(openfptr, newfptr, status)
     }
 }
 
@@ -2055,7 +2055,7 @@ pub unsafe extern "C" fn ffreopen(
 /// * `openfptr` — (I) FITS file pointer to open file
 /// * `newfptr`  — (O) pointer to new re opened file
 /// * `status`   — (IO) error status
-pub fn ffreopen_safer(
+pub fn ffreopen_safe(
     openfptr: &mut fitsfile,
     newfptr: &mut *mut fitsfile,
     status: &mut c_int,
@@ -3768,7 +3768,7 @@ pub fn fits_copy_cell2image_safe(
         naxes[0] = repeat;
     } else {
         /* get the dimensions of the image */
-        ffgtdmll_safer(fptr, colnum, 9, &mut naxis, &mut naxes, status);
+        ffgtdmll_safe(fptr, colnum, 9, &mut naxis, &mut naxes, status);
     }
 
     if *status > 0 {
@@ -4110,7 +4110,7 @@ pub fn fits_copy_image2cell_safe(
             return *status;
         }
     } else {
-        ffgtdmll_safer(newptr, colnum, 9, &mut naxis1, &mut naxes1, status);
+        ffgtdmll_safe(newptr, colnum, 9, &mut naxis1, &mut naxes1, status);
         if *status > 0 || naxis != naxis1 {
             ffpmsg_str("Input image dimensions and output table cell dimensions do not match.");
             *status = BAD_DIMEN;
@@ -4316,7 +4316,7 @@ pub fn fits_select_image_section_safe(
         ffmahd_safe(fptr.as_deref_mut().unwrap(), hdunum, None, status);
     }
 
-    if fits_copy_image_section_safer(
+    if fits_copy_image_section_safe(
         fptr.as_deref_mut().unwrap(),
         newptr.as_deref_mut().unwrap(),
         expr,
@@ -4402,7 +4402,7 @@ pub unsafe extern "C" fn fits_copy_image_section(
 
         raw_to_slice!(expr);
 
-        fits_copy_image_section_safer(fptr, newptr, expr, status)
+        fits_copy_image_section_safe(fptr, newptr, expr, status)
     }
 }
 
@@ -4413,7 +4413,7 @@ pub unsafe extern "C" fn fits_copy_image_section(
 /// * `fptr`   — (I) pointer to input image
 /// * `newptr` — (I) pointer to output image
 /// * `expr`   — (I) Image section expression
-pub fn fits_copy_image_section_safer(
+pub fn fits_copy_image_section_safe(
     fptr: &mut fitsfile,
     newptr: &mut fitsfile,
     expr: &[c_char],
@@ -5460,7 +5460,7 @@ pub unsafe extern "C" fn ffdkinit(
         let fptr = fptr.as_mut().expect(NULL_MSG);
         raw_to_slice!(name);
 
-        ffdkinit_safer(fptr, name, status)
+        ffdkinit_safe(fptr, name, status)
     }
 }
 
@@ -5469,7 +5469,7 @@ pub unsafe extern "C" fn ffdkinit(
 /// * `fptr`   — (O) FITS file pointer
 /// * `name`   — (I) name of file to create
 /// * `status` — (IO) error status
-pub fn ffdkinit_safer(
+pub fn ffdkinit_safe(
     fptr: &mut Option<Box<fitsfile>>,
     name: &[c_char],
     status: &mut c_int,
@@ -5559,7 +5559,7 @@ pub fn ffinit_safe(fptr: &mut Option<Box<fitsfile>>, name: &[c_char], status: &m
 
     if *NEED_TO_INITIALIZE.lock().unwrap() {
         /* this is called only once */
-        *status = fits_init_cfitsio_safer();
+        *status = fits_init_cfitsio_safe();
     }
 
     if *status > 0 {
@@ -5758,7 +5758,7 @@ pub unsafe extern "C" fn ffimem(
         let buffsize = buffsize.as_mut().expect(NULL_MSG);
         let status = status.as_mut().expect(NULL_MSG);
 
-        ffimem_safer(fptr, buffptr, buffsize, deltasize, mem_realloc, status)
+        ffimem_safe(fptr, buffptr, buffsize, deltasize, mem_realloc, status)
     }
 }
 
@@ -5772,7 +5772,7 @@ pub unsafe extern "C" fn ffimem(
 /// * `deltasize`   — (I) increment for future realloc's
 /// * `mem_realloc` — function
 /// * `status`      — (IO) error status
-pub fn ffimem_safer(
+pub fn ffimem_safe(
     fptr: &mut Option<Box<fitsfile>>,
     buffptr: *mut *mut c_void,
     buffsize: &mut usize,
@@ -5799,7 +5799,7 @@ pub fn ffimem_safer(
 
     if *NEED_TO_INITIALIZE.lock().unwrap() {
         /* this is called only once */
-        *status = fits_init_cfitsio_safer();
+        *status = fits_init_cfitsio_safe();
     }
 
     if *status > 0 {
@@ -5890,11 +5890,11 @@ pub fn ffimem_safer(
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn fits_init_cfitsio() -> c_int {
     // FFI WRAPPER
-    fits_init_cfitsio_safer()
+    fits_init_cfitsio_safe()
 }
 
 /// Initialize anything that is required before using the CFITSIO routines
-pub fn fits_init_cfitsio_safer() -> c_int {
+pub fn fits_init_cfitsio_safe() -> c_int {
     pub union u_tag {
         pub ival: i16,
         pub cval: [c_char; 2],
@@ -7898,7 +7898,7 @@ pub unsafe extern "C" fn ffexist(
         let status = status.as_mut().expect(NULL_MSG);
         raw_to_slice!(infile);
 
-        ffexist_safer(infile, exists, status)
+        ffexist_safe(infile, exists, status)
     }
 }
 
@@ -7911,7 +7911,7 @@ pub unsafe extern "C" fn ffexist(
 /// * `infile` — (I) input filename or URL
 /// * `exists` — (O) 2 = a compressed version of file exists
 /// * `status` — I/O - error status
-pub fn ffexist_safer(
+pub fn ffexist_safe(
     infile: &[c_char],
     exists: &mut c_int,
     /*      1 = yes, disk file exists               */
@@ -8693,7 +8693,7 @@ pub unsafe extern "C" fn ffextn(
 
         raw_to_slice!(url);
 
-        ffextn_safer(url, extension_num, status)
+        ffextn_safe(url, extension_num, status)
     }
 }
 
@@ -8730,7 +8730,7 @@ pub unsafe extern "C" fn ffextn(
 ///
 /// * `url`           — (I) input filename/URL
 /// * `extension_num` — (O) returned extension number
-pub fn ffextn_safer(url: &[c_char], extension_num: &mut c_int, status: &mut c_int) -> c_int {
+pub fn ffextn_safe(url: &[c_char], extension_num: &mut c_int, status: &mut c_int) -> c_int {
     let mut fptr: Option<Box<fitsfile>> = None;
     let mut urltype: [c_char; 20] = [0; 20];
     let mut infile: [c_char; FLEN_FILENAME] = [0; FLEN_FILENAME];
@@ -9731,7 +9731,7 @@ pub unsafe extern "C" fn fftplt(
         raw_to_slice!(filename);
         raw_to_slice!(tempname);
 
-        fftplt_safer(fptr, filename, tempname, status)
+        fftplt_safe(fptr, filename, tempname, status)
     }
 }
 
@@ -9744,7 +9744,7 @@ pub unsafe extern "C" fn fftplt(
 /// * `filename` — (I) name of file to create
 /// * `tempname` — (I) name of template file
 /// * `status`   — (IO) error status
-pub fn fftplt_safer(
+pub fn fftplt_safe(
     fptr: &mut Option<Box<fitsfile>>,
     filename: &[c_char],
     tempname: &[c_char],
@@ -9806,7 +9806,7 @@ pub(crate) fn ffoptplt(fptr: &mut fitsfile, tempname: &[c_char], status: &mut c_
 
     if tstatus != 0 {
         /* not a FITS file, so treat it as an ASCII template */
-        ffxmsg_safer(2, Some(&mut card)); /* clear the  error message */
+        ffxmsg_safe(2, Some(&mut card)); /* clear the  error message */
         fits_execute_template_safe(fptr, tempname, status);
 
         ffmahd_safe(fptr, 1, None, status); /* move back to the primary array */
@@ -9996,7 +9996,7 @@ pub fn pixel_filter_helper(
             keyword: [0; FLEN_KEYWORD],
             comment: [0; FLEN_COMMENT],
         };
-        fits_pixel_filter_safer(&mut filter, status) != 0
+        fits_pixel_filter_safe(&mut filter, status) != 0
     };
     if pf_failed {
         ffpmsg_str("failed to execute image filter:");
@@ -10114,11 +10114,11 @@ pub fn ffshdwn_safe(flag: c_int) {
 #[cfg_attr(not(test), unsafe(no_mangle), deprecated)]
 pub unsafe extern "C" fn ffgtmo() -> c_int {
     // FFI WRAPPER
-    ffgtmo_safer()
+    ffgtmo_safe()
 }
 
 /// Get the current network timeout value in seconds (safe wrapper)
-pub fn ffgtmo_safer() -> c_int {
+pub fn ffgtmo_safe() -> c_int {
     let mut timeout = 0;
 
     if cfg!(feature = "net_services") {
@@ -11343,7 +11343,7 @@ mod tests {
         let url = str_to_c_array("myfile.fits");
         let mut extnum: c_int = 0;
         let mut status: c_int = 0;
-        ffextn_safer(&url, &mut extnum, &mut status);
+        ffextn_safe(&url, &mut extnum, &mut status);
         assert_eq!(status, 0);
         assert_eq!(extnum, -99);
     }
@@ -11355,7 +11355,7 @@ mod tests {
             let url = str_to_c_array(spec);
             let mut extnum: c_int = 0;
             let mut status: c_int = 0;
-            ffextn_safer(&url, &mut extnum, &mut status);
+            ffextn_safe(&url, &mut extnum, &mut status);
             assert_eq!(status, 0, "spec={spec}");
             assert_eq!(extnum, expected, "spec={spec}");
         }
@@ -11368,7 +11368,7 @@ mod tests {
         let url = str_to_c_array("myfile.fits[3][bin X,Y]");
         let mut extnum: c_int = 0;
         let mut status: c_int = 0;
-        ffextn_safer(&url, &mut extnum, &mut status);
+        ffextn_safe(&url, &mut extnum, &mut status);
         assert_eq!(status, 0);
         assert_eq!(extnum, 1);
     }
@@ -11409,7 +11409,7 @@ mod tests {
 
             let mut extnum: c_int = 0;
             let mut status2: c_int = 0;
-            ffextn_safer(&url, &mut extnum, &mut status2);
+            ffextn_safe(&url, &mut extnum, &mut status2);
             assert_eq!(status2, 0, "ffextn failed");
             assert_eq!(extnum, 2); // EVENTS is the 2nd HDU
         });
@@ -11432,7 +11432,7 @@ mod tests {
         let mut buf_addr: *mut c_void = buffer.as_mut_ptr().cast();
 
         let mut fptr: Option<Box<fitsfile>> = None;
-        ffimem_safer(
+        ffimem_safe(
             &mut fptr,
             &raw mut buf_addr,
             &mut buffsize,
@@ -12041,7 +12041,7 @@ mod tests {
             assert_eq!(status, 0, "setup");
 
             // Open with ffdopn - should skip null primary
-            ffdopn_safer(&mut f, &name, READONLY, &mut status);
+            ffdopn_safe(&mut f, &name, READONLY, &mut status);
             assert_eq!(status, 0, "ffdopn failed");
             let mut hdunum: c_int = 0;
             fits_get_hdu_num(f.as_deref_mut().unwrap(), &mut hdunum);
@@ -12094,7 +12094,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
             assert_eq!(status, 0, "setup");
 
-            ffiopn_safer(&mut f, &name, READONLY, &mut status);
+            ffiopn_safe(&mut f, &name, READONLY, &mut status);
             assert_eq!(status, 0, "ffiopn failed");
             let mut hdutype: c_int = 0;
             fits_get_hdu_type(f.as_deref_mut().unwrap(), &mut hdutype, &mut status);
@@ -12118,7 +12118,7 @@ mod tests {
 
             // Reopen the file - ffreopen outputs a raw *mut fitsfile
             let mut newptr: *mut fitsfile = core::ptr::null_mut();
-            ffreopen_safer(f1.as_deref_mut().unwrap(), &mut newptr, &mut status);
+            ffreopen_safe(f1.as_deref_mut().unwrap(), &mut newptr, &mut status);
             assert_eq!(status, 0, "ffreopen failed");
             assert!(!newptr.is_null());
             let mut f2: Option<Box<fitsfile>> = Some(unsafe { Box::from_raw(newptr) });
@@ -12182,7 +12182,7 @@ mod tests {
         assert_eq!(*status, 0, "copy_section setup failed");
 
         let e = str_to_c_array(expr);
-        fits_copy_image_section_safer(
+        fits_copy_image_section_safe(
             fin.as_deref_mut().unwrap(),
             fout.as_deref_mut().unwrap(),
             &e,
@@ -13372,7 +13372,7 @@ mod tests {
             fits_close_file(f.take().unwrap(), &mut status);
             assert_eq!(status, 0, "setup");
 
-            ffdkopn_safer(&mut f, &name, READWRITE, &mut status);
+            ffdkopn_safe(&mut f, &name, READWRITE, &mut status);
             assert_eq!(status, 0, "ffdkopn failed");
             assert!(f.is_some());
 
@@ -13392,7 +13392,7 @@ mod tests {
 
             // with_temp_file gives a fresh dir; the file does not yet exist
             let mut f: Option<Box<fitsfile>> = None;
-            ffdkinit_safer(&mut f, &name, &mut status);
+            ffdkinit_safe(&mut f, &name, &mut status);
             assert_eq!(status, 0, "ffdkinit failed");
             assert!(f.is_some());
 
@@ -13693,7 +13693,7 @@ mod tests {
             assert_eq!(status, 0, "setup");
 
             let mut f2: Option<Box<fitsfile>> = None;
-            fftplt_safer(&mut f2, &out_name, &tpl_name, &mut status);
+            fftplt_safe(&mut f2, &out_name, &tpl_name, &mut status);
             assert_eq!(status, 0, "fftplt failed");
             assert!(f2.is_some());
 
@@ -13735,7 +13735,7 @@ mod tests {
             assert_eq!(status, 0, "setup");
 
             let mut f2: Option<Box<fitsfile>> = None;
-            fftplt_safer(&mut f2, &out_name, &tpl_name, &mut status);
+            fftplt_safe(&mut f2, &out_name, &tpl_name, &mut status);
             assert_eq!(status, 0, "fftplt failed");
 
             let mut nhdu: c_int = 0;

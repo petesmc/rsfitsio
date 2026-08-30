@@ -2608,7 +2608,7 @@ pub unsafe extern "C" fn ffikyu(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikyu_safer(fptr, keyname, comm, status)
+        ffikyu_safe(fptr, keyname, comm, status)
     }
 }
 
@@ -2620,7 +2620,7 @@ pub unsafe extern "C" fn ffikyu(
 /// * `keyname` — (I) keyword name
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikyu_safer(
+pub fn ffikyu_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     comm: Option<&[c_char]>,
@@ -2665,7 +2665,7 @@ pub unsafe extern "C" fn ffikys(
         raw_to_slice!(value);
         nullable_slice_cstr!(comm);
 
-        ffikys_safer(fptr, keyname, value, comm, status)
+        ffikys_safe(fptr, keyname, value, comm, status)
     }
 }
 
@@ -2678,7 +2678,7 @@ pub unsafe extern "C" fn ffikys(
 /// * `value`   — (I) keyword value
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikys_safer(
+pub fn ffikys_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: &[c_char],
@@ -2877,7 +2877,7 @@ pub unsafe extern "C" fn ffikyl(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikyl_safer(fptr, keyname, value, comm, status)
+        ffikyl_safe(fptr, keyname, value, comm, status)
     }
 }
 
@@ -2890,7 +2890,7 @@ pub unsafe extern "C" fn ffikyl(
 /// * `value`   — (I) keyword value
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikyl_safer(
+pub fn ffikyl_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: c_int,
@@ -3053,7 +3053,7 @@ pub unsafe extern "C" fn ffikye(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikye_safer(fptr, keyname, value, decim, comm, status)
+        ffikye_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3067,7 +3067,7 @@ pub unsafe extern "C" fn ffikye(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikye_safer(
+pub fn ffikye_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: f32,
@@ -3115,7 +3115,7 @@ pub unsafe extern "C" fn ffikyg(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikyg_safer(fptr, keyname, value, decim, comm, status)
+        ffikyg_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3129,7 +3129,7 @@ pub unsafe extern "C" fn ffikyg(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikyg_safer(
+pub fn ffikyg_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: f64,
@@ -3177,7 +3177,7 @@ pub unsafe extern "C" fn ffikyd(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikyd_safer(fptr, keyname, value, decim, comm, status)
+        ffikyd_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3191,7 +3191,7 @@ pub unsafe extern "C" fn ffikyd(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikyd_safer(
+pub fn ffikyd_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: f64,
@@ -3240,7 +3240,7 @@ pub unsafe extern "C" fn ffikfc(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikfc_safer(fptr, keyname, value, decim, comm, status)
+        ffikfc_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3254,7 +3254,7 @@ pub unsafe extern "C" fn ffikfc(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikfc_safer(
+pub fn ffikfc_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: &[f32; 2],
@@ -3321,7 +3321,7 @@ pub unsafe extern "C" fn ffikyc(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikyc_safer(fptr, keyname, value, decim, comm, status)
+        ffikyc_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3335,7 +3335,7 @@ pub unsafe extern "C" fn ffikyc(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikyc_safer(
+pub fn ffikyc_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: &[f32; 2],
@@ -3402,7 +3402,7 @@ pub unsafe extern "C" fn ffikfm(
         raw_to_slice!(keyname);
         nullable_slice_cstr!(comm);
 
-        ffikfm_safer(fptr, keyname, value, decim, comm, status)
+        ffikfm_safe(fptr, keyname, value, decim, comm, status)
     }
 }
 
@@ -3416,7 +3416,7 @@ pub unsafe extern "C" fn ffikfm(
 /// * `decim`   — (I) no of decimals
 /// * `comm`    — (I) keyword comment
 /// * `status`  — (IO) error status
-pub fn ffikfm_safer(
+pub fn ffikfm_safe(
     fptr: &mut fitsfile,
     keyname: &[c_char],
     value: &[f64; 2],

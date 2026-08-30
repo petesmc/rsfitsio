@@ -32,7 +32,7 @@ use crate::buffers::*;
 use crate::fitscore::{
     ffc2d, ffc2dd, ffc2i, ffc2ii, ffc2j, ffc2jj, ffc2l, ffc2ll, ffc2r, ffc2s, ffc2uj, ffcmps_safe,
     ffghadll_safe, ffgidm_safe, ffgidt_safe, ffgiszll_safe, ffkeyn_safe, ffmahd_safe, ffpmsg_slice,
-    ffpmsg_str, ffpsvc_safe, fftrec_safe, ffxmsg_safer, fits_is_compressed_image_safe,
+    ffpmsg_str, ffpsvc_safe, fftrec_safe, ffxmsg_safe, fits_is_compressed_image_safe,
 };
 use crate::raw_to_slice;
 use crate::wrappers::*;
@@ -4135,7 +4135,7 @@ pub unsafe extern "C" fn ffgtdmll(
 
         let naxes = slice::from_raw_parts_mut(naxes, maxdim as usize);
 
-        ffgtdmll_safer(fptr, colnum, maxdim, naxis, naxes, status)
+        ffgtdmll_safe(fptr, colnum, maxdim, naxis, naxes, status)
     }
 }
 
@@ -4149,7 +4149,7 @@ pub unsafe extern "C" fn ffgtdmll(
 /// * `naxis`  — (O) number of axes in the data array
 /// * `naxes`  — (O) length of each data axis
 /// * `status` — (IO) error status
-pub fn ffgtdmll_safer(
+pub fn ffgtdmll_safe(
     fptr: &mut fitsfile,
     colnum: c_int,
     maxdim: c_int,
@@ -5994,7 +5994,7 @@ pub(crate) fn ffgphd(
         /* this is a compressed image, so read ZBITPIX, ZNAXIS keywords */
 
         unknown = 0; /* reset flag */
-        ffxmsg_safer(3, Some(&mut message)); /* clear previous spurious error message */
+        ffxmsg_safe(3, Some(&mut message)); /* clear previous spurious error message */
         // if !bitpix.is_null() {
         ffgidt_safe(fptr, bitpix, status); /* get bitpix value */
         if *status > 0 {
@@ -7158,7 +7158,7 @@ mod tests {
             ffmahd_safe(fptr.as_deref_mut().unwrap(), 2, None, &mut status);
             let mut naxis: c_int = -1;
             let mut naxes: [LONGLONG; 2] = [0; 2];
-            ffgtdmll_safer(
+            ffgtdmll_safe(
                 fptr.as_deref_mut().unwrap(),
                 1,
                 2,

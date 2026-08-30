@@ -756,7 +756,7 @@ pub fn ffcmrk_safe() {
 /// GetMesg    4  pop and return oldest message, ignoring marks
 /// PutMesg    5  add a new message to the stack
 /// PutMark    6  add a marker to the stack
-pub fn ffxmsg_safer(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
+pub(crate) fn ffxmsg_safe(action: c_int, errmsg: Option<&mut [c_char; FLEN_ERRMSG]>) {
     let mut stack = ERROR_STACK.lock().unwrap();
 
     match action {
@@ -2349,7 +2349,7 @@ pub unsafe extern "C" fn fits_translate_keyword(
             .map(|&p| [CStr::from_ptr(p[0]), CStr::from_ptr(p[1])])
             .collect::<Vec<_>>();
 
-        fits_translate_keyword_safer(
+        fits_translate_keyword_safe(
             inrec,
             outrec,
             &patterns_vec,
@@ -2382,7 +2382,7 @@ pub unsafe extern "C" fn fits_translate_keyword(
 /// * `m`        — (O) value of m, if any, else 0
 /// * `n`        — (O) value of n, if any, else 0
 /// * `status`   — (IO) error status
-pub fn fits_translate_keyword_safer(
+pub fn fits_translate_keyword_safe(
     inrec: &mut [c_char],
     outrec: &mut [c_char],
     /*     a null string if input does not  */
@@ -2784,7 +2784,7 @@ pub fn fits_translate_keywords_safe(
             }
         }
 
-        fits_translate_keyword_safer(
+        fits_translate_keyword_safe(
             &mut rec,
             &mut outrec,
             patterns,
@@ -5421,7 +5421,7 @@ pub unsafe extern "C" fn ffgacl(
             false => Some(cast_slice_mut(slice::from_raw_parts_mut(tnull, FLEN_VALUE))),
         };
 
-        ffgacl_safer(
+        ffgacl_safe(
             fptr, colnum, ttype, tbcol, tunit, tform, tscal, tzero, tnull, tdisp, status,
         )
     }
@@ -5442,7 +5442,7 @@ pub unsafe extern "C" fn ffgacl(
 /// * `tnull`  — (O) TNULLn keyword value
 /// * `tdisp`  — (O) TDISPn keyword value
 /// * `status` — (IO) error status
-pub fn ffgacl_safer(
+pub fn ffgacl_safe(
     fptr: &mut fitsfile,
     colnum: c_int,
     ttype: Option<&mut [c_char]>,
