@@ -10,7 +10,38 @@
 - [ ] Refactor the NullCheckType and NullValue. NullValue isn't Copy and these concepts are intrinsicly linked.
 - [ ] Investigate all code with 'WARNING'
 - [ ] Investigate all code with 'TODO'
-- [ ] Remove use a malloc and free
+- [X] Remove use of malloc and free. No `libc` allocation is left in `src/`
+      outside two `#[cfg(test)]` uses in cfileio.rs, where the test acts as a
+      C caller supplying its own allocator through `fits_create_memfile` and so
+      must free with the same one.
+      `ffiter_internal` owns its per-column work arrays in an
+      `AlignedBytes`/`Vec` arena instead of calloc'ing 17 of them (which also
+      makes the 16 unchecked allocations fallible and stops the early returns
+      leaking), and drvrmem no longer resizes a Vec-allocated memory-file
+      buffer with the C `realloc` -- `stdin2mem`, `mem_compress_open`,
+      `mem_compress_stdin_open` and the decompression grow callback all route
+      through `owned_realloc` now, which was a real cross-allocator free.
+      The global `ALLOCATIONS` map has moved behind
+      `src/helpers/raw_owned.rs`: it records the element size and alignment as
+      well as the length and capacity, and there is no "assume the length"
+      fallback any more -- an unregistered pointer is reported in debug builds
+      and leaked rather than freed on a guessed `Layout`. That removed two
+      wrong-layout frees (`fits_read_wcstab` released an `nelem`-element f64
+      array as `ndim` elements; `FITSfile::drop` freed the six tile* pointers
+      that `TILE_STRUCTS` owns) and un-ignored `test_copy_within_same_file`.
+      See the ladder at the top of `raw_owned.rs` for which mechanism to reach
+      for.
+      The expression engine went last. `NodeValue::Buffer` carries an `Owned`
+      describing how its block is released -- `None` for a column node's
+      borrowed view into `varData`, `Block(Layout)` for a numeric row buffer,
+      `BlockAndText` for the row-pointer array plus the character block behind
+      it -- so `free_buffer` hands the right `Layout` back to the Rust
+      allocator, releases both of `Allocate_Ptrs`' allocations, and cannot free
+      a buffer the node only borrows. The `FREE!` macro is gone. The Bits
+      column arrays in `Setup_DataArrays` are `DataInfo::bit_rows`/`bit_block`
+      Vecs rather than mallocs freed in `ffcprs`.
+      Still raw pointers, though: the deeper rework that would make the node
+      buffers `Vec`s and drop the `unsafe` around them is the entry below.
 - [X] Remove use of libc unsafe functions. Every raw C string function is gone:
       the whole `strcpy`/`strncpy`/`strcmp`/`strncmp`/`strlen`/`strnlen`/
       `strchr`/`strstr`/`strcat`/`strncat`/`strtok_r`/`strpbrk`/`strspn`/
@@ -19,11 +50,16 @@
       per-row string buffers through `lval::str_row`/`str_row_mut` instead of a
       `char **` row-pointer array, and `bitand`/`bitor`/`bitnot`/`bitcmp`/
       `bitlgte`/`cstrmid` are now safe functions taking slices.
-      Remaining follow-up, none of it string-related: stage 3 of
-      `notes/EVAL_STRING_STORAGE.md` (own the row buffers in `ParseData` so the
-      two `str_row` accessors stop being `unsafe`), then stage 4 (the numeric
-      buffers and `value.undef`, ~660 sites, which would remove the last
-      `malloc`/`free` and raw pointer from `NodeValue`).
+      Remaining follow-up, none of it string-related (the `notes/` directory
+      this used to point at is gone): own the row buffers in `ParseData` so the
+      two `str_row` accessors stop being `unsafe`, then the numeric buffers and
+      `value.undef` (~660 sites), which would remove the last `malloc`/`free`
+      and raw pointer from `NodeValue`. Two structural obstacles:
+      `NodeValue::Buffer` needs an owning arm *and* a borrowed sibling, because
+      `Evaluate_Parser` re-points column nodes at `varData[col].data` on every
+      evaluation; and `Allocate_Ptrs` packs the data array and the `undef`
+      flags into one allocation with `undef` pointing into its tail, so each
+      becomes two `Vec`s and `lval.undef` changes with them.
 - [X] Fix the Stacked Borrows violation in the lexer's buffer stack
       (`yy_buffer_stack`). yyrestart held a reference to the stack slot across
       yy_create_buffer, which re-enters the scanner; yy_init_buffer and

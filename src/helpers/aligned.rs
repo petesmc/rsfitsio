@@ -37,6 +37,10 @@ impl AlignedBytes {
     pub(crate) fn try_resize_zeroed(&mut self, len: usize) -> Result<(), TryReserveError> {
         let words = len.div_ceil(size_of::<u64>());
         self.buf.clear();
+        /* clear() left `buf` empty; drop `len` with it so that a failed
+        reservation leaves a consistent (empty) buffer rather than a length
+        that outruns it. */
+        self.len = 0;
         self.buf.try_reserve_exact(words)?;
         self.buf.resize(words, 0);
         self.len = len;

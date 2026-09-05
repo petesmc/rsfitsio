@@ -20,6 +20,29 @@ use crate::fitsio::{DATA_COMPRESSION_ERR, DATA_DECOMPRESSION_ERR, MEMORY_ALLOCAT
 const GZBUFSIZE: usize = 115200; /* 40 FITS blocks */
 const BUFFINCR: usize = 28800; /* 10 FITS blocks */
 
+/// Stand-in for the `mem_realloc` callback of [`uncompress2mem_from_mem`] and
+/// [`crate::zuncompress::zuncompress2mem`], for the in-crate callers whose
+/// buffer is a Rust `Vec`.
+///
+/// Those routines take a C-style grow function.  The C passed `realloc`, and so
+/// did this port -- but every in-crate caller hands them a `Vec`'s storage, so
+/// actually calling the C reallocator on it would free a Rust allocation with
+/// the wrong allocator.  It is never reached today (the grow branch in
+/// `uncompress2mem_from_mem` is a `panic!("not implemented")`, and the callers
+/// that do reach a live one size their buffer so it cannot grow), and passing
+/// this instead of `realloc` means a future implementation gets a loud failure
+/// rather than a silent cross-allocator free.
+///
+/// A caller that really can grow its buffer must own it -- see
+/// `owned_realloc` in [`crate::drvrmem`], which resizes the `Vec` it is
+/// registered against.
+pub(crate) unsafe extern "C" fn mem_realloc_unsupported(
+    _p: *mut c_void,
+    _newsize: usize,
+) -> *mut c_void {
+    unimplemented!("cannot grow a caller-owned Vec through the C realloc")
+}
+
 pub(crate) unsafe fn inflateInit2(strm: z_streamp, windowBits: c_int) -> c_int {
     unsafe {
         inflateInit2_(

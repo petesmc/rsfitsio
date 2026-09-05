@@ -19,7 +19,7 @@ use core::ffi::CStr;
 use core::{cmp, ptr};
 
 use bytemuck::{cast_slice, cast_slice_mut};
-use libc::{calloc, free, malloc, memcpy};
+use libc::memcpy;
 
 const APPROX: f64 = 1.0e-7;
 
@@ -85,7 +85,7 @@ use crate::c_types::{
 use crate::cfileio::{ffclos_safe, ffexts_safe, ffopen_safe};
 use crate::eval_defs::{
     BufferKind, CONST_OP, MAX_STRLEN, MAXDIMS, MAXSUBS, Node, NodeValue, ParseData, ValueSort,
-    lval, yyscan_t,
+    alloc_row_bytes, lval, yyscan_t,
 };
 use crate::eval_l::{fits_parser_yyGetVariable, fits_parser_yylex, yyguts_t};
 use crate::eval_tab::{FITS_PARSER_YYSTYPE, fits_parser_yytokentype};
@@ -8182,25 +8182,24 @@ fn New_GTI(
                 the starts, then the stops. The node's buffer is still a raw
                 allocation, so this is a copy out of the Vec rather than
                 giving it away. */
-                let gtibuf = malloc(
-                    ((2 as c_long * nrows) as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<c_double>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                );
-                if gtibuf.is_null() {
+                let Some((gtibuf, gtilayout)) = alloc_row_bytes(
+                    BufferKind::Double,
+                    ((2 as c_long * nrows) as usize)
+                        .wrapping_mul(::core::mem::size_of::<c_double>()),
+                ) else {
                     lParse.status = MEMORY_ALLOCATION;
                     return -(1);
-                }
+                };
                 core::ptr::copy_nonoverlapping(
                     times.as_ptr(),
                     gtibuf.cast::<c_double>(),
                     times.len(),
                 );
-                (lParse.Nodes[that0_idx])
-                    .value
-                    .data
-                    .set_buffer(BufferKind::Double, gtibuf);
+                (lParse.Nodes[that0_idx]).value.data.set_owned_buffer(
+                    BufferKind::Double,
+                    gtibuf,
+                    gtilayout,
+                );
             }
 
             /* If Node1 is constant (gtifilt_fct) or
@@ -8800,26 +8799,30 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
 
                 match ((lParse.Nodes)[i as usize]).ntype {
                     ValueSort::Bits => {
-                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
-                            BufferKind::Text,
-                            ((lParse.varData)[column as usize])
-                                .data
-                                .cast::<*mut c_char>()
-                                .offset(rowOffset as isize)
-                                .cast(),
-                        );
+                        (((lParse.Nodes)[i as usize]).value)
+                            .data
+                            .set_borrowed_buffer(
+                                BufferKind::Text,
+                                ((lParse.varData)[column as usize])
+                                    .data
+                                    .cast::<*mut c_char>()
+                                    .offset(rowOffset as isize)
+                                    .cast(),
+                            );
                         let fresh13 = &mut (((lParse.Nodes)[i as usize]).value).undef;
                         *fresh13 = ptr::null_mut();
                     }
                     ValueSort::String => {
-                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
-                            BufferKind::Text,
-                            ((lParse.varData)[column as usize])
-                                .data
-                                .cast::<*mut c_char>()
-                                .offset(rowOffset as isize)
-                                .cast(),
-                        );
+                        (((lParse.Nodes)[i as usize]).value)
+                            .data
+                            .set_borrowed_buffer(
+                                BufferKind::Text,
+                                ((lParse.varData)[column as usize])
+                                    .data
+                                    .cast::<*mut c_char>()
+                                    .offset(rowOffset as isize)
+                                    .cast(),
+                            );
                         /* Vec::as_mut_ptr, as in the other arm: the node keeps
                         this pointer, so a reference to the contents would be a
                         child of this borrow of lParse and die with it. */
@@ -8836,29 +8839,37 @@ pub(crate) fn Evaluate_Parser(lParse: &mut ParseData, firstRow: c_long, nRows: c
                         (((lParse.Nodes)[i as usize]).value).undef = undef_ptr;
                     }
                     ValueSort::Boolean => {
-                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
-                            BufferKind::Logical,
-                            (((lParse.varData)[column as usize]).data.cast_const() as *mut c_char)
-                                .offset(offset as isize)
-                                .cast(),
-                        );
+                        (((lParse.Nodes)[i as usize]).value)
+                            .data
+                            .set_borrowed_buffer(
+                                BufferKind::Logical,
+                                (((lParse.varData)[column as usize]).data.cast_const()
+                                    as *mut c_char)
+                                    .offset(offset as isize)
+                                    .cast(),
+                            );
                     }
                     ValueSort::Long => {
-                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
-                            BufferKind::Long,
-                            (((lParse.varData)[column as usize]).data.cast_const() as *mut c_long)
-                                .offset(offset as isize)
-                                .cast(),
-                        );
+                        (((lParse.Nodes)[i as usize]).value)
+                            .data
+                            .set_borrowed_buffer(
+                                BufferKind::Long,
+                                (((lParse.varData)[column as usize]).data.cast_const()
+                                    as *mut c_long)
+                                    .offset(offset as isize)
+                                    .cast(),
+                            );
                     }
                     ValueSort::Double => {
-                        (((lParse.Nodes)[i as usize]).value).data.set_buffer(
-                            BufferKind::Double,
-                            (((lParse.varData)[column as usize]).data.cast_const()
-                                as *mut c_double)
-                                .offset(offset as isize)
-                                .cast(),
-                        );
+                        (((lParse.Nodes)[i as usize]).value)
+                            .data
+                            .set_borrowed_buffer(
+                                BufferKind::Double,
+                                (((lParse.varData)[column as usize]).data.cast_const()
+                                    as *mut c_double)
+                                    .offset(offset as isize)
+                                    .cast(),
+                            );
                     }
                 }
             }
@@ -8912,60 +8923,66 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
         if (lParse.Nodes[this_node_idx]).ntype == ValueSort::Bits
             || (lParse.Nodes[this_node_idx]).ntype == ValueSort::String
         {
-            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
+            /* The C's two mallocs: the row-pointer array, then the single
+            character block every row points into.  Both now come from the Rust
+            allocator, and the node carries the layouts so free_node_buffer can
+            hand them back. */
+            let rows = alloc_row_bytes(
                 BufferKind::Text,
-                malloc(
-                    (lParse.nRows as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<*mut c_char>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                ),
+                (lParse.nRows as usize).wrapping_mul(::core::mem::size_of::<*mut c_char>()),
             );
-            if !((lParse.Nodes[this_node_idx]).value.data.str_buf()).is_null() {
-                let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0);
-                *fresh20 = malloc(
-                    ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
-                        as c_ulong)
-                        .wrapping_mul(::core::mem::size_of::<c_char>() as c_ulong)
-                        .try_into()
-                        .unwrap(),
-                )
-                .cast::<c_char>();
-                if !(*((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0)).is_null() {
-                    row = 0;
-                    loop {
-                        row += 1;
-                        if row >= lParse.nRows {
-                            break;
-                        }
-                        let fresh21 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                            .offset(row as isize);
-                        *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                            .offset((row - 1) as isize))
-                        .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
-                        .offset(1);
-                    }
-                    if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
-                        (lParse.Nodes[this_node_idx]).value.undef =
-                            (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
-                                .offset((row - 1) as isize))
-                            .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
-                            .offset(1);
-                    } else {
-                        (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
-                    }
-                } else {
-                    lParse.status = MEMORY_ALLOCATION;
-                    free(
-                        (lParse.Nodes[this_node_idx])
-                            .value
-                            .data
-                            .str_buf()
-                            .cast::<c_void>(),
-                    );
-                }
-            } else {
+            let Some((rows_ptr, rows_layout)) = rows else {
                 lParse.status = MEMORY_ALLOCATION;
+                return;
+            };
+            (lParse.Nodes[this_node_idx]).value.data.set_owned_buffer(
+                BufferKind::Text,
+                rows_ptr,
+                rows_layout,
+            );
+
+            let block = alloc_row_bytes(
+                /* a character block, so byte alignment */
+                BufferKind::Logical,
+                ((lParse.nRows * ((lParse.Nodes[this_node_idx]).value.nelem + 2 as c_long))
+                    as usize)
+                    .wrapping_mul(::core::mem::size_of::<c_char>()),
+            );
+            let Some((block_ptr, block_layout)) = block else {
+                lParse.status = MEMORY_ALLOCATION;
+                (lParse.Nodes[this_node_idx]).value.data.free_buffer();
+                return;
+            };
+            let block_ptr = block_ptr.cast::<c_char>();
+            (lParse.Nodes[this_node_idx])
+                .value
+                .data
+                .set_text_block(block_ptr, block_layout);
+
+            let fresh20 = &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(0);
+            *fresh20 = block_ptr;
+
+            row = 0;
+            loop {
+                row += 1;
+                if row >= lParse.nRows {
+                    break;
+                }
+                let fresh21 =
+                    &mut *((lParse.Nodes[this_node_idx]).value.data.str_buf()).offset(row as isize);
+                *fresh21 = (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                    .offset((row - 1) as isize))
+                .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
+                .offset(1);
+            }
+            if (lParse.Nodes[this_node_idx]).ntype == ValueSort::String {
+                (lParse.Nodes[this_node_idx]).value.undef =
+                    (*((lParse.Nodes[this_node_idx]).value.data.str_buf())
+                        .offset((row - 1) as isize))
+                    .offset((lParse.Nodes[this_node_idx]).value.nelem as isize)
+                    .offset(1);
+            } else {
+                (lParse.Nodes[this_node_idx]).value.undef = ptr::null_mut(); /* BITSTRs don't use undef array */
             }
         } else {
             elem = (lParse.Nodes[this_node_idx]).value.nelem * lParse.nRows;
@@ -8990,22 +9007,22 @@ fn Allocate_Ptrs(lParse: &mut ParseData, this_node_idx: usize) {
                     kind = BufferKind::Logical;
                 }
             }
-            (lParse.Nodes[this_node_idx]).value.data.set_buffer(
-                kind,
-                calloc(
-                    ((size + 1) as c_ulong).try_into().unwrap(),
-                    (elem as c_ulong).try_into().unwrap(),
-                ),
-            );
-            if ((lParse.Nodes[this_node_idx]).value.data.raw()).is_null() {
-                lParse.status = MEMORY_ALLOCATION;
-            } else {
-                (lParse.Nodes[this_node_idx]).value.undef = (lParse.Nodes[this_node_idx])
-                    .value
-                    .data
-                    .raw()
-                    .cast::<c_char>()
-                    .offset((elem * size) as isize);
+            /* the C's calloc(size + 1, elem): `elem` values of `size` bytes,
+            with the `elem`-byte undef array packed on the end */
+            match alloc_row_bytes(kind, ((size + 1) as usize) * (elem as usize)) {
+                None => {
+                    lParse.status = MEMORY_ALLOCATION;
+                    /* leave the node empty, so `raw()` still reads as null */
+                    (lParse.Nodes[this_node_idx]).value.data = NodeValue::Empty;
+                }
+                Some((p, layout)) => {
+                    (lParse.Nodes[this_node_idx])
+                        .value
+                        .data
+                        .set_owned_buffer(kind, p, layout);
+                    (lParse.Nodes[this_node_idx]).value.undef =
+                        p.cast::<c_char>().offset((elem * size) as isize);
+                }
             }
         };
     }
@@ -9019,17 +9036,11 @@ pub(crate) unsafe fn free_node_buffer(node: &mut Node) {
         if !matches!(node.value.data, NodeValue::Buffer { .. }) {
             return;
         }
-        if node.ntype == ValueSort::Bits || node.ntype == ValueSort::String {
-            if !node.value.data.str_buf().is_null() {
-                /* the row pointers all point into one block, allocated at [0] */
-                if !(*node.value.data.str_buf()).is_null() {
-                    free((*node.value.data.str_buf()).cast::<c_void>());
-                }
-                node.value.data.free_buffer();
-            }
-        } else {
-            node.value.data.free_buffer();
-        }
+        /* The Bits/String special case is gone: the node records both of
+        Allocate_Ptrs' allocations, so free_buffer releases the character block
+        as well as the row-pointer array, and does nothing at all for a column
+        node that only borrows varData's. */
+        node.value.data.free_buffer();
 
         node.value.undef = ptr::null_mut();
     }
@@ -14386,13 +14397,14 @@ fn Do_Func(lParse: &mut ParseData, this_node_idx: usize) {
     }
 }
 
-/* NOTE: the error paths below release the result node with free_node_buffer,
-not value.data.free_buffer().  For a Bits or String node Allocate_Ptrs makes
-two allocations -- the row-pointer array in `data`, and the single block every
-row points into, at data[0] -- and free_buffer releases only the array.  It
-also leaves the value Empty, so the teardown in ffcprs then skipped the node
-and the block at data[0] leaked.  BITS[9] is the smallest case: an out-of-range
-index on an 8X column. */
+/* NOTE: the error paths below release the result node with free_node_buffer.
+For a Bits or String node Allocate_Ptrs makes two allocations -- the row-pointer
+array in `data`, and the single block every row points into, at data[0] -- and
+free_buffer used to release only the array, leaving the value Empty so that the
+teardown in ffcprs skipped the node and the block at data[0] leaked.  BITS[9] is
+the smallest case: an out-of-range index on an 8X column.  The node now records
+both allocations, so free_buffer releases both and either call is correct;
+free_node_buffer stays because it also clears `undef`. */
 fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
     unsafe {
         let mut theVar: &mut Node;
@@ -14787,8 +14799,8 @@ fn Do_Deref(lParse: &mut ParseData, this_node_idx: usize) {
             }
         }
         if (lParse.Nodes[theVar]).is_computed() {
-            /* free_node_buffer covers both shapes; the String/Bits arm here
-            used to free only the backing block and leak the pointer array. */
+            /* free_node_buffer covers both shapes: the node records the
+            row-pointer array and the block behind it, so neither leaks. */
             free_node_buffer(&mut (lParse.Nodes[theVar]));
         }
         i = 0;

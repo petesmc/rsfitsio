@@ -30,7 +30,7 @@ use crate::drvrnet::{fits_dwnld_prog_bar, fits_net_timeout, https_set_verbose};
 use crate::grparser::fits_execute_template_safe;
 use crate::helpers::boxed::box_try_new;
 use crate::helpers::cfile::{CFile, fgets};
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::into_raw_registered;
 use bytemuck::{cast_mut, cast_slice, cast_slice_mut};
 use errno::errno;
 use libc::ERANGE;
@@ -65,7 +65,7 @@ use crate::eval_f::{
     fits_pixel_filter_safe,
 };
 use crate::fitscore::{
-    ALLOCATIONS, ffchdu, ffcmrk_safe, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe,
+    ffchdu, ffcmrk_safe, ffcmsg_safe, ffgcnn_safe, ffgcno_safe, ffgcprll, ffgerr_safe,
     ffghadll_safe, ffghdn_safe, ffghdt_safe, ffgidm_safe, ffgidt_safe, ffgiprll_safe, ffgkcl_safe,
     ffgmsg_safe, ffgncl_safe, ffgnrw_safe, ffgtclll_safe, ffkeyn_safe, ffmahd_safe, ffmnhd_safe,
     ffmrhd_safe, ffpmrk_safe, ffpmsg_slice, ffpmsg_str, ffrdef_safe, ffrhdu_safe, ffupch_safe,
@@ -8906,10 +8906,7 @@ pub unsafe extern "C" fn ffimport_file(
 
         if let Some(safe_contents) = safe_contents {
             // HEAP ALLOCATION
-            let (p, l, c) = vec_into_raw_parts(safe_contents);
-            ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-
-            *contents = p;
+            *contents = into_raw_registered(safe_contents);
         }
 
         result

@@ -14,7 +14,9 @@
 //! Space Flight Center.
 #![warn(missing_docs)]
 
+use alloc::collections::TryReserveError;
 use core::ffi::CStr;
+use core::ptr;
 use core::slice;
 
 use crate::buffers::ffgrsz_safe;
@@ -36,10 +38,11 @@ use crate::getcol::ffgcv_safe;
 use crate::getcol::ffgpv_safe;
 use crate::getkey::ffgkyj_safe;
 use crate::getkey::ffgkys_safe;
+use crate::helpers::aligned::AlignedBytes;
 
 use bytemuck::{cast_slice, cast_slice_mut};
 use core::mem::size_of;
-use libc::{calloc, free, memcmp, memcpy, memset};
+use libc::{memcmp, memcpy, memset};
 use std::os::raw::{c_char, c_int, c_long, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ushort};
 
 use crate::NullValue;
@@ -2891,6 +2894,39 @@ pub(crate) fn ffiter_internal(
     /* Re-borrowed from `cols_ptr` again after every work-function call. */
     let mut cols: &mut [iteratorCol] = unsafe { slice::from_raw_parts_mut(cols_ptr, cols_len) };
 
+    /// Reserve `n` zeroed elements of `T` in `slot` and return the pointer the
+    /// C's `calloc(n, sizeof(T))` would have produced, or null if the
+    /// reservation failed.
+    ///
+    /// The C leaked every one of these work arrays on the early `return`s above
+    /// the cleanup label, and stored the result of all but the TSTRING calloc
+    /// without checking it for null.  Owning the storage in `work` fixes both:
+    /// the buffers are released by RAII on every path, and a failed reservation
+    /// still yields the null pointer the `is_null()` check below looks for.
+    ///
+    /// [`AlignedBytes`] rather than `Vec<u8>` because the caller reinterprets
+    /// these bytes as `f64`, `LONGLONG`, `c_long` and `*mut c_char`; a
+    /// `Vec<u8>` guarantees only 1-byte alignment.
+    fn work_ptr<T>(slot: &mut AlignedBytes, n: usize) -> *mut c_void {
+        match slot.try_resize_zeroed(n * size_of::<T>()) {
+            Ok(()) => slot.as_mut_ptr().cast::<c_void>(),
+            Err(_) => ptr::null_mut(),
+        }
+    }
+
+    /// Reserve `n` zeroed `c_char`s in `slot` and return the pointer, or the
+    /// allocation error the C would have seen as a null `calloc`.
+    ///
+    /// The TSTRING arm's two `char` buffers, unlike the numeric work arrays,
+    /// are read back as `[c_char]` rather than reinterpreted, so a plain `Vec`
+    /// is enough.
+    fn try_zeroed(slot: &mut Vec<c_char>, n: usize) -> Result<*mut c_char, TryReserveError> {
+        slot.clear();
+        slot.try_reserve_exact(n)?;
+        slot.resize(n, 0);
+        Ok(slot.as_mut_ptr())
+    }
+
     // Structure to store the column null value
     #[derive(Default, Clone, Copy)]
     struct ColNulls {
@@ -3411,6 +3447,18 @@ pub(crate) fn ffiter_internal(
 
         col = vec![ColNulls::default(); n_cols as usize]; /* memory for the null values */
 
+        /* The C calloc'd the per-column work arrays and freed them in the
+        cleanup block at the bottom.  They are owned here instead: `cols[jj]
+        .array` still receives a raw pointer, exactly as the C left it, but the
+        storage belongs to these arenas and is released when the function
+        returns -- including on the early `return *status` paths, which the C
+        leaked.  All three are sized once, before any pointer is taken out of
+        them, so the outer Vecs never move. */
+        let mut work: Vec<AlignedBytes> =
+            (0..n_cols as usize).map(|_| AlignedBytes::new()).collect(); /* cols[jj].array */
+        let mut strblock: Vec<Vec<c_char>> = vec![Vec::new(); n_cols as usize]; /* TSTRING values */
+        let mut nullstrs: Vec<Vec<c_char>> = vec![Vec::new(); n_cols as usize]; /* TSTRING TNULLn */
+
         #[allow(clippy::never_loop)]
         'cleanup: loop {
             for jj in 0..n_cols as usize {
@@ -3672,7 +3720,7 @@ pub(crate) fn ffiter_internal(
 
                 match cols[jj].datatype {
                     TBYTE => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
+                        cols[jj].array = work_ptr::<c_char>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3689,7 +3737,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TSBYTE => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
+                        cols[jj].array = work_ptr::<c_char>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3706,7 +3754,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TSHORT => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_short>());
+                        cols[jj].array = work_ptr::<c_short>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_short>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3723,7 +3771,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TUSHORT => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_ushort>());
+                        cols[jj].array = work_ptr::<c_ushort>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_ushort>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3740,7 +3788,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TINT => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_int>());
+                        cols[jj].array = work_ptr::<c_int>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_int>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3757,7 +3805,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TUINT => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_uint>());
+                        cols[jj].array = work_ptr::<c_uint>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_uint>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3774,7 +3822,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TLONG => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_long>());
+                        cols[jj].array = work_ptr::<c_long>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_long>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3789,7 +3837,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TULONG => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_ulong>());
+                        cols[jj].array = work_ptr::<c_ulong>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_ulong>(); /* bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3809,7 +3857,7 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TFLOAT => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<f32>());
+                        cols[jj].array = work_ptr::<f32>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3824,12 +3872,12 @@ pub(crate) fn ffiter_internal(
                         }
                     }
                     TCOMPLEX => {
-                        cols[jj].array = calloc(((ntodo * 2) + 1) as usize, size_of::<f32>());
+                        cols[jj].array = work_ptr::<f32>(&mut work[jj], ((ntodo * 2) + 1) as usize);
                         col[jj].nullsize = size_of::<f32>(); /* number of bytes per value */
                         col[jj].null = ColNullValue::FloatNull(FLOATNULLVALUE); /* special value */
                     }
                     TDOUBLE => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<f64>());
+                        cols[jj].array = work_ptr::<f64>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<f64>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -3845,7 +3893,7 @@ pub(crate) fn ffiter_internal(
                     }
 
                     TDBLCOMPLEX => {
-                        cols[jj].array = calloc(((ntodo * 2) + 1) as usize, size_of::<f64>());
+                        cols[jj].array = work_ptr::<f64>(&mut work[jj], ((ntodo * 2) + 1) as usize);
                         col[jj].nullsize = size_of::<f64>(); /* number of bytes per value */
                         col[jj].null = ColNullValue::DoubleNull(DOUBLENULLVALUE); /* special value */
                     }
@@ -3854,7 +3902,7 @@ pub(crate) fn ffiter_internal(
                         if hdutype == ASCII_TBL {
                             rept = width;
                         }
-                        stringptr = calloc((ntodo + 1) as usize, size_of::<*mut c_char>())
+                        stringptr = work_ptr::<*mut c_char>(&mut work[jj], (ntodo + 1) as usize)
                             .cast::<*mut c_char>();
                         cols[jj].array = stringptr.cast::<c_void>();
                         col[jj].nullsize = (rept + 1) as usize; /* number of bytes per value */
@@ -3862,10 +3910,14 @@ pub(crate) fn ffiter_internal(
                         if !stringptr.is_null() {
                             /* allocate string to store the null string value */
                             let stringnull =
-                                calloc((rept + 1) as usize, size_of::<c_char>()).cast::<c_char>();
+                                match try_zeroed(&mut nullstrs[jj], (rept + 1) as usize) {
+                                    Ok(v) => v,
+                                    Err(_) => ptr::null_mut(),
+                                };
                             col[jj].null = ColNullValue::StringNull(stringnull);
                             if rept > 0
                                 && let ColNullValue::StringNull(ptr) = col[jj].null
+                                && !ptr.is_null()
                             {
                                 *ptr.add(1) = 1;
                                 /* to make sure string != 0 */
@@ -3873,11 +3925,15 @@ pub(crate) fn ffiter_internal(
 
                             /* allocate big block for the array of table column strings */
 
-                            (*stringptr) =
-                                calloc(((ntodo + 1) * (rept + 1)) as usize, size_of::<c_char>())
-                                    .cast::<c_char>();
+                            (*stringptr) = match try_zeroed(
+                                &mut strblock[jj],
+                                ((ntodo + 1) * (rept + 1)) as usize,
+                            ) {
+                                Ok(v) => v,
+                                Err(_) => ptr::null_mut(),
+                            };
 
-                            if !(*stringptr).is_null() {
+                            if !(*stringptr).is_null() && !stringnull.is_null() {
                                 for ii in 1..=ntodo as usize {
                                     /* pointer to each string */
 
@@ -3903,8 +3959,8 @@ pub(crate) fn ffiter_internal(
                                 if tstatus == 0
                                     && let ColNullValue::StringNull(ptr) = col[jj].null
                                 {
-                                    // SAFETY: `ptr` is the calloc'd rept+1 byte
-                                    // null-value buffer allocated just above.
+                                    // SAFETY: `ptr` is the rept+1 byte
+                                    // null-value buffer reserved just above.
                                     let nullval =
                                         slice::from_raw_parts_mut(ptr, (rept + 1) as usize);
                                     strncat_safe(nullval, &nullstr, rept as usize);
@@ -3918,14 +3974,14 @@ pub(crate) fn ffiter_internal(
                     }
 
                     TLOGICAL => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<c_char>());
+                        cols[jj].array = work_ptr::<c_char>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<c_char>(); /* number of bytes per value */
 
                         /* use value = 2 to flag null values in logical columns */
                         col[jj].null = ColNullValue::UCharNull(2);
                     }
                     TLONGLONG => {
-                        cols[jj].array = calloc((ntodo + 1) as usize, size_of::<LONGLONG>());
+                        cols[jj].array = work_ptr::<LONGLONG>(&mut work[jj], (ntodo + 1) as usize);
                         col[jj].nullsize = size_of::<LONGLONG>(); /* number of bytes per value */
 
                         if typecode.abs() == TBYTE
@@ -4296,26 +4352,15 @@ pub(crate) fn ffiter_internal(
 
         /* free work arrays for the columns */
 
-        for jj in 0..n_cols as usize {
-            /* The C guards these on `if (cols[jj].array)`, i.e. non-null.
-            Testing is_null() instead meant the frees only ran for columns
-            that had nothing to free, so every allocated work array leaked. */
-            if cols[jj].datatype == TSTRING && !cols[jj].array.is_null() {
-                stringptr = cols[jj].array.cast::<*mut c_char>();
-
-                free((*stringptr).cast::<c_void>()); /* free the block of strings */
-                if let ColNullValue::StringNull(ptr) = col[jj].null {
-                    free(ptr.cast::<c_void>()); /* free the null string */
-                }
-            }
-            if !cols[jj].array.is_null() {
-                free(cols[jj].array);
-                /* memory for the array of values from the col */
-            }
-        }
+        /* The C's per-column free() loop is gone: `work`, `strblock` and
+        `nullstrs` own every buffer it released -- the value array, the TSTRING
+        character block and the TSTRING null string -- and drop them when this
+        function returns.  The C left the freed addresses behind in
+        `cols[jj].array`; so does this, since the caller's iteratorCol array is
+        not ours to clear. */
     }
 
-    // col is a Vec, so it will be automatically freed
+    // col, work, strblock and nullstrs are Vecs, so they are freed automatically
     *status
 }
 

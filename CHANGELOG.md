@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Allocation ownership put on one ladder. `ffiter_internal` owns its per-column work
+  arrays instead of `calloc`ing seventeen of them, so they are released on every path
+  and a failed reservation reports `MEMORY_ALLOCATION` rather than a null pointer that
+  only a later check would notice. The allocation registry moved behind
+  `helpers::raw_owned`, which records the element size and alignment alongside the
+  length and capacity and refuses to release a pointer it never handed out.
+- No `libc` allocation is left in the library. The expression engine's node buffers
+  come from the Rust allocator, and `NodeValue::Buffer` carries the `Layout` to
+  release them with plus whether the node owns the block at all -- so a column node
+  pointing into `varData` can no longer be freed through, and both of
+  `Allocate_Ptrs`' allocations go together instead of the character block having to
+  be released by hand at each call site.
+- The decompression routines' `mem_realloc` callback is no longer `libc::realloc`
+  where the buffer being grown is a Rust `Vec`.
+
+### Fixed
+- Compressed files were not recognised at all. Two independent defects in the same
+  path: the two-byte magic numbers for GZIP, PACK, LZW and LZH were transpiled from the
+  C's octal escapes as if they were decimal, so `file_is_compressed` and
+  `mem_compress_open` rejected every `.gz`, `.Z` and `.bz2` file; and
+  `file_is_compressed` read those two bytes with a bare `read()`, which is allowed to
+  come back short, and treated a short read as "not compressed".
+- Memory-file buffers allocated by `mem_createmem` (a `Vec`, i.e. the Rust allocator)
+  were resized with the C `realloc` by `stdin2mem`, both compressed-open paths and the
+  decompression grow callback -- a cross-allocator free. They route through
+  `owned_realloc` now, and `stdin2mem` publishes the new address as it grows instead of
+  leaving a stale one behind for its own error path to free.
+- Two frees on a guessed layout: `fits_read_wcstab` released an `nelem`-element `f64`
+  array as if it held `ndim` elements, and `FITSfile::drop` freed the six `tile*`
+  pointers that `TILE_STRUCTS` owns. The latter is the double free that had
+  `test_copy_within_same_file` ignored.
+
 ## [0.470.1] - 2026.08.16
 
 ### Changed

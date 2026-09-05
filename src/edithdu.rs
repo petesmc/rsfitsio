@@ -2498,18 +2498,17 @@ mod tests {
         });
     }
 
+    /// Copying between two fitsfile handles that share one FITSfile -- the same
+    /// file opened twice -- used to abort with `double free detected` and was
+    /// ignored for it.
+    ///
+    /// The second free came from `FITSfile::drop`'s guessed-length fallbacks:
+    /// once the registry entry had been consumed, the `else` branch rebuilt a
+    /// `Vec` from an assumed length and freed the block again. `free_registered`
+    /// has no such fallback -- an unregistered pointer is left alone -- and the
+    /// six tile* pointers, which `TILE_STRUCTS` owns, are no longer freed there
+    /// at all.
     #[test]
-    #[ignore = "REAL IMPL BUG: copying between two fitsfile handles that share the same \
-                underlying FITSfile (same file opened twice) double-frees an inner buffer \
-                (headstart/tableptr) during the copy. CFITSIO shares Fptr via a raw pointer \
-                with an open_count, but rsfitsio's reopen path wraps the same FITSfile in a \
-                second Box (cfileio.rs ~line 2064 `Box::from_raw(oldFptr)`); growing the \
-                shared header arrays during the copy then trips the global ALLOCATIONS \
-                registry on close, aborting with `double free detected`. A minimal repro \
-                (open same path twice + ffcopy_hdu + close both) reproduces it without any \
-                edithdu-specific code, so the defect lives in the core open/close/realloc \
-                lifecycle, not in edithdu. Fixing it safely requires reworking the \
-                shared-Fptr ownership model and is out of scope for this port."]
     fn test_copy_within_same_file() {
         // Test copying HDU data within the same file.
         // Open the file twice with different fitsfile pointers.

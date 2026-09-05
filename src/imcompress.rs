@@ -77,8 +77,6 @@ use crate::putcold::ffpcld_safe;
 use crate::putcoli::ffpcli_safe;
 use crate::scalnull::ffpscl_safe;
 
-use libc::realloc;
-
 use bytemuck::{cast, cast_slice, cast_slice_mut};
 
 use crate::pliocomp::{pl_l2pi, pl_p2li, pl_p2li_max_len};
@@ -100,7 +98,7 @@ use crate::quantize::{
 };
 use crate::swapproc::{ffswap2, ffswap4, ffswap8};
 
-use crate::zcompress::{compress2mem_from_mem, uncompress2mem_from_mem};
+use crate::zcompress::{compress2mem_from_mem, mem_realloc_unsupported, uncompress2mem_from_mem};
 use crate::{FFLOCK, FFUNLOCK, KeywordDatatype, KeywordDatatypeMut};
 
 use crate::fitsio2::*;
@@ -8812,7 +8810,7 @@ fn imcomp_decompress_tile(
                 (nelemll as c_long).try_into().unwrap(),
                 &mut (idata.as_mut_ptr()),
                 &mut idatalen,
-                Some(realloc),
+                Some(mem_realloc_unsupported),
                 Some(&mut tilebytesize),
                 status,
             );
@@ -13331,7 +13329,7 @@ pub fn fits_uncompress_table_safe(
                                             cvlalen.try_into().unwrap(),
                                             &mut uncompressed_vla.as_mut_ptr(),
                                             &mut vlamemlen,
-                                            Some(realloc),
+                                            Some(mem_realloc_unsupported),
                                             Some(&mut filesize),
                                             status,
                                         );

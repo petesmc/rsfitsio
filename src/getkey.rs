@@ -21,8 +21,7 @@ use core::slice;
 use core::{cmp, ptr};
 
 use crate::c_types::{c_char, c_int, c_long, c_short, c_uint, c_ulong, c_ushort, c_void};
-use crate::fitscore::ALLOCATIONS;
-use crate::helpers::vec_raw_parts::vec_into_raw_parts;
+use crate::helpers::raw_owned::{free_registered, into_raw_registered};
 use crate::imcompress::fits_img_decompress_header_safe;
 
 use bytemuck::{cast_slice, cast_slice_mut};
@@ -1655,9 +1654,7 @@ pub fn ffgkls_safe(
         let mut v: Vec<c_char> = vec![0; 1];
         v[0] = 0;
 
-        let (p, l, c) = vec_into_raw_parts(v);
-        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-        *value = p;
+        *value = into_raw_registered(v);
     } else {
         /* allocate space,  plus 1 for null */
         // HEAP ALLOCATION
@@ -1716,9 +1713,7 @@ pub fn ffgkls_safe(
             }
         }
 
-        let (p, l, c) = vec_into_raw_parts(v);
-        ALLOCATIONS.lock().unwrap().insert(p as usize, (l, c));
-        *value = p;
+        *value = into_raw_registered(v);
     }
     *status
 }
@@ -2258,17 +2253,14 @@ pub unsafe fn fffree_safe(value: *mut c_void, status: &mut c_int) -> c_int {
         return *status;
     }
 
-    if !value.is_null() {
-        // HEAP DEALLOCATION
-        let mut alloc_lock = ALLOCATIONS.lock().unwrap();
-        let alloc = alloc_lock.remove(&(value as usize));
-        if let Some((l, c)) = alloc {
-            // HEAP DEALLOCATION
-            let _ = unsafe { Vec::from_raw_parts(value, l, c) };
-        } else {
-            let _ = unsafe { Vec::from_raw_parts(value, 1, 1) };
-        }
-    }
+    // HEAP DEALLOCATION
+    //
+    // Every block this routine is documented to release -- ffgkls, fits_hdr2str,
+    // fits_convert_hdr2str, ffimport_file -- is a `Vec<c_char>`, so that is the
+    // element type the registry is asked for. A pointer registered as anything
+    // else, or never registered at all, is left alone rather than freed on a
+    // guessed layout; the C's `free()` had no such distinction to make.
+    unsafe { free_registered(value.cast::<c_char>()) };
     *status
 }
 
@@ -6728,13 +6720,7 @@ pub fn ffh2st_safe(fptr: &mut fitsfile, header: &mut *mut c_char, status: &mut c
     ); /* copy header */
     hdr[(nrec as LONGLONG * IOBUFLEN) as usize] = 0;
 
-    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
-    ALLOCATIONS
-        .lock()
-        .unwrap()
-        .insert(header_ptr as usize, (l, c));
-
-    *header = header_ptr;
+    *header = into_raw_registered(hdr);
 
     *status
 }
@@ -6903,13 +6889,7 @@ pub fn ffhdr2str_safe(
     hdr.resize(((*nkeys * 80) + 1) as usize, 0);
     hdr.shrink_to_fit();
 
-    let (header_ptr, l, c) = vec_into_raw_parts(hdr);
-    ALLOCATIONS
-        .lock()
-        .unwrap()
-        .insert(header_ptr as usize, (l, c));
-
-    *header = header_ptr;
+    *header = into_raw_registered(hdr);
 
     *status
 }
